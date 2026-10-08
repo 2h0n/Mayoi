@@ -1,0 +1,199 @@
+package main
+
+import (
+	"bytes"
+	"errors"
+	"os"
+	"path/filepath"
+	"unicode/utf8"
+
+	"github.com/egoist/mygo/ui"
+
+	"mayoi/internal/highlight"
+)
+
+// maxOpenBytes is the largest file the editor opens.
+const maxOpenBytes = 64 << 20
+
+var errBinary = errors.New("binary file")
+
+// document is a file open in a tab.
+type document struct {
+	id    int
+	path  string // absolute; "" for an untitled document
+	title string // an untitled document's name
+	buf   *ui.TextBuffer
+	saved uint64 // the buffer's version on disk
+	crlf  bool   // saved with CRLF line endings
+	hl    *highlight.Highlighter
+
+	vscroll ui.ScrollState // the text area's
+	hscroll ui.ScrollState // the container that scrolls it sideways
+	area    ui.Handle
+
+	// widest is the longest line in columns seen, which sizes the text
+	// area's width; widestVersion is the version it was last measured at
+	// in full.
+	widest        int
+	widestVersion uint64
+	caret         int    // the caret's rune offset in the last frame
+	sel           [2]int // the selection in the last frame
+	caretSeen     bool
+	// pending is a selection the app asked for, which the next frame
+	// makes, scrolling the editor to it.
+	pending  *[2]int
+	diskGone bool // the file was removed from the disk
+}
+
+func (d *document) name() string {
+	if d.path == "" {
+		return d.title
+	}
+	return filepath.Base(d.path)
+}
+
+func (d *document) dirty() bool { return d.buf.Version() != d.saved }
+
+// readDocument reads a file into a document.
+func readDocument(id int, path string, notify func()) (*document, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() > maxOpenBytes {
+		return nil, errors.New("file is too large to open")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if isBinary(data) {
+		return nil, errBinary
+	}
+	crlf := bytes.Contains(data, []byte("\r\n"))
+	if crlf {
+		data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	}
+	buf := ui.NewTextBuffer(string(data))
+	d := &document{
+		id: id, path: path, buf: buf, saved: buf.Version(), crlf: crlf,
+		hl: highlight.New(highlight.Lexer(path), notify),
+	}
+	d.measureWidest()
+	return d, nil
+}
+
+// isBinary reports whether data looks like something other than text: a
+// NUL byte, or invalid UTF-8, in its first 8 KB.
+func isBinary(data []byte) bool {
+	head := data[:min(len(data), 8000)]
+	if bytes.IndexByte(head, 0) >= 0 {
+		return true
+	}
+	if len(head) < len(data) && len(head) > 0 {
+		// A rune cut at the end of the head is not invalid.
+		i := len(head) - 1
+		for i > 0 && !utf8.RuneStart(head[i]) && len(head)-i < utf8.UTFMax {
+			i--
+		}
+		if !utf8.FullRune(head[i:]) {
+			head = head[:i]
+		}
+	}
+	return !utf8.Valid(head)
+}
+
+// save writes the document to its path.
+func (d *document) save() error {
+	snap := d.buf.Snapshot()
+	var b bytes.Buffer
+	b.Grow(snap.ByteLen())
+	if _, err := snap.WriteTo(&b); err != nil {
+		return err
+	}
+	data := b.Bytes()
+	if d.crlf {
+		data = bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))
+	}
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(d.path); err == nil {
+		mode = info.Mode().Perm()
+	}
+	// Write beside the file and rename, so that a failure keeps the old one.
+	tmp, err := os.CreateTemp(filepath.Dir(d.path), "."+filepath.Base(d.path)+".mayoi-*")
+	if err != nil {
+		return os.WriteFile(d.path, data, mode)
+	}
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	os.Chmod(tmp.Name(), mode)
+	if err := os.Rename(tmp.Name(), d.path); err != nil {
+		os.Remove(tmp.Name())
+		return err
+	}
+	d.saved = snap.Version()
+	return nil
+}
+
+// measureWidest measures the longest line of the whole document.
+func (d *document) measureWidest() {
+	snap := d.buf.Snapshot()
+	w := &widthCounter{}
+	snap.WriteTo(w)
+	d.widest = max(w.widest, w.col)
+	d.widestVersion = snap.Version()
+}
+
+// widthCounter finds the longest line, in columns, of what is written to
+// it.
+type widthCounter struct{ col, widest int }
+
+func (w *widthCounter) Write(p []byte) (int, error) {
+	for i := 0; i < len(p); {
+		c := p[i]
+		switch {
+		case c == '\n':
+			w.widest = max(w.widest, w.col)
+			w.col = 0
+			i++
+		case c == '\t':
+			w.col += tabWidth - w.col%tabWidth
+			i++
+		case c < utf8.RuneSelf:
+			w.col++
+			i++
+		default:
+			_, n := utf8.DecodeRune(p[i:])
+			w.col++
+			i += n
+		}
+	}
+	return len(p), nil
+}
+
+// columns returns how many columns s takes, with tabs to the next stop.
+func columns(s string) int {
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			col += tabWidth - col%tabWidth
+		} else {
+			col++
+		}
+	}
+	return col
+}
+
+// selectRange selects runes start up to end in the next frame, and
+// scrolls the editor to show them, nearer its top than its bottom when
+// center is set or they are out of view.
+func (d *document) selectRange(start, end int, center bool) {
+	d.pending = &[2]int{start, end}
+}

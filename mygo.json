@@ -1,0 +1,9 @@
+{
+  "name": "Mayoi",
+  "identifier": "dev.mayoi.editor",
+  "version": "0.1.0",
+  "out": "build",
+  "macos": {
+    "minimumSystemVersion": "13.0"
+  }
+}

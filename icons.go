@@ -1,0 +1,116 @@
+package main
+
+import (
+	"path/filepath"
+	"strings"
+
+	"github.com/egoist/mygo/ui"
+)
+
+// Icons from Lucide (ISC license), drawn in the color of the text.
+func lucide(body string) *ui.SVG {
+	return ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">` + body + `</svg>`))
+}
+
+var (
+	iconX            = lucide(`<path d="M18 6 6 18"/><path d="m6 6 12 12"/>`)
+	iconPlus         = lucide(`<path d="M5 12h14"/><path d="M12 5v14"/>`)
+	iconChevronDown  = lucide(`<path d="m6 9 6 6 6-6"/>`)
+	iconChevronUp    = lucide(`<path d="m18 15-6-6-6 6"/>`)
+	iconFolder       = lucide(`<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`)
+	iconFolderOpen   = lucide(`<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>`)
+	iconFile         = lucide(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>`)
+	iconFileCode     = lucide(`<path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/>`)
+	iconFileText     = lucide(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>`)
+	iconFileJSON     = lucide(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/>`)
+	iconImage        = lucide(`<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>`)
+	iconSettings     = lucide(`<path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/>`)
+	iconLock         = lucide(`<rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`)
+	iconTerminal     = lucide(`<path d="m4 17 6-6-6-6"/><path d="M12 19h8"/>`)
+	iconTrash        = lucide(`<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>`)
+	iconSearch       = lucide(`<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>`)
+	iconArrowUp      = lucide(`<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>`)
+	iconArrowDown    = lucide(`<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>`)
+	iconBranch       = lucide(`<line x1="6" x2="6" y1="3" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/>`)
+	iconRefresh      = lucide(`<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/>`)
+	iconCollapse     = lucide(`<path d="m7 20 5-5 5 5"/><path d="m7 4 5 5 5-5"/>`)
+	iconFilePlus     = lucide(`<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/>`)
+	iconFolderPlus   = lucide(`<path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>`)
+	iconMaximize     = lucide(`<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>`)
+	iconMinimize     = lucide(`<path d="m14 10 7-7"/><path d="M20 10h-6V4"/><path d="m3 21 7-7"/><path d="M4 14h6v6"/>`)
+	iconCase         = lucide(`<path d="m3 15 4-8 4 8"/><path d="M4 13h6"/><circle cx="18" cy="12" r="3"/><path d="M21 9v6"/>`)
+	iconWord         = lucide(`<circle cx="7" cy="12" r="3"/><path d="M10 9v6"/><circle cx="17" cy="12" r="3"/><path d="M14 7v8"/><path d="M22 17v1c0 .5-.5 1-1 1H3c-.5 0-1-.5-1-1v-1"/>`)
+	iconRegex        = lucide(`<path d="M17 3v10"/><path d="m12.67 5.5 8.66 5"/><path d="m12.67 10.5 8.66-5"/><path d="M9 17a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v2a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2v-2z"/>`)
+	iconReplace      = lucide(`<path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/>`)
+	iconReplaceAll   = lucide(`<path d="M14 14a2 2 0 0 1 2-2"/><path d="M14 4a2 2 0 0 1 2-2"/><path d="M16 10a2 2 0 0 1-2-2"/><path d="M20 14a2 2 0 0 1 2 2"/><path d="M20 2a2 2 0 0 1 2 2"/><path d="M22 8a2 2 0 0 1-2 2"/><path d="m3 7 3 3 3-3"/><path d="M6 10V5a3 3 0 0 1 3-3h1"/><rect x="2" y="14" width="8" height="8" rx="2"/>`)
+	iconChevronRight = lucide(`<path d="m9 18 6-6-6-6"/>`)
+	iconSidebar      = lucide(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/>`)
+	iconPanel        = lucide(`<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 15h18"/>`)
+	iconFiles        = lucide(`<path d="M20 7h-3a2 2 0 0 1-2-2V2"/><path d="M9 18a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2Z"/><path d="M3 7.6v12.8A1.6 1.6 0 0 0 4.6 22h9.8"/>`)
+)
+
+// fileIcon returns the icon of a file and its color, by its name.
+func fileIcon(p *palette, name string) (*ui.SVG, ui.Color) {
+	lower := strings.ToLower(name)
+	ext := strings.TrimPrefix(filepath.Ext(lower), ".")
+	switch lower {
+	case "go.mod", "go.sum", "go.work":
+		return iconFileCode, langColor(p, "#00add8", "#00809f")
+	case "package.json", "tsconfig.json", "bun.lock", "package-lock.json", "yarn.lock", "pnpm-lock.yaml":
+		return iconFileJSON, langColor(p, "#cbcb41", "#9a8a00")
+	case "makefile", "dockerfile", "justfile":
+		return iconSettings, langColor(p, "#e37933", "#b5571a")
+	case "license", "license.md", "license.txt":
+		return iconFileText, langColor(p, "#d4af37", "#a07d10")
+	}
+	if strings.HasPrefix(lower, ".env") {
+		return iconLock, langColor(p, "#e8c482", "#a86a0c")
+	}
+	if strings.HasPrefix(lower, ".") && ext == strings.TrimPrefix(lower, ".") {
+		return iconSettings, p.muted // dotfiles: .gitignore, .editorconfig
+	}
+	switch ext {
+	case "go":
+		return iconFileCode, langColor(p, "#00add8", "#00809f")
+	case "ts", "tsx", "mts", "cts":
+		return iconFileCode, langColor(p, "#4d8fdf", "#2f6fc0")
+	case "js", "jsx", "mjs", "cjs":
+		return iconFileCode, langColor(p, "#e8d44d", "#a68f00")
+	case "rs":
+		return iconFileCode, langColor(p, "#dea584", "#b0643a")
+	case "py":
+		return iconFileCode, langColor(p, "#5a9fd4", "#3572a5")
+	case "rb":
+		return iconFileCode, langColor(p, "#e0525a", "#c0303a")
+	case "swift":
+		return iconFileCode, langColor(p, "#f0814b", "#d0602a")
+	case "c", "h", "cpp", "cc", "hpp", "m", "mm":
+		return iconFileCode, langColor(p, "#7aa6da", "#4a76b0")
+	case "java", "kt", "kts", "scala":
+		return iconFileCode, langColor(p, "#e76f51", "#c04a2b")
+	case "html", "htm", "vue", "svelte", "astro":
+		return iconFileCode, langColor(p, "#e8714a", "#c4492a")
+	case "css", "scss", "sass", "less":
+		return iconFileCode, langColor(p, "#a074c4", "#7a4fa8")
+	case "sh", "bash", "zsh", "fish":
+		return iconTerminal, langColor(p, "#89e051", "#4f9a1f")
+	case "json", "jsonc", "json5":
+		return iconFileJSON, langColor(p, "#cbcb41", "#9a8a00")
+	case "yaml", "yml", "toml", "ini", "conf", "cfg", "xml", "plist":
+		return iconSettings, langColor(p, "#c9a0dc", "#8a5aa8")
+	case "md", "mdx", "markdown", "txt", "rst":
+		return iconFileText, langColor(p, "#6ba4d8", "#3d78ad")
+	case "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "icns", "bmp":
+		return iconImage, langColor(p, "#a6c56a", "#5f8a26")
+	case "lock", "sum":
+		return iconLock, p.faint
+	}
+	return iconFile, p.muted
+}
+
+func langColor(p *palette, dark, light string) ui.Color {
+	if p.dark {
+		return ui.Hex(dark)
+	}
+	return ui.Hex(light)
+}
