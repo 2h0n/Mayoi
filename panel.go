@@ -92,7 +92,7 @@ func (a *app) newTerminalIn(dir string) {
 		return
 	}
 	a.panelTerm = s
-	a.settings.PanelOpen, a.settings.TerminalOpen = true, true
+	a.window.PanelOpen, a.window.TerminalOpen = true, true
 	a.settings.changed()
 	a.focusTerminal()
 }
@@ -146,7 +146,7 @@ func (a *app) leavePanel(s *session) {
 		}
 	}
 	if len(rest) == 0 {
-		a.settings.PanelOpen, a.settings.TerminalOpen = false, false
+		a.window.PanelOpen, a.window.TerminalOpen = false, false
 		a.settings.changed()
 	}
 }
@@ -200,7 +200,7 @@ func (a *app) terminalToPanel(s *session) {
 	s.tab = nil
 	a.dropTab(t)
 	a.panelTerm = s
-	a.settings.PanelOpen, a.settings.TerminalOpen = true, true
+	a.window.PanelOpen, a.window.TerminalOpen = true, true
 	a.rememberTabs()
 	a.focusTerminal()
 }
@@ -223,7 +223,7 @@ func (a *app) closeTerminals() {
 
 // hidePanel hides the panel, and gives the keyboard back to the column.
 func (a *app) hidePanel() {
-	a.settings.PanelOpen = false
+	a.window.PanelOpen = false
 	a.settings.changed()
 	a.focusColumn()
 }

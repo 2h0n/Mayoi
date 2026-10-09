@@ -442,7 +442,6 @@ func (a *app) moveTabBy(step int) {
 // rememberTabs keeps the columns and the files open in them in the
 // settings.
 func (a *app) rememberTabs() {
-	s := a.settings
 	cols := make([]columnState, 0, len(a.cols))
 	for _, col := range a.cols {
 		cs := columnState{Tabs: []tabState{}, Active: -1, Weight: col.weight}
@@ -461,27 +460,14 @@ func (a *app) rememberTabs() {
 		}
 		cols = append(cols, cs)
 	}
-	s.Columns, s.Column = cols, a.col
-	s.OpenFiles, s.ActiveFile = nil, ""
-	s.changed()
+	a.window.Columns, a.window.Column = cols, a.col
+	a.settings.changed()
 }
 
 // restoreTabs opens the columns of the last session and their files, and
 // starts a terminal where one was.
 func (a *app) restoreTabs() {
-	s := a.settings
-	saved, focused := s.Columns, s.Column
-	if len(saved) == 0 && len(s.OpenFiles) > 0 {
-		// The settings of a version without columns: the files of one.
-		cs := columnState{Active: -1, Weight: 1}
-		for _, p := range s.OpenFiles {
-			if p == s.ActiveFile {
-				cs.Active = len(cs.Tabs)
-			}
-			cs.Tabs = append(cs.Tabs, tabState{File: p})
-		}
-		saved, focused = []columnState{cs}, 0
-	}
+	saved, focused := a.window.Columns, a.window.Column
 	at := -1 // the column to give the keyboard
 	for i, cs := range saved {
 		col := a.cols[len(a.cols)-1]

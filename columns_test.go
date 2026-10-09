@@ -251,14 +251,15 @@ func TestRestoresColumns(t *testing.T) {
 	root := workspaceFixture(t)
 	file := func(name string) string { return filepath.Join(root, name) }
 	s := defaultSettings()
-	s.Folder = root
-	s.Columns = []columnState{
+	w := s.newWindow()
+	w.Folder = root
+	w.Columns = []columnState{
 		{Tabs: []tabState{{File: file("main.go")}, {File: file("README.md")}}, Active: 0, Weight: 2},
 		{Tabs: []tabState{{File: file("gone.go")}}, Active: 0, Weight: 1},
 		{Tabs: []tabState{{File: file("README.md")}, {File: file("go.mod")}}, Active: 1, Weight: 1},
 	}
-	s.Column = 2
-	a := newApp(&fakeHost{folder: root}, s)
+	w.Column = 2
+	a := newApp(&fakeHost{folder: root}, s, w)
 	tt := ui.NewTester(a.view, 1200, 760)
 	tt.Frame()
 	tt.Frame()
@@ -268,7 +269,7 @@ func TestRestoresColumns(t *testing.T) {
 	if l, r := a.cols[0], a.cols[1]; l.tab().name() != "main.go" || r.tab().name() != "go.mod" || l.weight != 2 || len(l.tabs) != 2 || len(r.tabs) != 2 {
 		t.Fatalf("columns of %d and %d tabs, showing %s and %s", len(l.tabs), len(r.tabs), l.tab().name(), r.tab().name())
 	}
-	if got := s.Columns; len(got) != 2 || got[1].Tabs[1].File != file("go.mod") || got[1].Active != 1 || s.Column != 1 {
+	if got := w.Columns; len(got) != 2 || got[1].Tabs[1].File != file("go.mod") || got[1].Active != 1 || w.Column != 1 {
 		t.Fatalf("remembered %+v", got)
 	}
 }
@@ -279,12 +280,13 @@ func TestFileGivenAtStartJoinsTheSession(t *testing.T) {
 	root := workspaceFixture(t)
 	file := func(name string) string { return filepath.Join(root, name) }
 	s := defaultSettings()
-	s.Folder = root
-	s.Columns = []columnState{
+	w := s.newWindow()
+	w.Folder = root
+	w.Columns = []columnState{
 		{Tabs: []tabState{{File: file("main.go")}}, Weight: 1},
 		{Tabs: []tabState{{File: file("go.mod")}}, Weight: 1},
 	}
-	a := newApp(&fakeHost{folder: root}, s)
+	a := newApp(&fakeHost{folder: root}, s, w)
 	tt := ui.NewTester(a.view, 1200, 760)
 	a.post(func() { a.openFile(file("main.go"), true) })
 	a.post(func() { a.openFile(file("README.md"), true) })
@@ -389,8 +391,8 @@ func TestTerminalInAColumn(t *testing.T) {
 	a.run("view.terminalTab")
 	hs.settle()
 	col := a.column()
-	if len(a.terms) != 1 || len(col.tabs) != 2 || col.tab().term != a.terms[0] || a.settings.PanelOpen {
-		t.Fatalf("%d terminals, %d tabs, panel %v", len(a.terms), len(col.tabs), a.settings.PanelOpen)
+	if len(a.terms) != 1 || len(col.tabs) != 2 || col.tab().term != a.terms[0] || a.window.PanelOpen {
+		t.Fatalf("%d terminals, %d tabs, panel %v", len(a.terms), len(col.tabs), a.window.PanelOpen)
 	}
 	s := a.terms[0]
 	says := func(text string) {
@@ -410,16 +412,16 @@ func TestTerminalInAColumn(t *testing.T) {
 	// To the panel, where it goes on, and back to a column of its own.
 	a.run("view.terminalMove")
 	hs.settle()
-	if s.tab != nil || a.panelTerm != s || !a.settings.PanelOpen || len(col.tabs) != 1 || a.focus != paneTerminal {
-		t.Fatalf("in the panel: tab %v, panel %v, %d tabs", s.tab, a.settings.PanelOpen, len(col.tabs))
+	if s.tab != nil || a.panelTerm != s || !a.window.PanelOpen || len(col.tabs) != 1 || a.focus != paneTerminal {
+		t.Fatalf("in the panel: tab %v, panel %v, %d tabs", s.tab, a.window.PanelOpen, len(col.tabs))
 	}
 	tt.Type("echo panel-$((40+3))")
 	tt.Key(0, ui.KeyEnter)
 	says("panel-43")
 	a.run("view.terminalMove")
 	hs.settle()
-	if s.tab == nil || a.panelTerm != nil || a.settings.PanelOpen || len(col.tabs) != 2 {
-		t.Fatalf("back in a tab: tab %v, panel %v, %d tabs", s.tab, a.settings.PanelOpen, len(col.tabs))
+	if s.tab == nil || a.panelTerm != nil || a.window.PanelOpen || len(col.tabs) != 2 {
+		t.Fatalf("back in a tab: tab %v, panel %v, %d tabs", s.tab, a.window.PanelOpen, len(col.tabs))
 	}
 	a.run("view.moveTabNext")
 	hs.settle()
@@ -499,8 +501,8 @@ func TestDraggingTerminals(t *testing.T) {
 		t.Fatalf("no chip or no editor: %q", tt.Texts())
 	}
 	hs.drag(chip.X+chip.W/2, chip.Y+chip.H/2, body.X+body.W-20, body.Y+body.H/2)
-	if len(a.cols) != 2 || a.cols[1].tab().term != second || a.panelTerm != first || !a.settings.PanelOpen {
-		t.Fatalf("%d columns, the panel open %v", len(a.cols), a.settings.PanelOpen)
+	if len(a.cols) != 2 || a.cols[1].tab().term != second || a.panelTerm != first || !a.window.PanelOpen {
+		t.Fatalf("%d columns, the panel open %v", len(a.cols), a.window.PanelOpen)
 	}
 	hs.shot("14-terminal-dragged")
 	// And its tab, dropped on the panel, goes back.

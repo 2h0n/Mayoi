@@ -97,7 +97,7 @@ func (a *app) view(c *ui.Context) {
 // main is the columns of editors and, below them, the panel.
 func (a *app) main(c *ui.Context) {
 	p, s := a.pal, a.settings
-	panel := s.PanelOpen
+	panel := a.window.PanelOpen
 	editor := ui.Column(c.Key("editor")).Grow(1).MinHeight(0).Background(p.editor).Clip()
 	if panel && a.panelMax {
 		// Out of sight, but built, so that the editors keep their state.
@@ -187,7 +187,7 @@ func (a *app) titleBar(c *ui.Context) {
 			a.commandCenter(c)
 		})
 		ui.Row(c).Width(120).Justify(ui.End).Gap(2).Children(func() {
-			if a.iconButton(c, iconPanel, "Toggle Terminal (⌃`)", a.settings.PanelOpen).Clicked() {
+			if a.iconButton(c, iconPanel, "Toggle Terminal (⌃`)", a.window.PanelOpen).Clicked() {
 				a.togglePanel()
 			}
 		})
@@ -635,8 +635,16 @@ func (a *app) welcome(c *ui.Context) {
 								ui.Text(c, filepath.Base(dir)).FontSize(13).TextColor(p.text).SingleLine().Shrink(0)
 								ui.Text(c, shortenHome(filepath.Dir(dir))).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
 							})
-							if r.Clicked() {
-								a.openFolder(dir)
+							// With Cmd, in a window of its own.
+							switch {
+							case r.Focused() && c.Shortcut(ui.Cmd, ui.KeyEnter):
+								a.host.newWindow(dir)
+							case r.Clicked():
+								if r.ClickModifiers()&ui.Cmd != 0 {
+									a.host.newWindow(dir)
+								} else {
+									a.switchFolder(dir)
+								}
 							}
 						}
 					})
@@ -707,14 +715,14 @@ func (a *app) toggleSidebar() {
 // togglePanel shows or hides the terminal panel, starting a terminal the
 // first time it shows.
 func (a *app) togglePanel() {
-	s := a.settings
-	if s.PanelOpen && a.focus != paneTerminal && a.panelTerm != nil {
+	w := a.window
+	if w.PanelOpen && a.focus != paneTerminal && a.panelTerm != nil {
 		// Shown but not focused: focus it, as VS Code does.
 		a.focusTerminal()
 		return
 	}
-	s.PanelOpen = !s.PanelOpen
-	if s.PanelOpen {
+	w.PanelOpen = !w.PanelOpen
+	if w.PanelOpen {
 		if a.panelTerm == nil {
 			a.newTerminal()
 		}
@@ -722,7 +730,7 @@ func (a *app) togglePanel() {
 	} else {
 		a.focusColumn()
 	}
-	s.changed()
+	a.settings.changed()
 }
 
 func shortenHome(p string) string {

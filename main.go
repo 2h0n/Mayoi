@@ -3,9 +3,13 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,8 +19,22 @@ import (
 
 // desktop is the host of a window of the app: native dialogs, the trash.
 type desktop struct {
+	m   *mayoi
 	a   *app
 	win *mygo.Window
+}
+
+// mayoi is the app's windows, the focused one last first.
+type mayoi struct {
+	s    *settings
+	wins []*desktop
+	// pending are the folders and files the app was asked to open before
+	// it was ready.
+	ready   bool
+	pending []string
+	// quitting is set once the app quits, so that the windows it closes
+	// stay in the settings, to open again at the next start.
+	quitting bool
 }
 
 func (h *desktop) openFolder(done func(string)) {
@@ -66,6 +84,68 @@ func (h *desktop) setAppearance(appearance string) {
 	mygo.Theme.SetSource(mygo.ThemeSource(appearance))
 }
 
+func (h *desktop) showFolder(dir string) bool {
+	if w := h.m.showing(dir); w != nil && w != h {
+		w.show()
+		return true
+	}
+	return false
+}
+
+func (h *desktop) newWindow(dir string) {
+	h.m.openFolder(filepath.Clean(dir), false)
+}
+
+func (h *desktop) installCLI() {
+	go func() {
+		home, _ := os.UserHomeDir()
+		p, err := installCLI(cliDirs(home, shellPath()), appBundle())
+		switch {
+		case errors.Is(err, errCanceled):
+		case err != nil:
+			h.tell(mygo.MessageWarning, "The 'mayoi' command could not be installed.", err.Error())
+		default:
+			h.tell(mygo.MessageInfo, "The 'mayoi' command is installed in "+shortenHome(filepath.Dir(p))+".",
+				"In a terminal, mayoi . opens the folder you are in, and mayoi <file> a file.")
+		}
+	}()
+}
+
+func (h *desktop) uninstallCLI() {
+	go func() {
+		home, _ := os.UserHomeDir()
+		removed, err := uninstallCLI([]string{filepath.Join(home, ".local", "bin"), "/usr/local/bin"})
+		switch {
+		case errors.Is(err, errCanceled):
+		case err != nil:
+			h.tell(mygo.MessageWarning, "The 'mayoi' command could not be uninstalled.", err.Error())
+		case len(removed) == 0:
+			h.tell(mygo.MessageInfo, "The 'mayoi' command is not installed.", "")
+		default:
+			h.tell(mygo.MessageInfo, "The 'mayoi' command is uninstalled.", "It was in "+shortenHome(filepath.Dir(removed[0]))+".")
+		}
+	}()
+}
+
+// tell shows a message on the window.
+func (h *desktop) tell(kind mygo.MessageType, message, detail string) {
+	mygo.Dialog.Message(mygo.MessageOptions{Parent: h.win, Type: kind, Message: message, Detail: detail})
+}
+
+// show brings the window to the front.
+func (h *desktop) show() {
+	if h.win.IsMinimized() {
+		h.win.Restore()
+	}
+	h.win.Focus()
+}
+
+// do runs fn on the window's app before its next frame.
+func (h *desktop) do(fn func()) {
+	h.a.post(fn)
+	h.win.Invalidate()
+}
+
 // settingsPath is where the settings are kept.
 func settingsPath() string {
 	dir, err := mygo.App.Path(mygo.PathUserData)
@@ -77,41 +157,57 @@ func settingsPath() string {
 
 func main() {
 	mygo.App.SetName("Mayoi")
-	mygo.App.WhenReady(func() {
-		s := loadSettings(settingsPath())
-		mygo.Theme.SetSource(mygo.ThemeSource(s.Appearance))
-		// `mayoi <folder or file>` opens it.
-		var openPath string
-		if len(os.Args) > 1 {
-			if p, err := filepath.Abs(os.Args[1]); err == nil {
-				if info, err := os.Stat(p); err == nil {
-					if info.IsDir() {
-						s.Folder, s.Columns, s.OpenFiles, s.ActiveFile = p, nil, nil, ""
-					} else {
-						openPath = p
-					}
-				}
-			}
+	// One Mayoi runs: the folders and files another is started with open
+	// in this one.
+	if os.Getenv("MAYOI_SNAPSHOT") == "" && !mygo.App.RequestSingleInstanceLock() {
+		return
+	}
+	m := &mayoi{}
+	mygo.App.OnSecondInstance(func(args []string, wd string) {
+		if paths := argPaths(args, wd); len(paths) > 0 {
+			m.open(paths)
+		} else if len(m.wins) > 0 {
+			m.wins[0].show()
 		}
-		h := &desktop{}
-		a := newApp(h, s)
-		h.a = a
-		win := mygo.NewWindow(mygo.WindowOptions{
-			Title: "Mayoi", Width: 1280, Height: 820, MinWidth: 640, MinHeight: 420,
-			StateKey:             "main",
-			TitleBarStyle:        mygo.TitleBarHidden,
-			TrafficLightPosition: &mygo.Point{X: 14, Y: 13},
-			BackgroundColor:      "#131317",
-			Content:              ui.View(a.view),
+	})
+	// The folders and files of `mayoi` and the Finder, also those the app
+	// starts with.
+	mygo.App.OnOpenFile(func(path string) {
+		if !m.ready {
+			m.pending = append(m.pending, path)
+			return
+		}
+		m.open([]string{path})
+	})
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		if m.quitting || !m.anyDirty() {
+			m.quitting = true
+			return
+		}
+		// Ask about the changes of each window first, then quit again.
+		e.PreventDefault()
+		m.settle(slices.Clone(m.wins), func() {
+			m.quitting = true
+			mygo.App.Quit()
 		})
-		h.win = win
-		if openPath != "" {
-			a.post(func() { a.openFile(openPath, true) })
+	})
+	mygo.App.OnQuit(func() { m.s.flush() })
+	mygo.App.WhenReady(func() {
+		m.s = loadSettings(settingsPath())
+		mygo.Theme.SetSource(mygo.ThemeSource(m.s.Appearance))
+		wd, _ := os.Getwd()
+		m.ready = true
+		m.launch(append(m.pending, argPaths(os.Args[1:], wd)...))
+		m.pending = nil
+		if len(m.wins) == 0 {
+			return
 		}
-		mygo.App.SetMenu(a.menu(win))
+		first := m.wins[0]
+		mygo.App.SetMenu(first.a.menu(runtime.GOOS == "darwin" && mygo.App.IsPackaged(), m.run))
 		if out := os.Getenv("MAYOI_SNAPSHOT"); out != "" {
 			// For checking the real window: capture it once it settles, and
 			// quit.
+			a, win := first.a, first.win
 			go func() {
 				// MAYOI_SNAPSHOT_RUN names commands to run first.
 				for _, id := range strings.Fields(os.Getenv("MAYOI_SNAPSHOT_RUN")) {
@@ -125,40 +221,271 @@ func main() {
 				mygo.App.Quit()
 			}()
 		}
-
-		// Closing the window saves the files that save themselves, and with
-		// other unsaved changes asks about each first.
-		closing := false
-		win.OnClose(func(e *mygo.CloseEvent) {
-			if closing || !a.anyDirty() {
-				return
-			}
-			e.PreventDefault()
-			a.post(func() {
-				done := func() {
-					closing = true
-					win.Close()
-				}
-				if a.autoSaveAll(); !a.anyDirty() {
-					done()
-					return
-				}
-				a.closeAll(done)
-			})
-			win.Invalidate()
-		})
-		// Back from another app, which may have committed.
-		win.OnFocus(func() { a.post(a.gitChanged) })
-		win.OnBlur(func() { a.post(a.autoSaveAll) })
-		win.OnClosed(func() {
-			a.closeTerminals()
-			s.flush()
-			mygo.App.Quit()
-		})
 	})
 	if err := mygo.App.Run(); err != nil {
 		log.Fatal(err)
 	}
+}
+
+// argPaths are the folders and files of a command line, absolute.
+func argPaths(args []string, wd string) []string {
+	var paths []string
+	for _, arg := range args {
+		if arg == "" || strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if !filepath.IsAbs(arg) {
+			arg = filepath.Join(wd, arg)
+		}
+		paths = append(paths, arg)
+	}
+	return paths
+}
+
+// launch opens the windows the app starts with: one for each folder it
+// was given, or else those of the last session. The files it was given
+// open in them.
+func (m *mayoi) launch(paths []string) {
+	folders, files := splitPaths(paths)
+	if len(folders) == 0 {
+		// The one focused last ends up in front.
+		for _, w := range slices.Backward(slices.Clone(m.s.Windows)) {
+			m.openWindow(w)
+		}
+	} else {
+		// A folder of the last session opens as it was left. The other
+		// windows of the session are let go.
+		var keep []*windowState
+		for _, w := range m.s.Windows {
+			if slices.Contains(folders, filepath.Clean(w.Folder)) && !slices.ContainsFunc(keep, func(k *windowState) bool { return k.Folder == w.Folder }) {
+				keep = append(keep, w)
+			}
+		}
+		m.s.Windows = keep
+		for _, dir := range slices.Backward(folders) {
+			m.openFolder(dir, false)
+		}
+	}
+	if len(m.wins) == 0 {
+		m.openWindow(m.s.newWindow())
+	}
+	for _, p := range files {
+		m.openFile(p)
+	}
+}
+
+// open opens folders and files the app is asked to while it runs.
+func (m *mayoi) open(paths []string) {
+	folders, files := splitPaths(paths)
+	for _, dir := range folders {
+		m.openFolder(dir, true)
+	}
+	for _, p := range files {
+		m.openFile(p)
+	}
+}
+
+// splitPaths sorts paths into folders and files, cleaned, without those
+// that are neither.
+func splitPaths(paths []string) (folders, files []string) {
+	for _, p := range paths {
+		info, err := os.Stat(p)
+		switch p = filepath.Clean(p); {
+		case err != nil:
+		case info.IsDir():
+			if !slices.Contains(folders, p) {
+				folders = append(folders, p)
+			}
+		case info.Mode().IsRegular():
+			files = append(files, p)
+		}
+	}
+	return folders, files
+}
+
+// openFolder brings the window that has dir open to the front, or opens
+// it in a new window. reuse lets a window that shows nothing take it
+// instead, as the one an app opens with.
+func (m *mayoi) openFolder(dir string, reuse bool) {
+	if w := m.showing(dir); w != nil {
+		w.show()
+		return
+	}
+	if reuse {
+		for _, w := range m.wins {
+			if a := w.a; a.blank() {
+				// Its folder at once, so that the next folder looks for
+				// another window.
+				a.window.Folder = dir
+				w.do(func() { a.openFolder(dir) })
+				w.show()
+				return
+			}
+		}
+	}
+	for _, w := range m.s.Windows {
+		if filepath.Clean(w.Folder) == dir && m.of(w) == nil {
+			// As the last session left it.
+			m.openWindow(w)
+			return
+		}
+	}
+	w := m.s.newWindow()
+	w.Folder = dir
+	m.openWindow(w)
+}
+
+// openFile opens a file in the window whose folder holds it, else in the
+// window focused last, else in a new window.
+func (m *mayoi) openFile(path string) {
+	var win *desktop
+	deepest := ""
+	for _, w := range m.wins {
+		if root := w.a.folder(); root != "" && strings.HasPrefix(path, root+string(filepath.Separator)) && len(root) > len(deepest) {
+			win, deepest = w, root
+		}
+	}
+	if win == nil && len(m.wins) > 0 {
+		win = m.wins[0]
+	}
+	if win == nil {
+		win = m.openWindow(m.s.newWindow())
+	}
+	a := win.a
+	win.do(func() { a.openFile(path, true) })
+	win.show()
+}
+
+// showing returns the window that has dir open.
+func (m *mayoi) showing(dir string) *desktop {
+	for _, w := range m.wins {
+		if w.a.folder() == dir {
+			return w
+		}
+	}
+	return nil
+}
+
+// of returns the window whose state is st.
+func (m *mayoi) of(st *windowState) *desktop {
+	for _, w := range m.wins {
+		if w.a.window == st {
+			return w
+		}
+	}
+	return nil
+}
+
+// run runs a command of the menu in the window it was chosen in, or the
+// one focused last.
+func (m *mayoi) run(id string, win *mygo.Window) {
+	if len(m.wins) == 0 {
+		return
+	}
+	h := m.wins[0]
+	for _, w := range m.wins {
+		if w.win == win {
+			h = w
+		}
+	}
+	a := h.a
+	h.do(func() { a.run(id) })
+}
+
+func (m *mayoi) anyDirty() bool {
+	return slices.ContainsFunc(m.wins, func(w *desktop) bool { return w.a.anyDirty() })
+}
+
+// settle saves the files of wins that save themselves, asks about the
+// other changes of each, a window at a time, then calls done, unless a
+// change was kept.
+func (m *mayoi) settle(wins []*desktop, done func()) {
+	if len(wins) == 0 {
+		done()
+		return
+	}
+	w, a := wins[0], wins[0].a
+	w.do(func() {
+		if a.autoSaveAll(); !a.anyDirty() {
+			m.settle(wins[1:], done)
+			return
+		}
+		w.show()
+		a.closeAll(func() { m.settle(wins[1:], done) })
+	})
+}
+
+// openWindow opens a window for st, which restores what st has of it.
+func (m *mayoi) openWindow(st *windowState) *desktop {
+	h := &desktop{m: m}
+	a := newApp(h, m.s, st)
+	h.a = a
+	key := "main"
+	if st.ID > 0 {
+		key = fmt.Sprintf("main-%d", st.ID)
+	}
+	opts := mygo.WindowOptions{
+		Title: "Mayoi", Width: 1280, Height: 820, MinWidth: 640, MinHeight: 420,
+		StateKey:             key,
+		TitleBarStyle:        mygo.TitleBarHidden,
+		TrafficLightPosition: &mygo.Point{X: 14, Y: 13},
+		BackgroundColor:      "#131317",
+		Content:              ui.View(a.view),
+	}
+	if len(m.wins) > 0 {
+		// Below and right of the window in front, unless the frame of
+		// st's window is remembered.
+		opts.X, opts.Y = m.wins[0].win.Position()
+		opts.X, opts.Y = opts.X+28, opts.Y+28
+	}
+	win := mygo.NewWindow(opts)
+	h.win = win
+	m.wins = slices.Insert(m.wins, 0, h)
+	m.s.focused(st)
+
+	// Closing the window saves the files that save themselves, and with
+	// other unsaved changes asks about each first.
+	closing := false
+	win.OnClose(func(e *mygo.CloseEvent) {
+		if closing || m.quitting || !a.anyDirty() {
+			return
+		}
+		e.PreventDefault()
+		a.post(func() {
+			done := func() {
+				closing = true
+				win.Close()
+			}
+			if a.autoSaveAll(); !a.anyDirty() {
+				done()
+				return
+			}
+			a.closeAll(done)
+		})
+		win.Invalidate()
+	})
+	// Back from another app, which may have committed.
+	win.OnFocus(func() {
+		if i := slices.Index(m.wins, h); i > 0 {
+			m.wins = slices.Insert(slices.Delete(m.wins, i, i+1), 0, h)
+		}
+		m.s.focused(st)
+		a.post(a.gitChanged)
+	})
+	win.OnBlur(func() { a.post(a.autoSaveAll) })
+	// The last window to close quits the app, and stays in the settings
+	// to open again, as do those the quitting closes.
+	win.OnClosed(func() {
+		a.closeTerminals()
+		m.wins = slices.DeleteFunc(m.wins, func(w *desktop) bool { return w == h })
+		if !m.quitting && len(m.wins) > 0 {
+			m.s.forget(st)
+		}
+		if len(m.wins) == 0 {
+			m.s.flush()
+		}
+	})
+	return h
 }
 
 func (a *app) anyDirty() bool {

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"path/filepath"
+
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 )
@@ -23,12 +25,15 @@ func (a *app) commands() []command {
 	return []command{
 		{"file.new", "New File", "CmdOrCtrl+N", a.newFile},
 		{"file.openFolder", "Open Folder…", "CmdOrCtrl+O", a.chooseFolder},
+		{"file.openFolderWindow", "Open Folder in New Window…", "Alt+CmdOrCtrl+O", a.chooseFolderWindow},
 		{"file.save", "Save", "CmdOrCtrl+S", a.saveActive},
 		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
 		{"file.autoSave", "Auto Save", "", a.toggleAutoSave},
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
+		{"file.installCLI", "Install 'mayoi' Command", "", func() { a.host.installCLI() }},
+		{"file.uninstallCLI", "Uninstall 'mayoi' Command", "", func() { a.host.uninstallCLI() }},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
 		// control, the editor's history or a text field's.
 		{"edit.undo", "Undo", "", a.editActive(func(d *editor) { d.undo() })},
@@ -84,8 +89,23 @@ func (a *app) run(id string) {
 	}
 }
 
+// chooseFolder asks for a folder to open in the window, or shows the
+// window that has it open.
 func (a *app) chooseFolder() {
-	a.host.openFolder(func(dir string) { a.openFolder(dir) })
+	a.host.openFolder(a.switchFolder)
+}
+
+// chooseFolderWindow asks for a folder to open in a window of its own.
+func (a *app) chooseFolderWindow() {
+	a.host.openFolder(func(dir string) { a.host.newWindow(dir) })
+}
+
+// switchFolder opens dir in the window, unless another window has it
+// open: then that one comes to the front.
+func (a *app) switchFolder(dir string) {
+	if !a.host.showFolder(filepath.Clean(dir)) {
+		a.openFolder(dir)
+	}
 }
 
 // closeActive closes the tab shown in the column that has the keyboard,
@@ -133,17 +153,18 @@ func (a *app) zoom(by float32) {
 	}
 }
 
-// menu is the menu bar: its items run commands, then draw a frame.
-func (a *app) menu(win *mygo.Window) *mygo.Menu {
+// menu is the menu bar, which the windows share: its items run the
+// command of the window they are chosen in, by run. cli adds the items
+// that install the mayoi command.
+func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	byID := map[string]command{}
 	for _, cmd := range a.commands() {
 		byID[cmd.id] = cmd
 	}
 	item := func(id string) *mygo.MenuItem {
 		cmd := byID[id]
-		return &mygo.MenuItem{Label: cmd.label, Accelerator: cmd.accel, Click: func(*mygo.MenuItem, *mygo.Window) {
-			a.post(cmd.run)
-			win.Invalidate()
+		return &mygo.MenuItem{Label: cmd.label, Accelerator: cmd.accel, Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+			run(id, win)
 		}}
 	}
 	checkbox := func(id string, checked bool) *mygo.MenuItem {
@@ -156,13 +177,17 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 		it.Type, it.Checked = mygo.MenuItemRadio, a.settings.Appearance == appearance
 		return it
 	}
+	file := []*mygo.MenuItem{
+		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"), mygo.Separator(),
+		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), mygo.Separator(),
+		item("file.close"), item("file.closeFolder"),
+	}
+	if cli {
+		file = append(file, mygo.Separator(), item("file.installCLI"), item("file.uninstallCLI"))
+	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
-		{Label: "File", Submenu: []*mygo.MenuItem{
-			item("file.new"), item("file.openFolder"), mygo.Separator(),
-			item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), mygo.Separator(),
-			item("file.close"), item("file.closeFolder"),
-		}},
+		{Label: "File", Submenu: file},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			item("edit.undo"), item("edit.redo"), mygo.Separator(),
 			{Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste}, {Role: mygo.RoleSelectAll}, mygo.Separator(),

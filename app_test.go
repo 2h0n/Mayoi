@@ -5,6 +5,7 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -21,6 +22,10 @@ type fakeHost struct {
 	title   string
 	closed  bool
 	trashed []string
+	// others are the folders other windows have open, and windows those
+	// asked to open in a window of their own.
+	others  []string
+	windows []string
 }
 
 func (h *fakeHost) openFolder(done func(string)) { done(h.folder) }
@@ -40,6 +45,12 @@ func (h *fakeHost) reveal(string)         {}
 func (h *fakeHost) setTitle(title string) { h.title = title }
 func (h *fakeHost) closeWindow()          { h.closed = true }
 func (h *fakeHost) setAppearance(string)  {}
+func (h *fakeHost) showFolder(dir string) bool {
+	return slices.Contains(h.others, dir)
+}
+func (h *fakeHost) newWindow(dir string) { h.windows = append(h.windows, dir) }
+func (h *fakeHost) installCLI()          {}
+func (h *fakeHost) uninstallCLI()        {}
 
 // workspaceFixture makes a folder of a few files.
 func workspaceFixture(t testing.TB) string {
@@ -75,9 +86,10 @@ type harness struct {
 func newHarness(t testing.TB, dark bool) *harness {
 	root := workspaceFixture(t)
 	s := defaultSettings()
-	s.Folder = root
+	w := s.newWindow()
+	w.Folder = root
 	h := &fakeHost{folder: root}
-	a := newApp(h, s)
+	a := newApp(h, s, w)
 	tt := ui.NewTester(a.view, 1200, 760)
 	tt.SetDark(dark)
 	hs := &harness{t: t, a: a, h: h, tt: tt, root: root}
@@ -349,8 +361,8 @@ func TestPanelWithTerminal(t *testing.T) {
 	a.openFile(hs.path("main.go"), true)
 	a.run("view.terminal")
 	hs.settle()
-	if len(a.terms) != 1 || !a.settings.PanelOpen {
-		t.Fatalf("terminal: %d sessions, panel %v", len(a.terms), a.settings.PanelOpen)
+	if len(a.terms) != 1 || !a.window.PanelOpen {
+		t.Fatalf("terminal: %d sessions, panel %v", len(a.terms), a.window.PanelOpen)
 	}
 	tt.Type("echo mayoi-$((40+2))")
 	tt.Key(0, ui.KeyEnter)
@@ -373,10 +385,14 @@ func TestPanelWithTerminal(t *testing.T) {
 func TestSettingsRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	s := loadSettings(path)
-	s.SidebarWidth, s.Folder, s.OpenFiles = 300, "/tmp/x", []string{"/tmp/x/a.go"}
+	s.SidebarWidth = 300
+	w := s.newWindow()
+	w.Folder, w.Columns = "/tmp/x", []columnState{{Tabs: []tabState{{File: "/tmp/x/a.go"}}}}
+	s.newWindow().Folder = "/tmp/y"
 	s.flush()
 	got := loadSettings(path)
-	if got.SidebarWidth != 300 || got.Folder != "/tmp/x" || len(got.OpenFiles) != 1 {
+	if got.SidebarWidth != 300 || len(got.Windows) != 2 || got.Windows[0].Folder != "/tmp/y" || got.Windows[0].ID != 1 ||
+		got.Windows[1].Folder != "/tmp/x" || len(got.Windows[1].Columns) != 1 {
 		t.Errorf("loaded %+v", got)
 	}
 }
@@ -424,11 +440,11 @@ func TestLayoutChangesKeepEditorState(t *testing.T) {
 	caret := a.activeEditor().caret
 	a.run("view.sidebar")
 	hs.settle()
-	a.settings.PanelOpen = true
+	a.window.PanelOpen = true
 	hs.settle()
 	a.panelMax = true
 	hs.settle()
-	a.panelMax, a.settings.PanelOpen = false, false
+	a.panelMax, a.window.PanelOpen = false, false
 	a.run("view.sidebar")
 	hs.settle()
 	d := a.activeEditor()
@@ -466,7 +482,8 @@ func TestRestoresTheActiveTab(t *testing.T) {
 	// The tabs as a version without columns kept them.
 	files := []string{filepath.Join(root, "main.go"), filepath.Join(root, "README.md"), filepath.Join(root, "go.mod")}
 	s.OpenFiles, s.ActiveFile = files, files[1]
-	a := newApp(&fakeHost{folder: root}, s)
+	s.migrate()
+	a := newApp(&fakeHost{folder: root}, s, s.Windows[0])
 	tt := ui.NewTester(a.view, 1200, 760)
 	tt.Frame()
 	tt.Frame()

@@ -9,15 +9,13 @@ import (
 	"time"
 )
 
-// settings are what Mayoi remembers between launches: the layout, the
-// folder and the files open in it. The window's frame is the window's
-// StateKey's.
+// settings are what Mayoi remembers between launches: the layout, and
+// the windows with the folder and the files open in each. A window's
+// frame is its StateKey's.
 type settings struct {
 	SidebarOpen  bool    `json:"sidebarOpen"`
 	SidebarWidth float32 `json:"sidebarWidth"`
-	PanelOpen    bool    `json:"panelOpen"`
 	PanelHeight  float32 `json:"panelHeight"`
-	TerminalOpen bool    `json:"terminalOpen"`
 	FontSize     float32 `json:"fontSize"`
 	FontFamily   string  `json:"fontFamily"`
 	// AutoSave saves changed files a moment after an edit, and as the
@@ -25,20 +23,38 @@ type settings struct {
 	AutoSave bool `json:"autoSave"`
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string   `json:"appearance,omitempty"`
-	Folder     string   `json:"folder"`
 	Recent     []string `json:"recent"`
-	// Columns are the columns of the editor area and what their tabs
-	// show, and Column the one that had the keyboard.
-	Columns []columnState `json:"columns,omitempty"`
-	Column  int           `json:"column,omitempty"`
-	// OpenFiles and ActiveFile are the tabs as a version without columns
-	// kept them, which the next start opens in one.
-	OpenFiles  []string `json:"openFiles,omitempty"`
-	ActiveFile string   `json:"activeFile,omitempty"`
+	// Windows are the windows open, the one focused last first.
+	Windows []*windowState `json:"windows,omitempty"`
+
+	// Folder, Columns, Column, PanelOpen and TerminalOpen are the window
+	// as a version with one window kept it, and OpenFiles and ActiveFile
+	// its tabs as a version without columns kept them: loadSettings
+	// makes a window of them.
+	Folder       string        `json:"folder,omitempty"`
+	Columns      []columnState `json:"columns,omitempty"`
+	Column       int           `json:"column,omitempty"`
+	PanelOpen    bool          `json:"panelOpen,omitempty"`
+	TerminalOpen bool          `json:"terminalOpen,omitempty"`
+	OpenFiles    []string      `json:"openFiles,omitempty"`
+	ActiveFile   string        `json:"activeFile,omitempty"`
 
 	path  string
 	mu    sync.Mutex
 	timer *time.Timer
+}
+
+// windowState is a window as the settings keep it: its folder, the
+// columns of its editor area and what their tabs show, and Column the one
+// that had the keyboard.
+type windowState struct {
+	// ID names the window's frame, which the next start gives it back.
+	ID           int           `json:"id"`
+	Folder       string        `json:"folder,omitempty"`
+	Columns      []columnState `json:"columns,omitempty"`
+	Column       int           `json:"column,omitempty"`
+	PanelOpen    bool          `json:"panelOpen,omitempty"`
+	TerminalOpen bool          `json:"terminalOpen,omitempty"`
 }
 
 // columnState is a column of the editor area, as the settings keep it.
@@ -57,8 +73,7 @@ type tabState struct {
 
 func defaultSettings() *settings {
 	return &settings{
-		SidebarOpen: true, SidebarWidth: 248,
-		PanelOpen: false, PanelHeight: 260,
+		SidebarOpen: true, SidebarWidth: 248, PanelHeight: 260,
 		FontSize: 13, FontFamily: "monospace",
 		AutoSave: true,
 	}
@@ -77,7 +92,59 @@ func loadSettings(path string) *settings {
 	if s.FontFamily == "" {
 		s.FontFamily = "monospace"
 	}
+	s.migrate()
 	return s
+}
+
+// migrate makes a window of the one an older version kept.
+func (s *settings) migrate() {
+	if len(s.Windows) > 0 || s.Folder == "" && len(s.Columns) == 0 && len(s.OpenFiles) == 0 {
+		return
+	}
+	w := &windowState{Folder: s.Folder, Columns: s.Columns, Column: s.Column, PanelOpen: s.PanelOpen, TerminalOpen: s.TerminalOpen}
+	if len(w.Columns) == 0 && len(s.OpenFiles) > 0 {
+		// The files of one column.
+		cs := columnState{Active: -1, Weight: 1}
+		for _, p := range s.OpenFiles {
+			if p == s.ActiveFile {
+				cs.Active = len(cs.Tabs)
+			}
+			cs.Tabs = append(cs.Tabs, tabState{File: p})
+		}
+		w.Columns, w.Column = []columnState{cs}, 0
+	}
+	s.Windows = []*windowState{w}
+	s.Folder, s.Columns, s.Column, s.PanelOpen, s.TerminalOpen = "", nil, 0, false, false
+	s.OpenFiles, s.ActiveFile = nil, ""
+}
+
+// newWindow keeps a new window, focused first, and names its frame by
+// the first ID no other window has.
+func (s *settings) newWindow() *windowState {
+	id := 0
+	for slices.ContainsFunc(s.Windows, func(w *windowState) bool { return w.ID == id }) {
+		id++
+	}
+	w := &windowState{ID: id}
+	s.Windows = slices.Insert(s.Windows, 0, w)
+	s.changed()
+	return w
+}
+
+// focused puts w first, as the window focused last.
+func (s *settings) focused(w *windowState) {
+	i := slices.Index(s.Windows, w)
+	if i <= 0 {
+		return
+	}
+	s.Windows = slices.Insert(slices.Delete(s.Windows, i, i+1), 0, w)
+	s.changed()
+}
+
+// forget lets go of a window that closed.
+func (s *settings) forget(w *windowState) {
+	s.Windows = slices.DeleteFunc(s.Windows, func(o *windowState) bool { return o == w })
+	s.changed()
 }
 
 func clamp(v, lo, hi float32) float32 { return max(lo, min(v, hi)) }

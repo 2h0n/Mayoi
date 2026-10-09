@@ -14,13 +14,15 @@ native UI on the GPU. It has no webview and no Electron. The packaged app is abo
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the panel or in a tab of a column. You can run several terminals, move one between the panel and a column by dragging it or from its menu, maximize the panel, and colors follow the theme.
 - **Quick open** (⌘P, or the search box in the title bar): fuzzy file search, with recent files first. In a Git work tree it lists what Git does, so build output stays out. Type `:42` to go to a line, or `@` for the file's functions, types and headings.
 - **Find and replace** (⌘F, ⌥⌘F): match case, whole word, and regular expressions with `$1` groups. In a large file the matches are found in the background as you type.
-- **Persistence:** follows the system's light or dark mode, or the one chosen in View → Appearance. It remembers the sidebar and panel sizes, the folder, and the columns with their tabs.
+- **Windows:** a window for each folder. Open Folder… (⌘O) opens one in the window, and Open Folder in New Window… (⌥⌘O), or a recent folder clicked with ⌘ (or ⌘↵), in a window of its own. A folder another window has open brings that window to the front instead.
+- **`mayoi` command:** File → Install 'mayoi' Command puts it in `~/.local/bin` when the shell looks there, else in `/usr/local/bin`, which asks for the password. `mayoi .` opens the folder you are in, in a new window or the one that has it; `mayoi <file>` opens a file in the window whose folder holds it. It returns at once, and starts Mayoi if it is not running.
+- **Persistence:** follows the system's light or dark mode, or the one chosen in View → Appearance. It remembers the sidebar and panel sizes, and the windows, each with its folder, frame, and columns with their tabs. Started with no folders, Mayoi opens the windows open when it quit; closing the last window quits it.
 
 ## Run
 
 ```sh
 go tool mygo dev               # live reload
-go run . ~/some/project        # open a folder (or a file)
+go run . ~/some/project        # open a folder (or a file); a running Mayoi takes it
 go tool mygo build             # build/darwin-arm64/Mayoi.app and a .dmg
 go test ./...                  # headless UI tests (-short skips the shell)
 go test -short -run XXX -bench Frame   # the cost of a frame of the editor
@@ -36,6 +38,7 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | ⌘P / ⇧⌘O / ⌃G | Quick open / go to symbol / go to line |
 | ⌘F / ⌥⌘F / ⌘G | Find / replace / next match |
 | ⌘S / ⇧⌘S / ⌥⌘S | Save / save as / save all |
+| ⌘O / ⌥⌘O | Open folder / in a new window |
 | ⌘N / ⌘W / ⌘1…9 / ⌃Tab | New file / close tab / show tab / next tab |
 | ⌘\\ / ⌥⌘→ / ⌥⌘← | Split right / next column / previous column |
 | ⌘B / ⌃\` / ⌃⇧\` | Sidebar / terminal panel / new terminal |
@@ -60,7 +63,8 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | `internal/workspace` | Directories are read as they open and watched with fsnotify, with bursts of changes batched. Also the file index and the fuzzy matcher for quick open. |
 | `document.go`, `columns.go` | A document is a file's text, its undo history and its Git marks; an editor is a document as one tab shows it, with its own selection, scroll and paint caches. A column holds tabs, each an editor or a terminal. Typing is credited to the editor that has the keyboard, and the selections of the document's other editors move with the text. A text area scrolls to its caret when its text changes under it, so an editor without the keyboard parks the area's caret in view and keeps its own selection, and stays where it is scrolled. |
 | `view.go` | The layout. The sidebar, the columns and the panel keep stable keys as panes come and go, so editors never lose their state. Tabs are dragged as values within the window; the places a column takes one show only during a drag. |
-| `app.go`, `commands.go` | State and commands. Menus, accelerators and tests all run the same commands. |
+| `app.go`, `commands.go` | State and commands. An `app` is a window's; the windows share the settings and the menu bar, whose items run the command of the window they are chosen in. Menus, accelerators and tests all run the same commands. |
+| `main.go`, `cli.go` | The windows. Folders and files reach the app from `open`, as the `mayoi` script hands them over by the app's identifier, and from a second Mayoi started with them, which passes them on and exits. Each folder goes to the window that has it, or a new one; a file to the window whose folder holds it. |
 | `theme.go` | The palette, light and dark, for the window, the code and the terminal. |
 
 Measured in tests on an M-series Mac, a 100,000-line file opens in about 20 ms. Scrolling and typing cost under 2 ms per frame, guides, sticky lines and Git marks included, and about 3 ms with find open on it. Quick open searches 100,000 paths in about 1.5 ms.

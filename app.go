@@ -30,12 +30,24 @@ type host interface {
 	// setAppearance makes the window light, dark, or follow the system
 	// for "".
 	setAppearance(appearance string)
+	// showFolder brings the other window that has dir open to the front,
+	// and reports whether there is one.
+	showFolder(dir string) bool
+	// newWindow opens dir in a window of its own, or brings the one that
+	// has it open to the front.
+	newWindow(dir string)
+	// installCLI and uninstallCLI put the mayoi command on the shell's
+	// path, and take it away, saying how it went.
+	installCLI()
+	uninstallCLI()
 }
 
-// app is the state of Mayoi's window.
+// app is the state of a window of Mayoi.
 type app struct {
 	host     host
 	settings *settings
+	// window is what the settings keep of this window.
+	window *windowState
 
 	pal      *palette
 	font     codeFont
@@ -118,8 +130,8 @@ const (
 	paneTerminal // the panel
 )
 
-func newApp(h host, s *settings) *app {
-	a := &app{host: h, settings: s, fileRow: -1}
+func newApp(h host, s *settings, w *windowState) *app {
+	a := &app{host: h, settings: s, window: w, fileRow: -1}
 	a.files.List.Selected = &a.fileRow
 	a.cols = []*column{a.newColumn()}
 	return a
@@ -164,16 +176,17 @@ func (a *app) fail(format string, args ...any) {
 	a.errors = append(a.errors, fmt.Sprintf(format, args...))
 }
 
-// start restores the last session: its folder and the files it had open.
+// start restores the window's last session: its folder and the files it
+// had open.
 func (a *app) start() {
-	s := a.settings
-	if s.Folder != "" {
-		if info, err := os.Stat(s.Folder); err == nil && info.IsDir() {
-			a.openFolder(s.Folder)
+	w := a.window
+	if w.Folder != "" {
+		if info, err := os.Stat(w.Folder); err == nil && info.IsDir() {
+			a.openFolder(w.Folder)
 		}
 	}
 	a.restoreTabs()
-	if s.TerminalOpen && s.PanelOpen && a.root != "" {
+	if w.TerminalOpen && w.PanelOpen && a.root != "" {
 		a.newTerminal()
 	}
 }
@@ -194,12 +207,35 @@ func (a *app) openFolder(dir string) {
 	a.index, a.indexStale = nil, true
 	a.ignored, a.ignoredStale = nil, true
 	a.branch = gitBranch(dir)
-	a.settings.Folder = dir
+	a.window.Folder = dir
 	a.settings.addRecent(dir)
 	for _, d := range a.docs {
 		a.tree.Watch(d.path)
 	}
 	a.settings.changed()
+}
+
+// folder is the window's folder, also before the window starts and
+// opens it.
+func (a *app) folder() string {
+	if a.root != "" || a.window.Folder == "" {
+		return a.root
+	}
+	return filepath.Clean(a.window.Folder)
+}
+
+// blank reports whether the window shows nothing: no folder, no tabs and
+// no terminal, also before it starts.
+func (a *app) blank() bool {
+	if a.folder() != "" || len(a.docs) > 0 || len(a.terms) > 0 {
+		return false
+	}
+	for _, cs := range a.window.Columns {
+		if len(cs.Tabs) > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // closeFolder closes the workspace, once its documents are closed.
@@ -209,7 +245,7 @@ func (a *app) closeFolder() {
 			a.tree.Close()
 		}
 		a.root, a.tree, a.index, a.branch = "", nil, nil, ""
-		a.settings.Folder = ""
+		a.window.Folder = ""
 		a.settings.changed()
 	})
 }
