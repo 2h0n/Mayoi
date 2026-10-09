@@ -151,18 +151,57 @@ func (a *app) titleBar(c *ui.Context) {
 				a.toggleSidebar()
 			}
 		})
-		ui.Row(c).Grow(1).Justify(ui.Center).AlignItems(ui.Center).Gap(8).Children(func() {
-			ui.Text(c, a.windowTitle()).FontSize(12.5).FontWeight(500).TextColor(p.muted).SingleLine()
+		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			a.commandCenter(c)
 		})
 		ui.Row(c).Width(120).Justify(ui.End).Gap(2).Children(func() {
-			if a.iconButton(c, iconSearch, "Quick Open (⌘P)", false).Clicked() {
-				a.openQuick("")
-			}
 			if a.iconButton(c, iconPanel, "Toggle Terminal (⌃`)", a.settings.PanelOpen).Clicked() {
 				a.togglePanel()
 			}
 		})
 	})
+}
+
+// commandCenter is the box in the middle of the title bar: it names the
+// document and the folder, and opens quick open.
+func (a *app) commandCenter(c *ui.Context) {
+	p := a.pal
+	b := ui.ButtonBase(c.Key("command-center")).Height(24).Width(420).MaxWidthPercent(100).Shrink(1).Padding(0, 10).Gap(8).
+		Radius(6).Justify(ui.Center).AlignItems(ui.Center).Border(1, p.border).Label("Quick Open").Tooltip("Quick Open (⌘P)")
+	b.Background(p.hover)
+	hovered := b.Hovered()
+	if hovered {
+		b.Background(p.hover.Alpha(2)).Border(1, mix(p.border, p.muted, 0.3))
+	}
+	b.Children(func() {
+		col := p.faint
+		if hovered {
+			col = p.muted
+		}
+		ui.Icon(c, iconSearch).FontSize(12).TextColor(col)
+		name, folder := "", ""
+		if d := a.activeDoc(); d != nil {
+			name = d.name()
+			if d.dirty() {
+				name = "● " + name
+			}
+		}
+		if a.root != "" {
+			folder = filepath.Base(a.root)
+		}
+		switch {
+		case name != "" && folder != "":
+			ui.Text(c, name).FontSize(12).FontWeight(500).TextColor(p.text).SingleLine().Shrink(1)
+			ui.Text(c, folder).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
+		case name != "" || folder != "":
+			ui.Text(c, name+folder).FontSize(12).FontWeight(500).TextColor(p.muted).SingleLine().Shrink(1)
+		default:
+			ui.Text(c, "Mayoi").FontSize(12).FontWeight(500).TextColor(p.muted).SingleLine()
+		}
+	})
+	if b.Clicked() {
+		a.openQuick("")
+	}
 }
 
 // iconButton is a small square button showing an icon, its tooltip the
@@ -258,19 +297,42 @@ func (a *app) breadcrumbs(c *ui.Context) {
 
 func (a *app) statusBar(c *ui.Context) {
 	p := a.pal
-	ui.Row(c).Height(statusBarH).Padding(0, 10).Gap(14).AlignItems(ui.Center).Background(p.status).
+	ui.Row(c).Height(statusBarH).Padding(0, 6).Gap(2).AlignItems(ui.Center).Background(p.status).
 		BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
-		item := func(text string) ui.Element {
-			return ui.Text(c, text).FontSize(11.5).TextColor(p.statusFg).SingleLine()
+		text := func(s string) ui.Element {
+			return ui.Text(c, s).FontSize(11.5).TextColor(p.statusFg).SingleLine()
+		}
+		// item is a part of the bar, a button when it does something.
+		item := func(key, label, tip string, icon *ui.SVG, fn func()) {
+			if fn == nil {
+				ui.Row(c.Key("status:"+key)).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
+					if icon != nil {
+						ui.Icon(c, icon).FontSize(12).TextColor(p.statusFg)
+					}
+					text(label)
+				})
+				return
+			}
+			b := ui.ButtonBase(c.Key("status:"+key)).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
+				AlignItems(ui.Center).Label(tip).Tooltip(tip)
+			if b.Hovered() {
+				b.Background(p.hover)
+			}
+			b.Children(func() {
+				if icon != nil {
+					ui.Icon(c, icon).FontSize(12).TextColor(p.statusFg)
+				}
+				text(label)
+			})
+			if b.Clicked() {
+				fn()
+			}
 		}
 		if a.branch != "" {
-			ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-				ui.Icon(c, iconBranch).FontSize(12).TextColor(p.statusFg)
-				item(a.branch)
-			})
+			item("branch", a.branch, "Branch "+a.branch, iconBranch, nil)
 		}
 		if a.root != "" {
-			item(filepath.Base(a.root))
+			item("folder", filepath.Base(a.root), "Reveal "+shortenHome(a.root)+" in Finder", iconFolder, func() { a.host.reveal(a.root) })
 		}
 		ui.Spacer(c)
 		d := a.activeDoc()
@@ -278,77 +340,144 @@ func (a *app) statusBar(c *ui.Context) {
 			return
 		}
 		if d.diskGone {
-			item("Deleted on disk").TextColor(p.danger)
+			ui.Row(c).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, iconTrash).FontSize(12).TextColor(p.danger)
+				text("Deleted on disk").TextColor(p.danger)
+			})
 		}
 		snap := d.buf.Snapshot()
 		caret := min(d.caret, snap.Len())
 		line := snap.LineAt(caret)
 		s, _ := snap.LineRange(line)
-		col := columns(snap.Slice(s, caret)) + 1
-		item(fmt.Sprintf("Ln %d, Col %d", line+1, col))
-		if a.find.open && len(a.find.matches) > 0 {
-			item(fmt.Sprintf("%d matches", len(a.find.matches)))
+		pos := fmt.Sprintf("Ln %d, Col %d", line+1, columns(snap.Slice(s, caret))+1)
+		if n := abs(d.sel[1] - d.sel[0]); n > 0 {
+			pos += fmt.Sprintf(" (%d selected)", n)
 		}
-		item(fmt.Sprintf("%d lines", snap.LineCount()))
-		item("UTF-8")
+		item("pos", pos, "Go to Line (⌃G)", nil, func() { a.openQuick(":") })
+		item("lines", fmt.Sprintf("%d lines", snap.LineCount()), "", nil, nil)
+		item("enc", "UTF-8", "", nil, nil)
+		eol := "LF"
 		if d.crlf {
-			item("CRLF")
-		} else {
-			item("LF")
+			eol = "CRLF"
 		}
-		item(highlight.Name(d.hl.Lexer()))
+		item("eol", eol, "", nil, nil)
+		item("lang", highlight.Name(d.hl.Lexer()), "", nil, nil)
 	})
 }
 
-// welcome shows while no file is open.
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// logo is Mayoi's mark, as on its icon: an M in a gradient of the accent,
+// and the dot of a moment's hesitation below it.
+var logo = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c2b5ff"/><stop offset="1" stop-color="#8b7cf6"/></linearGradient></defs>
+<path d="M14 42V14L32 32L50 14V42" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="32" cy="51" r="4" fill="#e8b86d"/></svg>`))
+
+// welcome shows while no file is open: what to start with, and the
+// folders opened last.
 func (a *app) welcome(c *ui.Context) {
 	p := a.pal
-	ui.Column(c).Fill().Center().Gap(28).Background(p.editor).Children(func() {
-		ui.Column(c).AlignItems(ui.Center).Gap(6).Children(func() {
-			ui.Text(c, "Mayoi").FontSize(40).FontWeight(300).LetterSpacing(1).TextColor(p.text)
-			ui.Text(c, "迷い — a small, quick editor").FontSize(13).TextColor(p.muted)
-		})
-		ui.Column(c).Gap(2).Width(300).Children(func() {
-			row := func(label, keys string, fn func()) {
-				r := ui.ButtonBase(c).Padding(7, 12).Radius(6).AlignItems(ui.Center).Label(label)
-				if r.Hovered() {
-					r.Background(p.hover)
-				}
-				r.Children(func() {
-					ui.Text(c, label).FontSize(13).TextColor(p.text).Grow(1)
-					ui.Text(c, keys).FontSize(12).TextColor(p.faint).Font("monospace")
-				})
-				if r.Clicked() {
-					fn()
-				}
-			}
-			if a.root == "" {
-				row("Open Folder…", "⌘O", a.chooseFolder)
-			} else {
-				row("Quick Open", "⌘P", func() { a.openQuick("") })
-			}
-			row("New File", "⌘N", a.newFile)
-			row("Toggle Terminal", "⌃`", a.togglePanel)
-			row("Toggle Sidebar", "⌘B", a.toggleSidebar)
-		})
-		if a.root == "" && len(a.settings.Recent) > 0 {
-			ui.Column(c).Gap(2).Width(300).Children(func() {
-				ui.Text(c, "RECENT").FontSize(11).FontWeight(600).LetterSpacing(0.6).TextColor(p.faint).Padding(0, 12, 4)
-				for _, dir := range a.settings.Recent[:min(5, len(a.settings.Recent))] {
-					r := ui.ButtonBase(c.Key("recent:"+dir)).Padding(6, 12).Radius(6).Gap(8).AlignItems(ui.Center).Label(dir)
-					if r.Hovered() {
-						r.Background(p.hover)
-					}
-					r.Children(func() {
-						ui.Icon(c, iconFolder).FontSize(13).TextColor(p.accent)
-						ui.Text(c, filepath.Base(dir)).FontSize(13).TextColor(p.text).SingleLine()
-						ui.Text(c, shortenHome(filepath.Dir(dir))).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
+	// Centered in the view, and scrolled when the window is too short.
+	view := a.welcomeView.Bounds(c)
+	ui.Scroll(c.Key("welcome")).Bind(&a.welcomeView).Fill().Background(p.editor).Children(func() {
+		ui.Column(c).FillWidth().MinHeight(view.H).Center().Padding(40, 24, 64).Children(func() {
+			ui.Column(c).Width(380).MaxWidthPercent(100).Gap(32).Children(func() {
+				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+					ui.Image(c, logo).Size(52, 52)
+					ui.Column(c).Gap(3).Children(func() {
+						ui.Text(c, "Mayoi").FontSize(26).FontWeight(600).LetterSpacing(-0.3).TextColor(p.text)
+						ui.Text(c, "迷い · a small, quick code editor").FontSize(13).TextColor(p.muted)
 					})
-					if r.Clicked() {
-						a.openFolder(dir)
+				})
+				a.welcomeSection(c, "Start", func() {
+					if a.root == "" {
+						a.welcomeAction(c, iconFolderOpen, "Open Folder…", "⌘O", a.chooseFolder)
+					} else {
+						a.welcomeAction(c, iconSearch, "Quick Open…", "⌘P", func() { a.openQuick("") })
 					}
+					a.welcomeAction(c, iconFilePlus, "New File", "⌘N", a.newFile)
+					a.welcomeAction(c, iconTerminal, "Toggle Terminal", "⌃`", a.togglePanel)
+					a.welcomeAction(c, iconSidebar, "Toggle Sidebar", "⌘B", a.toggleSidebar)
+				})
+				if a.root == "" && len(a.settings.Recent) > 0 {
+					a.welcomeSection(c, "Recent", func() {
+						for _, dir := range a.settings.Recent[:min(6, len(a.settings.Recent))] {
+							r := ui.ButtonBase(c.Key("recent:"+dir)).FillWidth().Padding(6, 10).Radius(6).Gap(10).
+								Justify(ui.Start).AlignItems(ui.Center).Label("Open " + dir).Tooltip(shortenHome(dir))
+							if r.Hovered() {
+								r.Background(p.hover)
+							}
+							r.Children(func() {
+								ui.Icon(c, iconFolder).FontSize(15).TextColor(p.accent)
+								ui.Text(c, filepath.Base(dir)).FontSize(13).TextColor(p.text).SingleLine().Shrink(0)
+								ui.Text(c, shortenHome(filepath.Dir(dir))).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
+							})
+							if r.Clicked() {
+								a.openFolder(dir)
+							}
+						}
+					})
 				}
 			})
+		})
+	})
+}
+
+// welcomeSection is a titled group of the welcome page.
+func (a *app) welcomeSection(c *ui.Context, title string, rows func()) {
+	p := a.pal
+	ui.Column(c).Gap(2).Children(func() {
+		ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(p.muted).Padding(0, 10, 6)
+		rows()
+	})
+}
+
+// welcomeAction is a row of the welcome page that runs a command: its
+// icon, its name and its keys.
+func (a *app) welcomeAction(c *ui.Context, icon *ui.SVG, label, keys string, fn func()) {
+	p := a.pal
+	r := ui.ButtonBase(c.Key("action:"+label)).FillWidth().Padding(6, 10).Radius(6).Gap(10).
+		Justify(ui.Start).AlignItems(ui.Center).Label(label)
+	hovered := r.Hovered()
+	if hovered {
+		r.Background(p.hover)
+	}
+	r.Children(func() {
+		col := p.muted
+		if hovered {
+			col = p.accent
+		}
+		ui.Icon(c, icon).FontSize(15).TextColor(col)
+		ui.Text(c, label).FontSize(13).TextColor(p.text).Grow(1).SingleLine()
+		a.keycaps(c, keys)
+	})
+	if r.Clicked() {
+		fn()
+	}
+}
+
+// keycaps shows keys as the caps of a keyboard, one a symbol, except for
+// a named key as "esc".
+func (a *app) keycaps(c *ui.Context, keys string) {
+	p := a.pal
+	var caps []string
+	if isASCII(keys) && len(keys) > 1 && strings.ToLower(keys) == keys && !strings.ContainsAny(keys, "`") {
+		caps = []string{keys}
+	} else {
+		for _, k := range keys {
+			caps = append(caps, string(k))
+		}
+	}
+	ui.Row(c).Gap(3).Shrink(0).Children(func() {
+		for _, k := range caps {
+			ui.Text(c, k).FontSize(11).TextColor(p.muted).TextAlign(ui.Center).
+				MinWidth(18).Height(18).Padding(1, 4, 0).Radius(4).Background(p.hover).Border(1, p.border)
 		}
 	})
 }

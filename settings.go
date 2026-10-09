@@ -13,17 +13,19 @@ import (
 // folder and the files open in it. The window's frame is the window's
 // StateKey's.
 type settings struct {
-	SidebarOpen  bool     `json:"sidebarOpen"`
-	SidebarWidth float32  `json:"sidebarWidth"`
-	PanelOpen    bool     `json:"panelOpen"`
-	PanelHeight  float32  `json:"panelHeight"`
-	TerminalOpen bool     `json:"terminalOpen"`
-	FontSize     float32  `json:"fontSize"`
-	FontFamily   string   `json:"fontFamily"`
-	Folder       string   `json:"folder"`
-	Recent       []string `json:"recent"`
-	OpenFiles    []string `json:"openFiles"`
-	ActiveFile   string   `json:"activeFile"`
+	SidebarOpen  bool    `json:"sidebarOpen"`
+	SidebarWidth float32 `json:"sidebarWidth"`
+	PanelOpen    bool    `json:"panelOpen"`
+	PanelHeight  float32 `json:"panelHeight"`
+	TerminalOpen bool    `json:"terminalOpen"`
+	FontSize     float32 `json:"fontSize"`
+	FontFamily   string  `json:"fontFamily"`
+	// Appearance is "light", "dark", or "" to follow the system.
+	Appearance string   `json:"appearance,omitempty"`
+	Folder     string   `json:"folder"`
+	Recent     []string `json:"recent"`
+	OpenFiles  []string `json:"openFiles"`
+	ActiveFile string   `json:"activeFile"`
 
 	path  string
 	mu    sync.Mutex

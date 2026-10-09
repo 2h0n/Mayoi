@@ -31,6 +31,10 @@ type findState struct {
 	version uint64
 	stale   bool
 	re      *regexp.Regexp
+	// pending is the version of the document pendingDoc that matches are
+	// being found for in the background, 0 for none.
+	pending    uint64
+	pendingDoc int
 
 	input  ui.Handle
 	reveal bool // select the current match
@@ -66,22 +70,12 @@ func (a *app) closeFind() {
 	}
 }
 
-// search finds the matches of the query in d, unless they were found for
-// its text as it is.
-func (a *app) search(d *document) {
-	f := &a.find
-	snap := d.buf.Snapshot()
-	key := f.pattern()
-	if !f.stale && f.key == key && f.doc == d.id && f.version == snap.Version() {
-		return
-	}
-	queryChanged := f.key != key || f.doc != d.id
-	f.key, f.doc, f.version, f.stale = key, d.id, snap.Version(), false
-	f.matches, f.err, f.re = f.matches[:0], "", nil
-	if f.query == "" {
-		f.cur = -1
-		return
-	}
+// asyncSearchBytes is the size of a document past which find looks for
+// its matches in the background as it is edited, keeping typing quick.
+const asyncSearchBytes = 256 << 10
+
+// compile makes the regular expression of the query and its options.
+func (f *findState) compile() (*regexp.Regexp, error) {
 	expr := f.query
 	if !f.regex {
 		expr = regexp.QuoteMeta(expr)
@@ -92,14 +86,14 @@ func (a *app) search(d *document) {
 	if !f.matchCase {
 		expr = "(?i)" + expr
 	}
-	re, err := regexp.Compile("(?m)" + expr)
-	if err != nil {
-		f.err = "Invalid expression"
-		f.cur = -1
-		return
-	}
-	f.re = re
+	return regexp.Compile("(?m)" + expr)
+}
+
+// scanMatches returns the rune offsets of re's matches in a snapshot. It
+// may run on any goroutine.
+func scanMatches(re *regexp.Regexp, snap ui.TextSnapshot) [][2]int {
 	text := snap.String()
+	var matches [][2]int
 	runes, at := 0, 0 // the rune offset of byte at
 	for _, m := range re.FindAllStringIndex(text, maxMatches) {
 		if m[0] == m[1] {
@@ -109,8 +103,71 @@ func (a *app) search(d *document) {
 		start := runes
 		runes += utf8.RuneCountInString(text[m[0]:m[1]])
 		at = m[1]
-		f.matches = append(f.matches, [2]int{start, runes})
+		matches = append(matches, [2]int{start, runes})
 	}
+	return matches
+}
+
+// search finds the matches of the query in d, unless they were found for
+// its text as it is.
+func (a *app) search(d *document) {
+	a.searchIn(d, false)
+}
+
+// searchIn is search, which in the background, when async is set and d
+// is large, only changes the matches when they are found: until then the
+// matches of the text before the edit show.
+func (a *app) searchIn(d *document, async bool) {
+	f := &a.find
+	snap := d.buf.Snapshot()
+	key := f.pattern()
+	if !f.stale && f.key == key && f.doc == d.id && f.version == snap.Version() {
+		return
+	}
+	queryChanged := f.key != key || f.doc != d.id
+	if async && !queryChanged && f.re != nil && snap.ByteLen() > asyncSearchBytes {
+		if f.pending == snap.Version() && f.pendingDoc == d.id {
+			return // on its way
+		}
+		f.pending, f.pendingDoc = snap.Version(), d.id
+		re, id := f.re, d.id
+		go func() {
+			matches := scanMatches(re, snap)
+			a.post(func() {
+				if f.pending != snap.Version() || f.pendingDoc != id {
+					return // superseded
+				}
+				f.pending, f.pendingDoc = 0, 0
+				if f.key != key || f.doc != id || d.buf.Version() != snap.Version() {
+					return // the query or the text changed meanwhile
+				}
+				a.applyMatches(d, matches, snap.Version(), false)
+			})
+		}()
+		return
+	}
+	f.key, f.doc, f.stale = key, d.id, false
+	f.pending, f.pendingDoc = 0, 0
+	f.matches, f.err, f.re = f.matches[:0], "", nil
+	if f.query == "" {
+		f.version, f.cur = snap.Version(), -1
+		return
+	}
+	re, err := f.compile()
+	if err != nil {
+		f.version, f.err, f.cur = snap.Version(), "Invalid expression", -1
+		return
+	}
+	f.re = re
+	a.applyMatches(d, scanMatches(re, snap), snap.Version(), queryChanged)
+}
+
+// applyMatches takes the matches found in a version of d's text, keeping
+// the current match in place, or choosing the first from the caret when
+// the query changed.
+func (a *app) applyMatches(d *document, matches [][2]int, version uint64, queryChanged bool) {
+	f := &a.find
+	f.matches, f.version = matches, version
 	if queryChanged || f.cur >= len(f.matches) {
 		// The first match from the caret.
 		caret := min(d.sel[0], d.sel[1])
@@ -217,6 +274,9 @@ func (a *app) visibleMatches(d *document, first, last int) []matchRect {
 	var out []matchRect
 	for ; i < len(f.matches) && f.matches[i][0] <= to && len(out) < 500; i++ {
 		m := f.matches[i]
+		if m[1] > snap.Len() {
+			break // found in a longer text, before an edit
+		}
 		line := snap.LineAt(m[0])
 		s, e := snap.LineRange(line)
 		x0 := a.textWidth(snap.Slice(s, m[0]))
@@ -243,7 +303,7 @@ func (a *app) findView(c *ui.Context, d *document) {
 	}
 	p := a.pal
 	t := c.Theme()
-	a.search(d)
+	a.searchIn(d, true)
 	if f.reveal && f.cur >= 0 {
 		m := f.matches[f.cur]
 		d.selectRange(m[0], m[1], true)

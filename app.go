@@ -28,6 +28,9 @@ type host interface {
 	reveal(path string)
 	setTitle(title string)
 	closeWindow()
+	// setAppearance makes the window light, dark, or follow the system
+	// for "".
+	setAppearance(appearance string)
 }
 
 // app is the state of Mayoi's window.
@@ -55,6 +58,11 @@ type app struct {
 	treeSynced, selectInTree string
 	branch                   string
 
+	// ignored is what Git ignores in the workspace, which the tree shows
+	// faint.
+	ignored                map[string]bool
+	ignoring, ignoredStale bool
+
 	index      []string
 	recent     []string // the files shown last, latest first
 	indexing   bool
@@ -70,8 +78,9 @@ type app struct {
 	term     int
 	nextTerm int
 
-	panelMax bool // the panel takes the editor's room
-	termView ui.Handle
+	panelMax    bool // the panel takes the editor's room
+	termView    ui.Handle
+	welcomeView ui.Handle
 
 	quick  quickOpen
 	find   findState
@@ -145,13 +154,15 @@ func (a *app) start() {
 			a.openFolder(s.Folder)
 		}
 	}
+	// Opening each file makes it the active one: keep the one to show.
+	activeFile := s.ActiveFile
 	for _, p := range s.OpenFiles {
 		if _, err := os.Stat(p); err == nil {
 			a.openFile(p, false)
 		}
 	}
-	if i := a.docIndex(s.ActiveFile); i >= 0 {
-		a.active = i
+	if i := a.docIndex(activeFile); i >= 0 {
+		a.activate(i, false)
 	}
 	if s.TerminalOpen && s.PanelOpen && a.root != "" {
 		a.newTerminal()
@@ -172,6 +183,7 @@ func (a *app) openFolder(dir string) {
 	a.fileRow = -1
 	a.files.List.Selected = &a.fileRow
 	a.index, a.indexStale = nil, true
+	a.ignored, a.ignoredStale = nil, true
 	a.branch = gitBranch(dir)
 	a.settings.Folder = dir
 	a.settings.addRecent(dir)
@@ -384,7 +396,7 @@ func (a *app) saveAll() {
 // diskChanged follows files changed on disk: an open document without
 // changes of its own shows the file's new text.
 func (a *app) diskChanged(changed, removed []string) {
-	a.indexStale = true
+	a.indexStale, a.ignoredStale = true, true
 	for _, p := range changed {
 		i := a.docIndex(p)
 		if i < 0 {
@@ -453,6 +465,38 @@ func (a *app) refreshIndex() {
 	}()
 }
 
+// refreshIgnored asks Git again in the background what it ignores, when
+// the files may have changed.
+func (a *app) refreshIgnored() {
+	if a.root == "" || a.ignoring || !a.ignoredStale {
+		return
+	}
+	a.ignoring, a.ignoredStale = true, false
+	root := a.root
+	go func() {
+		ignored := workspace.Ignored(root)
+		a.post(func() {
+			a.ignoring = false
+			if a.root == root {
+				a.ignored = ignored
+			}
+		})
+	}()
+}
+
+// isIgnored reports whether Git ignores path, or a folder above it.
+func (a *app) isIgnored(path string) bool {
+	if len(a.ignored) == 0 {
+		return false
+	}
+	for p := path; len(p) > len(a.root); p = filepath.Dir(p) {
+		if a.ignored[p] {
+			return true
+		}
+	}
+	return false
+}
+
 // gitBranch returns the branch checked out in dir's repository, "" when it
 // is none.
 func gitBranch(dir string) string {
@@ -498,6 +542,7 @@ func (a *app) windowTitle() string {
 
 // tick runs once a frame, after the posted functions.
 func (a *app) tick() {
+	a.refreshIgnored()
 	if t := a.windowTitle(); t != a.title {
 		a.title = t
 		a.host.setTitle(t)

@@ -3,12 +3,12 @@
 迷い — a small, quick code editor in Go, drawn by [MyGo](https://github.com/egoist/mygo)'s
 native UI on the GPU. It has no webview and no Electron. The packaged app is about 18 MB.
 
-- **Explorer:** a lazy file tree that follows the disk. You can create, rename, trash and reveal files from it.
+- **Explorer:** a lazy file tree that follows the disk, with what Git ignores shown faint. You can create, rename, trash and reveal files from it.
 - **Editor:** tabs, line numbers, the caret's line, and Chroma syntax highlighting. Long lines scroll sideways instead of wrapping. Each tab keeps its own undo history. Files changed on disk reload unless you have unsaved edits.
 - **Terminal panel:** Ghostty's emulator (libghostty-vt). You can run several terminals, maximize the panel, and colors follow the theme.
-- **Quick open** (⌘P): fuzzy file search, with recent files first. Type `:42` to go to a line.
-- **Find and replace** (⌘F, ⌥⌘F): match case, whole word, and regular expressions with `$1` groups.
-- **Persistence:** follows the system's light or dark mode. It remembers the sidebar and panel sizes, the folder, and the open tabs.
+- **Quick open** (⌘P, or the search box in the title bar): fuzzy file search, with recent files first. In a Git work tree it lists what Git does, so build output stays out. Type `:42` to go to a line.
+- **Find and replace** (⌘F, ⌥⌘F): match case, whole word, and regular expressions with `$1` groups. In a large file the matches are found in the background as you type.
+- **Persistence:** follows the system's light or dark mode, or the one chosen in View → Appearance. It remembers the sidebar and panel sizes, the folder, and the open tabs.
 
 ## Run
 
@@ -44,4 +44,4 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | `app.go`, `commands.go` | State, documents and commands. Menus, accelerators and tests all run the same commands. |
 | `theme.go` | The palette, light and dark, for the window, the code and the terminal. |
 
-Measured in tests on an M-series Mac, a 100,000-line file opens in about 20 ms. Scrolling and typing cost about 2 ms per frame.
+Measured in tests on an M-series Mac, a 100,000-line file opens in about 20 ms. Scrolling and typing cost about 2 ms per frame, and about 3.5 ms with find open on it. Quick open searches 100,000 paths in about 1.5 ms.

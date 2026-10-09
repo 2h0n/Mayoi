@@ -39,6 +39,7 @@ func (h *fakeHost) trash(path string) error {
 func (h *fakeHost) reveal(string)         {}
 func (h *fakeHost) setTitle(title string) { h.title = title }
 func (h *fakeHost) closeWindow()          { h.closed = true }
+func (h *fakeHost) setAppearance(string)  {}
 
 // workspaceFixture makes a folder of a few files.
 func workspaceFixture(t testing.TB) string {
@@ -454,5 +455,23 @@ func TestSplittersResize(t *testing.T) {
 	hs.settle()
 	if got := a.settings.SidebarWidth; got < w+50 || got > w+70 {
 		t.Errorf("sidebar %v after dragging 60 from %v", got, w)
+	}
+}
+
+func TestRestoresTheActiveTab(t *testing.T) {
+	root := workspaceFixture(t)
+	s := defaultSettings()
+	s.Folder = root
+	s.OpenFiles = []string{filepath.Join(root, "main.go"), filepath.Join(root, "README.md"), filepath.Join(root, "go.mod")}
+	s.ActiveFile = filepath.Join(root, "README.md")
+	a := newApp(&fakeHost{folder: root}, s)
+	tt := ui.NewTester(a.view, 1200, 760)
+	tt.Frame()
+	tt.Frame()
+	if d := a.activeDoc(); d == nil || d.path != s.OpenFiles[1] {
+		t.Fatalf("active %v, want README.md", d)
+	}
+	if len(a.docs) != 3 || a.docs[0].path != s.OpenFiles[0] || a.docs[2].path != s.OpenFiles[2] {
+		t.Fatalf("tabs out of order")
 	}
 }

@@ -62,6 +62,9 @@ func (h *desktop) trash(path string) error { return mygo.Shell.TrashItem(path) }
 func (h *desktop) reveal(path string)      { mygo.Shell.ShowItemInFolder(path) }
 func (h *desktop) setTitle(title string)   { h.win.SetTitle(title) }
 func (h *desktop) closeWindow()            { h.win.Close() }
+func (h *desktop) setAppearance(appearance string) {
+	mygo.Theme.SetSource(mygo.ThemeSource(appearance))
+}
 
 // settingsPath is where the settings are kept.
 func settingsPath() string {
@@ -76,6 +79,7 @@ func main() {
 	mygo.App.SetName("Mayoi")
 	mygo.App.WhenReady(func() {
 		s := loadSettings(settingsPath())
+		mygo.Theme.SetSource(mygo.ThemeSource(s.Appearance))
 		// `mayoi <folder or file>` opens it.
 		var openPath string
 		if len(os.Args) > 1 {

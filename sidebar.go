@@ -139,19 +139,25 @@ func (a *app) fileTree(c *ui.Context) {
 			}
 		})
 		row.Children(func() {
+			ignored := a.isIgnored(path)
+			icon, col := iconFolder, p.accent
 			switch {
 			case isDir && a.files.Open.Has(path):
-				ui.Icon(c, iconFolderOpen).FontSize(14).TextColor(p.accent)
-			case isDir:
-				ui.Icon(c, iconFolder).FontSize(14).TextColor(p.accent)
-			default:
-				icon, col := fileIcon(p, name)
-				ui.Icon(c, icon).FontSize(14).TextColor(col)
+				icon = iconFolderOpen
+			case !isDir:
+				icon, col = fileIcon(p, name)
 			}
+			if ignored {
+				col = col.Alpha(0.5)
+			}
+			ui.Icon(c, icon).FontSize(14).TextColor(col)
 			label := ui.Text(c, name).FontSize(13).SingleLine().Shrink(1).TextColor(p.text)
-			if i := a.docIndex(path); i >= 0 && a.docs[i].dirty() {
+			switch i := a.docIndex(path); {
+			case i >= 0 && a.docs[i].dirty():
 				label.TextColor(p.modified)
-			} else if path != activePath && !isDir {
+			case ignored:
+				label.TextColor(p.faint)
+			case path != activePath && !isDir:
 				label.TextColor(mix(p.text, p.muted, 0.35))
 			}
 		})

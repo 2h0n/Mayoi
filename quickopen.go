@@ -106,57 +106,91 @@ func (a *app) quickOpenView(c *ui.Context) {
 						}
 					}
 				})
-				if isLine {
-					hint := "Type a line number to go to"
-					if d := a.activeDoc(); d == nil {
-						hint = "Open a file to go to a line"
-					} else if line > 0 {
-						hint = fmt.Sprintf("Go to line %d", line)
-						if col > 0 {
-							hint += fmt.Sprintf(", column %d", col)
-						}
-					} else {
-						hint = fmt.Sprintf("Type a line number between 1 and %d", d.buf.LineCount())
-					}
-					ui.Text(c, hint).FontSize(13).TextColor(p.muted).Padding(12, 16)
-					return
-				}
-				if len(q.results) == 0 {
-					msg := "No matching files"
-					switch {
-					case a.root == "":
-						msg = "Open a folder to search its files"
-					case a.indexing && a.index == nil:
-						msg = "Indexing files…"
-					}
-					ui.Text(c, msg).FontSize(13).TextColor(p.muted).Padding(12, 16)
-					return
-				}
-				ui.Scroll(c.Key("quick-results")).MaxHeight(380).Padding(6).Children(func() {
-					for i, m := range q.results {
-						rel := a.index[m.Index]
-						row := ui.ButtonBase(c.Key(rel)).Padding(5, 10).Gap(10).Radius(6).Justify(ui.Start).AlignItems(ui.Center).Label(rel)
-						switch {
-						case i == q.sel:
-							row.Background(p.active)
-						case row.Hovered():
-							row.Background(p.hover)
-						}
-						if i == q.sel && q.moved {
-							row.ScrollIntoView()
-						}
-						if row.Clicked() {
-							choose(i)
-						}
-						row.Children(func() { a.quickRow(c, rel, m.Positions) })
-					}
-				})
-				q.moved = false
+				a.quickBody(c, isLine, line, col, choose)
+				a.quickFooter(c, isLine)
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()
 			}
 		})
+	})
+}
+
+// quickBody is what quick open lists: the files found, or what going to
+// a line does.
+func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(int)) {
+	q := &a.quick
+	p := a.pal
+	if isLine {
+		hint := "Type a line number to go to"
+		if d := a.activeDoc(); d == nil {
+			hint = "Open a file to go to a line"
+		} else if line > 0 {
+			hint = fmt.Sprintf("Go to line %d", line)
+			if col > 0 {
+				hint += fmt.Sprintf(", column %d", col)
+			}
+		} else {
+			hint = fmt.Sprintf("Type a line number between 1 and %d", d.buf.LineCount())
+		}
+		ui.Text(c, hint).FontSize(13).TextColor(p.muted).Padding(12, 16)
+		return
+	}
+	if len(q.results) == 0 {
+		msg := "No matching files"
+		switch {
+		case a.root == "":
+			msg = "Open a folder to search its files"
+		case a.indexing && a.index == nil:
+			msg = "Indexing files…"
+		}
+		ui.Text(c, msg).FontSize(13).TextColor(p.muted).Padding(12, 16)
+		return
+	}
+	ui.Scroll(c.Key("quick-results")).MaxHeight(380).Padding(6).Children(func() {
+		for i, m := range q.results {
+			rel := a.index[m.Index]
+			row := ui.ButtonBase(c.Key(rel)).Padding(5, 10).Gap(10).Radius(6).Justify(ui.Start).AlignItems(ui.Center).Label(rel)
+			switch {
+			case i == q.sel:
+				row.Background(p.active)
+			case row.Hovered():
+				row.Background(p.hover)
+			}
+			if i == q.sel && q.moved {
+				row.ScrollIntoView()
+			}
+			if row.Clicked() {
+				choose(i)
+			}
+			row.Children(func() { a.quickRow(c, rel, m.Positions) })
+		}
+	})
+	q.moved = false
+}
+
+// quickFooter shows the keys of quick open.
+func (a *app) quickFooter(c *ui.Context, isLine bool) {
+	p := a.pal
+	ui.Row(c).Height(30).Padding(0, 14).Gap(14).AlignItems(ui.Center).Background(p.hover).
+		BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
+		hint := func(keys, label string) {
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
+				a.keycaps(c, keys)
+				ui.Text(c, label).FontSize(11.5).TextColor(p.muted).SingleLine()
+			})
+		}
+		if isLine {
+			hint("⏎", "go to line")
+		} else {
+			hint("↑↓", "navigate")
+			hint("⏎", "open")
+		}
+		hint("esc", "close")
+		ui.Spacer(c)
+		if !isLine && a.root != "" {
+			ui.Text(c, "Type : to go to a line").FontSize(11.5).TextColor(p.faint).SingleLine()
+		}
 	})
 }
 
@@ -167,21 +201,22 @@ func (a *app) quickRow(c *ui.Context, rel string, positions []int) {
 	base := strings.LastIndexByte(rel, '/') + 1
 	icon, col := fileIcon(p, rel[base:])
 	ui.Icon(c, icon).FontSize(15).TextColor(col)
-	hit := map[int]bool{}
-	for _, i := range positions {
-		hit[i] = true
-	}
+	// The positions are byte offsets, in order: walk them along the text.
 	spans := func(s string, from int, normal ui.Color) []ui.Span {
-		var out []ui.Span
+		out := make([]ui.Span, 0, 4)
+		k := 0
 		for i, r := range s {
-			on := hit[from+i]
+			for k < len(positions) && positions[k] < from+i {
+				k++
+			}
+			on := k < len(positions) && positions[k] == from+i
+			if n := len(out); n > 0 && (out[n-1].Weight == 650) == on {
+				out[n-1].Text += string(r)
+				continue
+			}
 			sp := ui.Span{Text: string(r), Color: normal}
 			if on {
 				sp.Color, sp.Weight = p.accent, 650
-			}
-			if n := len(out); n > 0 && (out[n-1].Weight == 650) == on {
-				out[n-1].Text += sp.Text
-				continue
 			}
 			out = append(out, sp)
 		}
@@ -212,9 +247,20 @@ func (a *app) goToLine(line, col int) {
 // lists them before anything is typed, the one shown now after the rest of
 // them, as it is the one the user is leaving.
 func (a *app) recentFirst(results []workspace.Match) []workspace.Match {
-	at := map[string]int{}
+	// Find the recent files in the index, without a map of all of it.
+	at := make(map[string]int, len(a.recent))
+	for _, p := range a.recent {
+		at[a.tree.Rel(p)] = -1
+	}
 	for i, f := range a.index {
-		at[f] = i
+		if j, ok := at[f]; ok && j < 0 {
+			at[f] = i
+		}
+	}
+	for f, i := range at {
+		if i < 0 {
+			delete(at, f)
+		}
 	}
 	var out []workspace.Match
 	seen := map[int]bool{}

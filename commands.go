@@ -42,6 +42,9 @@ func (a *app) commands() []command {
 		{"view.zoomIn", "Bigger Text", "CmdOrCtrl+=", func() { a.zoom(1) }},
 		{"view.zoomOut", "Smaller Text", "CmdOrCtrl+-", func() { a.zoom(-1) }},
 		{"view.zoomReset", "Actual Size", "CmdOrCtrl+0", func() { a.zoom(0) }},
+		{"view.appearance.system", "System", "", func() { a.setAppearance("") }},
+		{"view.appearance.light", "Light", "", func() { a.setAppearance("light") }},
+		{"view.appearance.dark", "Dark", "", func() { a.setAppearance("dark") }},
 	}
 }
 
@@ -65,6 +68,14 @@ func (a *app) closeActive() {
 		return
 	}
 	a.closeDoc(a.active, nil)
+}
+
+// setAppearance makes the window light, dark, or follow the system for
+// "".
+func (a *app) setAppearance(appearance string) {
+	a.settings.Appearance = appearance
+	a.settings.changed()
+	a.host.setAppearance(appearance)
 }
 
 func (a *app) zoom(by float32) {
@@ -93,6 +104,11 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 			win.Invalidate()
 		}}
 	}
+	radio := func(id, appearance string) *mygo.MenuItem {
+		it := item(id)
+		it.Type, it.Checked = mygo.MenuItemRadio, a.settings.Appearance == appearance
+		return it
+	}
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
@@ -108,6 +124,9 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), item("view.terminal"), item("view.newTerminal"), mygo.Separator(),
 			item("view.zoomIn"), item("view.zoomOut"), item("view.zoomReset"), mygo.Separator(),
+			{Label: "Appearance", Submenu: []*mygo.MenuItem{
+				radio("view.appearance.system", ""), radio("view.appearance.light", "light"), radio("view.appearance.dark", "dark"),
+			}}, mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},
 		{Label: "Go", Submenu: []*mygo.MenuItem{

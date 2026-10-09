@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -87,5 +88,34 @@ func TestIndexSkipsAndFuzzyRanks(t *testing.T) {
 	}
 	if got := Fuzzy(files, "zzz", 10); len(got) != 0 {
 		t.Errorf("zzz: %v", got)
+	}
+}
+
+func TestIndexLeavesOutWhatGitIgnores(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	root := t.TempDir()
+	mkfiles(t, root, ".gitignore", "main.go", "build/app.bin", "src/a.go", "gone.go")
+	os.WriteFile(filepath.Join(root, ".gitignore"), []byte("build/\n"), 0o644)
+	git := func(args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", root, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init", "-q")
+	git("add", ".")
+	git("commit", "-qm", "x")
+	os.Remove(filepath.Join(root, "gone.go"))
+	mkfiles(t, root, "new.go")
+	if ig := Ignored(root); !ig[filepath.Join(root, "build")] || len(ig) != 1 {
+		t.Errorf("Ignored = %v", ig)
+	}
+	got := Index(root)
+	slices.Sort(got)
+	want := []string{".gitignore", "main.go", "new.go", "src/a.go"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("Index = %v, want %v", got, want)
 	}
 }
