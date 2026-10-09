@@ -238,7 +238,7 @@ func (a *app) quickRow(c *ui.Context, rel string, positions []int) {
 // goToLine moves the caret to a line (and column) of the document shown,
 // 1-based.
 func (a *app) goToLine(line, col int) {
-	d := a.activeEditor()
+	d := a.textEditor()
 	if d == nil {
 		return
 	}

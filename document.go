@@ -102,6 +102,9 @@ type editor struct {
 	// then, which the frame after puts back.
 	pinFrame int
 	pinY     float32
+	// preview shows an SVG document as a picture in the editor's place,
+	// nil while it shows the text.
+	preview *viewer
 }
 
 // newEditor makes an editor of doc, its caret at the start.

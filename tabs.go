@@ -35,8 +35,8 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 				for i, t := range col.tabs {
 					active := i == col.active
 					tip := "Terminal"
-					if t.ed != nil {
-						tip = a.relOrPath(t.ed.path)
+					if t.term == nil {
+						tip = a.relOrPath(t.path())
 					}
 					tab := ui.ButtonBase(c.Key(t.id)).Padding(0, 6, 0, 12).Gap(7).AlignItems(ui.Center).
 						BorderWidth(0, 1, 0, 0).BorderColor(p.border).Label(t.name()).Tooltip(tip).
@@ -74,13 +74,13 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 							ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(1.5).Background(p.faint)
 						}
 						icon, tint := iconTerminal, p.muted
-						if t.ed != nil {
+						if t.term == nil {
 							icon, tint = fileIcon(p, t.name())
 						}
 						ui.Icon(c, icon).FontSize(14).TextColor(tint)
 						name := ui.Text(c, t.name()).FontSize(12.5).SingleLine().MaxWidth(220)
 						switch {
-						case t.ed != nil && t.ed.diskGone:
+						case t.ed != nil && t.ed.diskGone, t.view != nil && t.view.diskGone:
 							name.TextColor(p.danger).Strikethrough()
 						case active:
 							name.TextColor(p.text)
@@ -166,7 +166,16 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 		return
 	}
 	m.Separator()
-	path := t.ed.path
+	if d := t.ed; d != nil && isSVG(d.document) {
+		label := "Show Preview"
+		if d.preview != nil {
+			label = "Show Source"
+		}
+		if m.Item(label).Chosen() {
+			show(func() { a.setPreview(d, d.preview == nil); a.focusColumn() })
+		}
+	}
+	path := t.path()
 	if m.Item("Reveal in Explorer").Disabled(path == "" || a.root == "").Chosen() {
 		a.post(func() { a.revealInTree(path); a.settings.SidebarOpen = true })
 	}

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -212,6 +213,9 @@ func (a *app) openFolder(dir string) {
 	for _, d := range a.docs {
 		a.tree.Watch(d.path)
 	}
+	for _, v := range a.imageViewers() {
+		a.tree.Watch(v.path)
+	}
 	a.settings.changed()
 }
 
@@ -313,6 +317,18 @@ func (a *app) saveAll() {
 // changes of its own shows the file's new text.
 func (a *app) diskChanged(changed, removed []string) {
 	a.indexStale, a.ignoredStale = true, true
+	// An image shows the file's new picture, or that it is gone.
+	for _, v := range a.imageViewers() {
+		switch {
+		case slices.Contains(changed, v.path):
+			v.diskGone = false
+			a.loadImage(v)
+		case slices.Contains(removed, v.path):
+			if _, err := os.Stat(v.path); err != nil {
+				v.diskGone = true
+			}
+		}
+	}
 	for _, p := range changed {
 		i := a.docIndex(p)
 		if i < 0 {
@@ -347,6 +363,19 @@ func (a *app) diskChanged(changed, removed []string) {
 	}
 	a.branch = gitBranch(a.root)
 	a.gitChanged()
+}
+
+// imageViewers returns the viewers of the image files open in tabs.
+func (a *app) imageViewers() []*viewer {
+	var out []*viewer
+	for _, col := range a.cols {
+		for _, t := range col.tabs {
+			if t.view != nil {
+				out = append(out, t.view)
+			}
+		}
+	}
+	return out
 }
 
 // refreshIndex lists the workspace's files again in the background, for

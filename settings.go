@@ -69,6 +69,8 @@ type columnState struct {
 type tabState struct {
 	File     string `json:"file,omitempty"`
 	Terminal bool   `json:"terminal,omitempty"`
+	// Preview is set for an SVG shown as a picture rather than as text.
+	Preview bool `json:"preview,omitempty"`
 }
 
 func defaultSettings() *settings {

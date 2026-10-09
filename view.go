@@ -61,6 +61,10 @@ func (a *app) view(c *ui.Context) {
 			t.ed.typist = t.ed
 		case t.term != nil && t.term.view.FocusWithin(c):
 			a.focus, a.col = paneEditor, i
+		case t.view != nil && t.view.pane.FocusWithin(c):
+			a.focus, a.col = paneEditor, i
+		case t.ed != nil && t.ed.preview != nil && t.ed.preview.pane.FocusWithin(c):
+			a.focus, a.col = paneEditor, i
 		}
 	}
 	a.autoSaveTick()
@@ -313,8 +317,8 @@ func (a *app) columnView(c *ui.Context, col *column) {
 	}
 	a.tabStrip(c, col)
 	shown := col.tab()
-	if shown != nil && shown.ed != nil {
-		a.breadcrumbs(c, shown.ed)
+	if shown != nil && shown.term == nil {
+		a.breadcrumbs(c, shown)
 	}
 	// Every tab keeps its editor, so that its selection and its place stay
 	// as tabs change: those not shown are built invisible, out of the way.
@@ -332,6 +336,16 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					if t == shown {
 						a.terminalView(c, t.term)
 					}
+				case t.view != nil:
+					if t == shown {
+						a.viewerView(c, t.view, t.name())
+					}
+				case t == shown && t.ed.preview != nil:
+					// The text keeps its place, out of sight, under the picture.
+					ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Invisible().Children(func() {
+						a.hiddenEditor(c, t.ed)
+					})
+					a.viewerView(c, t.ed.preview, t.name())
 				case t == shown:
 					a.editorView(c, t.ed)
 					if col == a.column() {
@@ -422,22 +436,27 @@ func (a *app) dropMark(c *ui.Context) {
 		Background(a.pal.accent.Alpha(0.14)).Border(1, a.pal.accentDim)
 }
 
-func (a *app) breadcrumbs(c *ui.Context, d *editor) {
+// breadcrumbs name the file a tab shows and, in an editor, the blocks
+// its caret is in. An SVG has a button there to show it as a picture or
+// as text.
+func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 	p := a.pal
+	d := t.ed
 	var parts []string
-	if d.path != "" {
-		rel := d.path
-		if a.root != "" && strings.HasPrefix(d.path, a.root+string(filepath.Separator)) {
-			rel = d.path[len(a.root)+1:]
+	if path := t.path(); path != "" {
+		rel := path
+		if a.root != "" && strings.HasPrefix(path, a.root+string(filepath.Separator)) {
+			rel = path[len(a.root)+1:]
 		}
 		parts = strings.Split(filepath.ToSlash(rel), "/")
 	} else {
-		parts = []string{d.name()}
+		parts = []string{t.name()}
 	}
 	// The blocks the caret is in, after the file: the innermost two.
-	snap := d.buf.Snapshot()
+	var snap ui.TextSnapshot
 	var scope []int
-	if isCode(d.document) {
+	if d != nil && d.preview == nil && isCode(d.document) {
+		snap = d.buf.Snapshot()
 		scope = d.scopesOf(snap, snap.LineAt(min(d.sel[1], snap.Len())))
 		scope = scope[max(0, len(scope)-2):]
 	}
@@ -473,7 +492,34 @@ func (a *app) breadcrumbs(c *ui.Context, d *editor) {
 				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)
 			}
 		}
+		if d != nil && isSVG(d.document) {
+			ui.Spacer(c)
+			a.previewButton(c, t, d)
+		}
 	})
+}
+
+// previewButton shows an SVG as a picture, or as text again.
+func (a *app) previewButton(c *ui.Context, t *colTab, d *editor) {
+	p := a.pal
+	label, icon := "Show Preview (⇧⌘V)", iconImage
+	if d.preview != nil {
+		label, icon = "Show Source (⇧⌘V)", iconFileCode
+	}
+	b := ui.ButtonBase(c.Key("preview")).Height(crumbsH-4).Padding(0, 6).Radius(4).Shrink(0).
+		AlignItems(ui.Center).Label(label).Tooltip(label)
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(p.muted) })
+	if b.Clicked() {
+		a.post(func() {
+			a.setPreview(d, d.preview == nil)
+			if col, i := a.locate(t); col != nil {
+				a.activate(col, i, true)
+			}
+		})
+	}
 }
 
 func (a *app) statusBar(c *ui.Context) {
@@ -526,6 +572,10 @@ func (a *app) statusBar(c *ui.Context) {
 			item("folder", filepath.Base(a.root), "Reveal "+shortenHome(a.root)+" in Finder", iconFolder, func() { a.host.reveal(a.root) })
 		}
 		ui.Spacer(c)
+		if v := a.activeViewer(); v != nil {
+			a.viewerStatus(c, v, item, text)
+			return
+		}
 		d := a.activeEditor()
 		if d == nil {
 			return

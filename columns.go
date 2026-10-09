@@ -27,18 +27,35 @@ type column struct {
 	body ui.Handle
 }
 
-// colTab is a tab of a column: an editor of a document, or a terminal.
+// colTab is a tab of a column: an editor of a document, a viewer of an
+// image, or a terminal.
 type colTab struct {
 	id   int
 	ed   *editor
+	view *viewer
 	term *session
 }
 
 func (t *colTab) name() string {
-	if t.term != nil {
+	switch {
+	case t.term != nil:
 		return t.term.title
+	case t.view != nil:
+		return t.view.name()
 	}
 	return t.ed.name()
+}
+
+// path is the file the tab shows, "" for a terminal or an untitled
+// document.
+func (t *colTab) path() string {
+	switch {
+	case t.view != nil:
+		return t.view.path
+	case t.ed != nil:
+		return t.ed.path
+	}
+	return ""
 }
 
 // tab returns the tab the column shows, nil when it has none.
@@ -53,6 +70,12 @@ func (col *column) tab() *colTab {
 // when none does.
 func (col *column) showing(doc *document) int {
 	return slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.ed != nil && t.ed.document == doc })
+}
+
+// showingImage returns the place of the tab of the column that shows the
+// image file path, -1 when none does.
+func (col *column) showingImage(path string) int {
+	return slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.view != nil && t.view.path == path })
 }
 
 // take takes the tab at place i out of the column, which shows the one
@@ -82,10 +105,24 @@ func (a *app) column() *column {
 func (a *app) activeTab() *colTab { return a.column().tab() }
 
 // activeEditor returns the editor shown in the column that has the
-// keyboard, nil when it shows a terminal or nothing.
+// keyboard, nil when it shows a terminal, an image or nothing. It may
+// show the preview of an SVG rather than its text.
 func (a *app) activeEditor() *editor {
 	if t := a.activeTab(); t != nil {
 		return t.ed
+	}
+	return nil
+}
+
+// activeViewer returns the viewer shown in the column that has the
+// keyboard: an image's, or an SVG's preview. Nil when it shows none.
+func (a *app) activeViewer() *viewer {
+	switch t := a.activeTab(); {
+	case t == nil:
+	case t.view != nil:
+		return t.view
+	case t.ed != nil:
+		return t.ed.preview
 	}
 	return nil
 }
@@ -101,12 +138,13 @@ func (a *app) locate(t *colTab) (*column, int) {
 	return nil, -1
 }
 
-// editorTabs returns the tabs of every column that show a document.
+// editorTabs returns the tabs of every column that show a file, a
+// document or an image.
 func (a *app) editorTabs() []*colTab {
 	var out []*colTab
 	for _, col := range a.cols {
 		for _, t := range col.tabs {
-			if t.ed != nil {
+			if t.term == nil {
 				out = append(out, t)
 			}
 		}
@@ -137,6 +175,10 @@ func (a *app) docIndex(path string) int {
 // shows in both, which share its text.
 func (a *app) openFile(path string, focus bool) {
 	col := a.column()
+	if isImage(path) {
+		a.openImage(col, path, focus)
+		return
+	}
 	var doc *document
 	if i := a.docIndex(path); i >= 0 {
 		doc = a.docs[i]
@@ -167,6 +209,27 @@ func (a *app) openFile(path string, focus bool) {
 	a.activate(col, at, focus)
 }
 
+// openImage shows an image file in a tab of a column, opening one unless
+// the column has one.
+func (a *app) openImage(col *column, path string, focus bool) {
+	if at := col.showingImage(path); at >= 0 {
+		a.activate(col, at, focus)
+		return
+	}
+	if _, err := os.Stat(path); err != nil {
+		a.fail("Could not open %s: %v", filepath.Base(path), err)
+		return
+	}
+	v := newImageViewer(path)
+	a.loadImage(v)
+	if a.tree != nil {
+		a.tree.Watch(path)
+	}
+	at := col.active + 1
+	a.addTab(col, at, &colTab{view: v})
+	a.activate(col, at, focus)
+}
+
 // newFile opens an untitled document.
 func (a *app) newFile() {
 	a.nextID++
@@ -190,8 +253,7 @@ func (a *app) activate(col *column, i int, focus bool) {
 		a.col = at
 	}
 	t := col.tabs[i]
-	if t.ed != nil && t.ed.path != "" && a.tree != nil {
-		p := t.ed.path
+	if p := t.path(); p != "" && a.tree != nil {
 		a.recent = slices.Insert(slices.DeleteFunc(a.recent, func(r string) bool { return r == p }), 0, p)
 		if len(a.recent) > 30 {
 			a.recent = a.recent[:30]
@@ -204,11 +266,17 @@ func (a *app) activate(col *column, i int, focus bool) {
 	a.rememberTabs()
 }
 
-// focusTab gives the keyboard to a tab's editor, or its terminal.
+// focusTab gives the keyboard to a tab's editor, its viewer, or its
+// terminal.
 func (a *app) focusTab(t *colTab) {
-	if t.term != nil {
+	switch {
+	case t.term != nil:
 		t.term.view.Focus()
-	} else {
+	case t.view != nil:
+		t.view.pane.Focus()
+	case t.ed.preview != nil:
+		t.ed.preview.pane.Focus()
+	default:
 		t.ed.vscroll.Focus()
 	}
 	a.focus = paneEditor
@@ -256,7 +324,6 @@ func (a *app) closeTab(t *colTab, then func()) {
 		done()
 		return
 	}
-	doc := t.ed.document
 	remove := func() {
 		if col, _ := a.locate(t); col != nil {
 			a.dropTab(t)
@@ -265,6 +332,11 @@ func (a *app) closeTab(t *colTab, then func()) {
 		}
 		done()
 	}
+	if t.view != nil {
+		remove()
+		return
+	}
+	doc := t.ed.document
 	if !doc.dirty() || len(doc.views) > 1 {
 		remove()
 		return
@@ -321,8 +393,14 @@ func (a *app) dropTab(t *colTab) {
 		return
 	}
 	col.take(i)
+	if t.view != nil {
+		t.view.stop()
+	}
 	if t.ed != nil {
 		doc := t.ed.document
+		if t.ed.preview != nil {
+			t.ed.preview.stop()
+		}
 		t.ed.release()
 		if len(doc.views) == 0 {
 			doc.hl.Close()
@@ -374,11 +452,19 @@ func (a *app) splitRight() {
 		return
 	}
 	nc := a.splitColumn(col, true)
-	if t.term != nil {
+	switch {
+	case t.term != nil:
 		if !a.newTerminalTab(nc, t.term.dir, true) {
 			col.weight *= 2
 			a.removeColumn(nc)
 		}
+		return
+	case t.view != nil:
+		// The same picture, fitted afresh.
+		v := newImageViewer(t.view.path)
+		v.src, v.w, v.h, v.size, v.err, v.loaded = t.view.src, t.view.w, t.view.h, t.view.size, t.view.err, t.view.loaded
+		a.addTab(nc, 0, &colTab{view: v})
+		a.activate(nc, 0, true)
 		return
 	}
 	ed := newEditor(t.ed.document)
@@ -389,15 +475,21 @@ func (a *app) splitRight() {
 }
 
 // moveTab moves a tab to place at of a column, which may be its own, and
-// shows it there. A column that shows the tab's document already keeps
+// shows it there. A column that shows the tab's file already keeps
 // its own tab of it, and the one moved goes.
 func (a *app) moveTab(t *colTab, to *column, at int) {
 	from, i := a.locate(t)
 	if from == nil || slices.Index(a.cols, to) < 0 {
 		return
 	}
-	if t.ed != nil && from != to {
-		if j := to.showing(t.ed.document); j >= 0 {
+	if from != to && t.term == nil {
+		var j int
+		if t.ed != nil {
+			j = to.showing(t.ed.document)
+		} else {
+			j = to.showingImage(t.view.path)
+		}
+		if j >= 0 {
 			keep := to.tabs[j]
 			a.dropTab(t)
 			if col, k := a.locate(keep); col != nil {
@@ -449,8 +541,8 @@ func (a *app) rememberTabs() {
 			switch {
 			case t.term != nil:
 				cs.Tabs = append(cs.Tabs, tabState{Terminal: true})
-			case t.ed.path != "":
-				cs.Tabs = append(cs.Tabs, tabState{File: t.ed.path})
+			case t.path() != "":
+				cs.Tabs = append(cs.Tabs, tabState{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil})
 			default:
 				continue
 			}
@@ -491,6 +583,9 @@ func (a *app) restoreTabs() {
 			case ts.File != "":
 				if _, err := os.Stat(ts.File); err == nil {
 					a.openFile(ts.File, false)
+					if t := col.tab(); ts.Preview && len(col.tabs) > n && t.ed != nil && isSVG(t.ed.document) {
+						a.setPreview(t.ed, true)
+					}
 				}
 			}
 			if k == cs.Active && len(col.tabs) > n {

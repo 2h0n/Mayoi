@@ -69,8 +69,8 @@ func (a *app) fileTree(c *ui.Context) {
 		return kids
 	}
 	activePath := ""
-	if d := a.activeEditor(); d != nil {
-		activePath = d.path
+	if t := a.activeTab(); t != nil {
+		activePath = t.path()
 	}
 	// Follow the document shown: open the folders above it and choose it.
 	if activePath != a.treeSynced {

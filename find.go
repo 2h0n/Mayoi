@@ -48,7 +48,7 @@ func (f *findState) pattern() string {
 // when it is on one line.
 func (a *app) openFind(replace bool) {
 	f := &a.find
-	if d := a.activeEditor(); d != nil {
+	if d := a.textEditor(); d != nil {
 		snap := d.buf.Snapshot()
 		if s, e := d.sel[0], d.sel[1]; s != e {
 			s, e = min(s, e), max(s, e)

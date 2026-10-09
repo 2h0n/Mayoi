@@ -510,7 +510,7 @@ func (a *app) editorKey(d *editor, ev ui.InputEvent) bool {
 // editActive queues an edit of the editor shown for its next frame.
 func (a *app) editActive(cmd func(d *editor)) func() {
 	return func() {
-		if d := a.activeEditor(); d != nil {
+		if d := a.textEditor(); d != nil {
 			a.queueEdit(d, cmd)
 		}
 	}

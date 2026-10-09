@@ -17,7 +17,7 @@ type command struct {
 func (a *app) commands() []command {
 	doc := func(fn func(d *editor)) func() {
 		return func() {
-			if d := a.activeEditor(); d != nil {
+			if d := a.textEditor(); d != nil {
 				fn(d)
 			}
 		}
@@ -71,9 +71,11 @@ func (a *app) commands() []command {
 		{"view.prevColumn", "Focus Previous Column", "Alt+CmdOrCtrl+Left", func() { a.focusColumnBy(-1) }},
 		{"view.moveTabNext", "Move Tab to Next Column", "", func() { a.moveTabBy(1) }},
 		{"view.moveTabPrev", "Move Tab to Previous Column", "", func() { a.moveTabBy(-1) }},
-		{"view.zoomIn", "Bigger Text", "CmdOrCtrl+=", func() { a.zoom(1) }},
-		{"view.zoomOut", "Smaller Text", "CmdOrCtrl+-", func() { a.zoom(-1) }},
-		{"view.zoomReset", "Actual Size", "CmdOrCtrl+0", func() { a.zoom(0) }},
+		{"view.togglePreview", "Toggle SVG Preview", "Shift+CmdOrCtrl+V", a.togglePreview},
+		// The text, or the picture shown.
+		{"view.zoomIn", "Zoom In", "CmdOrCtrl+=", func() { a.zoom(1) }},
+		{"view.zoomOut", "Zoom Out", "CmdOrCtrl+-", func() { a.zoom(-1) }},
+		{"view.zoomReset", "Reset Zoom", "CmdOrCtrl+0", func() { a.zoom(0) }},
 		{"view.appearance.system", "System", "", func() { a.setAppearance("") }},
 		{"view.appearance.light", "Light", "", func() { a.setAppearance("light") }},
 		{"view.appearance.dark", "Dark", "", func() { a.setAppearance("dark") }},
@@ -140,7 +142,13 @@ func (a *app) setAppearance(appearance string) {
 	a.host.setAppearance(appearance)
 }
 
+// zoom makes the picture shown bigger or smaller, or fits it for 0, and
+// otherwise the text.
 func (a *app) zoom(by float32) {
+	if v := a.activeViewer(); v != nil {
+		v.zoomBy(int(by))
+		return
+	}
 	s := a.settings
 	if by == 0 {
 		s.FontSize = 13
@@ -201,6 +209,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), mygo.Separator(),
+			item("view.togglePreview"), mygo.Separator(),
 			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),
 			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),
 			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"), mygo.Separator(),
