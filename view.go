@@ -277,6 +277,13 @@ func (a *app) breadcrumbs(c *ui.Context) {
 	} else {
 		parts = []string{d.name()}
 	}
+	// The blocks the caret is in, after the file: the innermost two.
+	snap := d.buf.Snapshot()
+	var scope []int
+	if isCode(d) {
+		scope = d.scopesOf(snap, snap.LineAt(min(d.sel[1], snap.Len())))
+		scope = scope[max(0, len(scope)-2):]
+	}
 	ui.Row(c).Height(crumbsH).Padding(0, 14).Gap(4).AlignItems(ui.Center).Background(p.editor).Clip().Children(func() {
 		for i, part := range parts {
 			last := i == len(parts)-1
@@ -284,11 +291,28 @@ func (a *app) breadcrumbs(c *ui.Context) {
 				icon, col := fileIcon(p, part)
 				ui.Icon(c, icon).FontSize(13).TextColor(col)
 			}
-			t := ui.Text(c, part).FontSize(12).SingleLine().TextColor(p.muted)
+			t := ui.Text(c, part).FontSize(12).SingleLine().TextColor(p.muted).Shrink(0)
 			if last {
 				t.TextColor(p.text)
 			}
-			if !last {
+			if !last || len(scope) > 0 {
+				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)
+			}
+		}
+		for i, line := range scope {
+			label := scopeLabel(snap, line)
+			b := ui.ButtonBase(c.Key(fmt.Sprintf("scope:%d", i))).Height(crumbsH-6).Padding(0, 5).Radius(4).
+				AlignItems(ui.Center).Shrink(1).MinWidth(0).Label("Go to " + label)
+			if b.Hovered() {
+				b.Background(p.hover)
+			}
+			b.Children(func() {
+				ui.Text(c, label).FontSize(12).Font(a.font.family).SingleLine().TextColor(p.muted)
+			})
+			if b.Clicked() {
+				a.editActive(func(d *document) { a.jumpToScope(d, line) })()
+			}
+			if i < len(scope)-1 {
 				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)
 			}
 		}
@@ -328,6 +352,16 @@ func (a *app) statusBar(c *ui.Context) {
 				fn()
 			}
 		}
+		// menuItem is a part of the bar that opens a menu.
+		menuItem := func(key, label, tip string, build func(m *ui.Menu)) {
+			b := ui.ButtonBase(c.Key("status:"+key)).Height(statusBarH-6).Padding(0, 6).Radius(4).
+				AlignItems(ui.Center).Label(tip).Tooltip(tip)
+			if b.Hovered() {
+				b.Background(p.hover)
+			}
+			b.Children(func() { text(label) })
+			b.Menu(build)
+		}
 		if a.branch != "" {
 			item("branch", a.branch, "Branch "+a.branch, iconBranch, nil)
 		}
@@ -355,12 +389,43 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		item("pos", pos, "Go to Line (⌃G)", nil, func() { a.openQuick(":") })
 		item("lines", fmt.Sprintf("%d lines", snap.LineCount()), "", nil, nil)
+		menuItem("indent", d.indent.String(), "Indentation", func(m *ui.Menu) {
+			if m.Item("Indent Using Tabs").Checked(d.indent.tabs).Chosen() {
+				d.indent.tabs = true
+			}
+			for _, n := range []int{2, 4, 8} {
+				if m.Item(fmt.Sprintf("Indent Using %d Spaces", n)).Checked(!d.indent.tabs && d.indent.size == n).Chosen() {
+					d.indent = indentStyle{size: n}
+				}
+			}
+			m.Separator()
+			if m.Item("Convert Indentation to Tabs").Chosen() {
+				a.editActive(func(d *document) { reindent(d, indentStyle{tabs: true, size: tabWidth}) })()
+			}
+			if m.Item("Convert Indentation to Spaces").Chosen() {
+				size := d.indent.size
+				if d.indent.tabs {
+					size = tabWidth
+				}
+				a.editActive(func(d *document) { reindent(d, indentStyle{size: size}) })()
+			}
+		})
 		item("enc", "UTF-8", "", nil, nil)
 		eol := "LF"
 		if d.crlf {
 			eol = "CRLF"
 		}
-		item("eol", eol, "", nil, nil)
+		menuItem("eol", eol, "Line Endings", func(m *ui.Menu) {
+			for _, crlf := range []bool{false, true} {
+				label := "LF"
+				if crlf {
+					label = "CRLF"
+				}
+				if m.Item(label).Checked(d.crlf == crlf).Chosen() {
+					d.crlf = crlf
+				}
+			}
+		})
 		item("lang", highlight.Name(d.hl.Lexer()), "", nil, nil)
 	})
 }

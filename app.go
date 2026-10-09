@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -57,6 +58,9 @@ type app struct {
 	// file it should choose once its row shows.
 	treeSynced, selectInTree string
 	branch                   string
+	// gitIndex is when the repository's index last changed, as a commit
+	// changes it; gitChecked when the app last looked.
+	gitIndex, gitChecked time.Time
 
 	// ignored is what Git ignores in the workspace, which the tree shows
 	// faint.
@@ -252,8 +256,8 @@ func (a *app) openFile(path string, focus bool) {
 func (a *app) newFile() {
 	a.nextID++
 	a.untitled++
-	buf := ui.NewTextBuffer("")
-	d := &document{id: a.nextID, buf: buf, saved: buf.Version(), hl: highlight.New(nil, nil), title: fmt.Sprintf("Untitled-%d", a.untitled)}
+	d := newDocument(a.nextID, "", "", highlight.New(nil, nil))
+	d.title = fmt.Sprintf("Untitled-%d", a.untitled)
 	a.docs = append(a.docs, d)
 	a.activate(len(a.docs)-1, true)
 }
@@ -415,8 +419,9 @@ func (a *app) diskChanged(changed, removed []string) {
 		if string(data) == d.buf.String() {
 			continue // as when the editor saved it
 		}
-		d.buf.Set(string(data))
-		d.saved = d.buf.Version()
+		// Reloading is a step of undo, as in other editors.
+		d.edit(d.sel, textEdit{0, d.buf.Len(), string(data)})
+		d.markSaved()
 		d.measureWidest()
 	}
 	for _, p := range removed {
@@ -427,6 +432,7 @@ func (a *app) diskChanged(changed, removed []string) {
 		}
 	}
 	a.branch = gitBranch(a.root)
+	a.gitChanged()
 }
 
 // rememberTabs keeps the open files in the settings.
@@ -543,8 +549,42 @@ func (a *app) windowTitle() string {
 // tick runs once a frame, after the posted functions.
 func (a *app) tick() {
 	a.refreshIgnored()
+	a.checkGitIndex()
 	if t := a.windowTitle(); t != a.title {
 		a.title = t
 		a.host.setTitle(t)
+	}
+}
+
+// checkGitIndex looks, now and then, whether the repository's index
+// changed, as a commit or a checkout made in the terminal changes it: then
+// the editors compare their lines with HEAD again.
+func (a *app) checkGitIndex() {
+	if a.root == "" || time.Since(a.gitChecked) < 1500*time.Millisecond {
+		return
+	}
+	a.gitChecked = time.Now()
+	info, err := os.Stat(filepath.Join(gitDir(a.root), "index"))
+	if err != nil {
+		return
+	}
+	if t := info.ModTime(); !t.Equal(a.gitIndex) {
+		if !a.gitIndex.IsZero() {
+			a.gitChanged()
+			a.branch = gitBranch(a.root)
+		}
+		a.gitIndex = t
+	}
+}
+
+// gitDir returns the .git folder of dir's repository, "" when it is none.
+func gitDir(dir string) string {
+	for d := dir; ; d = filepath.Dir(d) {
+		if info, err := os.Stat(filepath.Join(d, ".git")); err == nil && info.IsDir() {
+			return filepath.Join(d, ".git")
+		}
+		if filepath.Dir(d) == d {
+			return ""
+		}
 	}
 }

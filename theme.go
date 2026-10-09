@@ -34,6 +34,14 @@ type palette struct {
 	match     ui.Color // a match of find
 	matchNow  ui.Color // the current match
 	matchRing ui.Color
+	guide     ui.Color // indent guides
+	guideNow  ui.Color // the guide of the caret's block
+	bracket   ui.Color // the brackets paired at the caret
+	word      ui.Color // the other occurrences of the word at the caret
+	shadow    ui.Color
+	added     ui.Color // lines changed since Git's last commit
+	changed   ui.Color
+	removed   ui.Color
 
 	syntax [highlight.Kinds]ui.Color
 }
@@ -63,6 +71,14 @@ func darkPalette() *palette {
 		match:     ui.RGBA(232, 184, 109, 0.20),
 		matchNow:  ui.RGBA(232, 184, 109, 0.38),
 		matchRing: ui.RGBA(232, 184, 109, 0.85),
+		guide:     ui.RGBA(255, 255, 255, 0.065),
+		guideNow:  ui.RGBA(255, 255, 255, 0.22),
+		bracket:   ui.RGBA(255, 255, 255, 0.30),
+		word:      ui.RGBA(255, 255, 255, 0.075),
+		shadow:    ui.RGBA(0, 0, 0, 0.35),
+		added:     ui.Hex("#4fa86d"),
+		changed:   ui.Hex("#5a8ee0"),
+		removed:   ui.Hex("#e0607e"),
 	}
 	s := &p.syntax
 	s[highlight.Plain] = p.text
@@ -109,6 +125,14 @@ func lightPalette() *palette {
 		match:     ui.RGBA(230, 160, 40, 0.22),
 		matchNow:  ui.RGBA(230, 160, 40, 0.42),
 		matchRing: ui.RGBA(196, 120, 20, 0.9),
+		guide:     ui.RGBA(0, 0, 0, 0.07),
+		guideNow:  ui.RGBA(0, 0, 0, 0.24),
+		bracket:   ui.RGBA(0, 0, 0, 0.28),
+		word:      ui.RGBA(0, 0, 0, 0.065),
+		shadow:    ui.RGBA(0, 0, 0, 0.12),
+		added:     ui.Hex("#3fa363"),
+		changed:   ui.Hex("#4a7fd4"),
+		removed:   ui.Hex("#d6456a"),
 	}
 	s := &p.syntax
 	s[highlight.Plain] = p.text

@@ -24,8 +24,30 @@ type document struct {
 	title string // an untitled document's name
 	buf   *ui.TextBuffer
 	saved uint64 // the buffer's version on disk
-	crlf  bool   // saved with CRLF line endings
-	hl    *highlight.Highlighter
+	// savedSnap is the text on disk, which undoing back to makes the
+	// document clean again.
+	savedSnap ui.TextSnapshot
+	crlf      bool // saved with CRLF line endings
+	diskCRLF  bool // the file on disk has CRLF line endings
+	hl        *highlight.Highlighter
+	indent    indentStyle
+	hist      history
+	// cmds are edits asked for by keys and menus, which the next frame
+	// makes, once the editor has its selection.
+	cmds []func(d *document)
+	deco decorations
+	git  gitMarks
+	// closers are the offsets of the closing brackets and quotes the
+	// editor put after the caret, which typing them steps over.
+	closers []int
+	// sticky are the lines stuck at the top of the editor in the last
+	// frame, which a click goes to.
+	sticky []int
+	scopes scopeCache
+	// clampFrames counts the frames after the caret moved, in which the
+	// editor keeps the text area from scrolling past the last line.
+	clampFrames int
+	overview    overview
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways
@@ -52,7 +74,7 @@ func (d *document) name() string {
 	return filepath.Base(d.path)
 }
 
-func (d *document) dirty() bool { return d.buf.Version() != d.saved }
+func (d *document) dirty() bool { return d.buf.Version() != d.saved || d.crlf != d.diskCRLF }
 
 // readDocument reads a file into a document.
 func readDocument(id int, path string, notify func()) (*document, error) {
@@ -74,13 +96,19 @@ func readDocument(id int, path string, notify func()) (*document, error) {
 	if crlf {
 		data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	}
-	buf := ui.NewTextBuffer(string(data))
-	d := &document{
-		id: id, path: path, buf: buf, saved: buf.Version(), crlf: crlf,
-		hl: highlight.New(highlight.Lexer(path), notify),
-	}
-	d.measureWidest()
+	d := newDocument(id, path, string(data), highlight.New(highlight.Lexer(path), notify))
+	d.crlf, d.diskCRLF = crlf, crlf
 	return d, nil
+}
+
+// newDocument makes a document of text, clean, with the indentation its
+// lines use.
+func newDocument(id int, path, text string, hl *highlight.Highlighter) *document {
+	d := &document{id: id, path: path, buf: ui.NewTextBuffer(text), hl: hl}
+	d.markSaved()
+	d.indent = detectIndent(d.buf.Snapshot(), path)
+	d.measureWidest()
+	return d
 }
 
 // isBinary reports whether data looks like something other than text: a
@@ -138,7 +166,8 @@ func (d *document) save() error {
 		os.Remove(tmp.Name())
 		return err
 	}
-	d.saved = snap.Version()
+	d.savedSnap, d.saved = snap, snap.Version()
+	d.diskCRLF = d.crlf
 	return nil
 }
 

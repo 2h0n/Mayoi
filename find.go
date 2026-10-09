@@ -207,11 +207,11 @@ func (a *app) replaceOne(d *document) {
 	m := f.matches[f.cur]
 	old := d.buf.Slice(m[0], m[1])
 	with := f.re.ReplaceAllString(old, a.replacement())
-	d.buf.Replace(m[0], m[1], with)
+	end := m[0] + utf8.RuneCountInString(with)
+	d.edit([2]int{end, end}, textEdit{m[0], m[1], with})
 	a.search(d)
 	if f.cur >= 0 {
 		// The next match is the one after the text put in.
-		end := m[0] + utf8.RuneCountInString(with)
 		f.cur = sort.Search(len(f.matches), func(i int) bool { return f.matches[i][0] >= end })
 		if f.cur == len(f.matches) {
 			f.cur = min(0, len(f.matches)-1)
@@ -229,16 +229,18 @@ func (a *app) replaceAll(d *document) {
 	}
 	n := len(f.matches)
 	with := a.replacement()
+	// One step of undo: an edit per match, or of the whole text when
+	// there are many.
 	if n <= 500 {
-		// One edit per match, from the end, so that the offsets before
-		// stay.
-		for i := n - 1; i >= 0; i-- {
-			m := f.matches[i]
-			d.buf.Replace(m[0], m[1], f.re.ReplaceAllString(d.buf.Slice(m[0], m[1]), with))
+		snap := d.buf.Snapshot()
+		edits := make([]textEdit, n)
+		for i, m := range f.matches {
+			edits[i] = textEdit{m[0], m[1], f.re.ReplaceAllString(snap.Slice(m[0], m[1]), with)}
 		}
+		d.edit(d.sel, edits...)
 	} else {
 		text := d.buf.String()
-		d.buf.Replace(0, d.buf.Len(), f.re.ReplaceAllString(text, with))
+		d.edit(d.sel, textEdit{0, d.buf.Len(), f.re.ReplaceAllString(text, with)})
 	}
 	a.search(d)
 	a.fail("Replaced %d occurrences", n)

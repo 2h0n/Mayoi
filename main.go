@@ -141,6 +141,8 @@ func main() {
 			})
 			win.Invalidate()
 		})
+		// Back from another app, which may have committed.
+		win.OnFocus(func() { a.post(a.gitChanged) })
 		win.OnClosed(func() {
 			a.closeTerminals()
 			s.flush()

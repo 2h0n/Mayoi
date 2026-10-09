@@ -28,12 +28,31 @@ func (a *app) commands() []command {
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
+		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
+		// control, the editor's history or a text field's.
+		{"edit.undo", "Undo", "", a.editActive(func(d *document) { d.undo() })},
+		{"edit.redo", "Redo", "", a.editActive(func(d *document) { d.redo() })},
 		{"edit.find", "Find", "CmdOrCtrl+F", func() { a.openFind(false) }},
 		{"edit.replace", "Replace", "Alt+CmdOrCtrl+F", func() { a.openFind(true) }},
 		{"edit.findNext", "Find Next", "CmdOrCtrl+G", doc(func(d *document) { a.find.open = true; a.step(d, 1) })},
 		{"edit.findPrev", "Find Previous", "Shift+CmdOrCtrl+G", doc(func(d *document) { a.find.open = true; a.step(d, -1) })},
+		{"sel.comment", "Toggle Line Comment", "CmdOrCtrl+/", a.editActive(toggleComment)},
+		{"sel.indent", "Indent Lines", "CmdOrCtrl+]", a.editActive(func(d *document) { indentLines(d, false) })},
+		{"sel.outdent", "Outdent Lines", "CmdOrCtrl+[", a.editActive(func(d *document) { indentLines(d, true) })},
+		// The arrows with Alt are the editor's own keys, which the terminal
+		// takes too.
+		{"sel.moveUp", "Move Line Up", "", a.editActive(func(d *document) { moveLines(d, false) })},
+		{"sel.moveDown", "Move Line Down", "", a.editActive(func(d *document) { moveLines(d, true) })},
+		{"sel.copyUp", "Copy Line Up", "", a.editActive(func(d *document) { copyLines(d, false) })},
+		{"sel.copyDown", "Copy Line Down", "", a.editActive(func(d *document) { copyLines(d, true) })},
+		{"sel.deleteLine", "Delete Line", "Shift+CmdOrCtrl+K", a.editActive(deleteLines)},
+		{"sel.lineBelow", "Insert Line Below", "", a.editActive(func(d *document) { insertLine(d, false) })},
+		{"sel.lineAbove", "Insert Line Above", "", a.editActive(func(d *document) { insertLine(d, true) })},
+		{"sel.line", "Select Line", "CmdOrCtrl+L", a.editActive(selectLines)},
+		{"go.bracket", "Go to Bracket", "Shift+CmdOrCtrl+\\", a.editActive(goToBracket)},
 		{"go.quickOpen", "Quick Open…", "CmdOrCtrl+P", func() { a.openQuick("") }},
 		{"go.line", "Go to Line…", "Ctrl+G", func() { a.openQuick(":") }},
+		{"go.symbol", "Go to Symbol…", "Shift+CmdOrCtrl+O", func() { a.openQuick("@") }},
 		{"go.nextTab", "Next Tab", "Ctrl+Tab", func() { a.cycleTab(1) }},
 		{"go.prevTab", "Previous Tab", "Ctrl+Shift+Tab", func() { a.cycleTab(-1) }},
 		{"view.sidebar", "Toggle Sidebar", "CmdOrCtrl+B", a.toggleSidebar},
@@ -117,9 +136,15 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 			item("file.close"), item("file.closeFolder"),
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
-			{Role: mygo.RoleUndo}, {Role: mygo.RoleRedo}, mygo.Separator(),
+			item("edit.undo"), item("edit.redo"), mygo.Separator(),
 			{Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste}, {Role: mygo.RoleSelectAll}, mygo.Separator(),
 			item("edit.find"), item("edit.replace"), item("edit.findNext"), item("edit.findPrev"),
+		}},
+		{Label: "Selection", Submenu: []*mygo.MenuItem{
+			item("sel.line"), mygo.Separator(),
+			item("sel.comment"), item("sel.indent"), item("sel.outdent"), mygo.Separator(),
+			item("sel.moveUp"), item("sel.moveDown"), item("sel.copyUp"), item("sel.copyDown"), mygo.Separator(),
+			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), item("view.terminal"), item("view.newTerminal"), mygo.Separator(),
@@ -130,7 +155,7 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},
 		{Label: "Go", Submenu: []*mygo.MenuItem{
-			item("go.quickOpen"), item("go.line"), mygo.Separator(),
+			item("go.quickOpen"), item("go.symbol"), item("go.line"), item("go.bracket"), mygo.Separator(),
 			item("go.nextTab"), item("go.prevTab"),
 		}},
 		{Role: mygo.RoleWindowMenu},

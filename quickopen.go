@@ -5,15 +5,17 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/workspace"
 )
 
-// quickOpen is the state of the quick open box: files by fuzzy name, or
-// ":n" for a line of the document shown.
+// quickOpen is the state of the quick open box: files by fuzzy name,
+// ":n" for a line of the document shown, or "@" for its symbols.
 type quickOpen struct {
+	syms    symbolCache
 	open    bool
 	query   string
 	results []workspace.Match
@@ -62,6 +64,11 @@ func (a *app) quickOpenView(c *ui.Context) {
 	p := a.pal
 	t := c.Theme()
 	line, col, isLine := gotoLine(q.query)
+	symQuery, isSym := strings.CutPrefix(strings.TrimLeft(q.query, " "), "@")
+	if isSym {
+		a.quickSymbols(c, symQuery)
+		return
+	}
 	if !isLine && (q.stale || q.shown != q.query) {
 		q.results = workspace.Fuzzy(a.index, q.query, 60)
 		if strings.TrimSpace(q.query) == "" {
@@ -88,7 +95,7 @@ func (a *app) quickOpenView(c *ui.Context) {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconSearch).FontSize(15).TextColor(p.muted)
 					in := ui.TextInputBase(c.Key("quick-input"), &q.query).Grow(1).FontSize(14).AutoFocus().
-						Placeholder("Search files by name, or : to go to a line").Label("Quick Open")
+						Placeholder("Search files by name, : to go to a line, @ for symbols").Label("Quick Open")
 					if in.Shortcut(0, ui.KeyDown) {
 						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true
 					}
@@ -107,7 +114,7 @@ func (a *app) quickOpenView(c *ui.Context) {
 					}
 				})
 				a.quickBody(c, isLine, line, col, choose)
-				a.quickFooter(c, isLine)
+				a.quickFooter(c, isLine, "open")
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()
@@ -170,7 +177,7 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 }
 
 // quickFooter shows the keys of quick open.
-func (a *app) quickFooter(c *ui.Context, isLine bool) {
+func (a *app) quickFooter(c *ui.Context, isLine bool, open string) {
 	p := a.pal
 	ui.Row(c).Height(30).Padding(0, 14).Gap(14).AlignItems(ui.Center).Background(p.hover).
 		BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
@@ -184,12 +191,12 @@ func (a *app) quickFooter(c *ui.Context, isLine bool) {
 			hint("⏎", "go to line")
 		} else {
 			hint("↑↓", "navigate")
-			hint("⏎", "open")
+			hint("⏎", open)
 		}
 		hint("esc", "close")
 		ui.Spacer(c)
 		if !isLine && a.root != "" {
-			ui.Text(c, "Type : to go to a line").FontSize(11.5).TextColor(p.faint).SingleLine()
+			ui.Text(c, "Type : for a line, @ for a symbol").FontSize(11.5).TextColor(p.faint).SingleLine()
 		}
 	})
 }
@@ -285,4 +292,122 @@ func (a *app) recentFirst(results []workspace.Match) []workspace.Match {
 		}
 	}
 	return out[:min(len(out), 60)]
+}
+
+// quickSymbols is quick open going to a symbol of the document shown: its
+// declarations, matched by name, in the order of the document until a name
+// is typed.
+func (a *app) quickSymbols(c *ui.Context, query string) {
+	q := &a.quick
+	p := a.pal
+	t := c.Theme()
+	syms, names := a.documentSymbols()
+	key := "@" + query
+	if q.stale || q.shown != key {
+		q.results = workspace.Fuzzy(names, query, 200)
+		q.shown, q.stale, q.sel = key, false, 0
+	}
+	choose := func(i int) {
+		if i < 0 || i >= len(q.results) {
+			return
+		}
+		q.open = false
+		if d := a.activeDoc(); d != nil {
+			sym := syms[q.results[i].Index]
+			a.editActive(func(d *document) {
+				// To the line, with the name selected.
+				a.jumpToScope(d, sym.line)
+				s, _ := d.buf.Snapshot().LineRange(sym.line)
+				d.selectRange(s+sym.col, s+sym.col+utf8.RuneCountInString(sym.name), false)
+			})()
+		}
+	}
+	ui.Overlay(c, func() {
+		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back.Children(func() {
+			box := ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10).
+				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).Clip().
+				Role(ui.RoleDialog).Label("Go to Symbol")
+			box.Children(func() {
+				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
+					ui.Icon(c, iconHash).FontSize(15).TextColor(p.muted)
+					in := ui.TextInputBase(c.Key("quick-input"), &q.query).Grow(1).FontSize(14).AutoFocus().
+						Placeholder("Go to a symbol by name").Label("Go to Symbol")
+					if in.Shortcut(0, ui.KeyDown) {
+						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true
+					}
+					if in.Shortcut(0, ui.KeyUp) {
+						q.sel, q.moved = max(q.sel-1, 0), true
+					}
+					if in.Submitted() {
+						choose(q.sel)
+					}
+				})
+				switch {
+				case a.activeDoc() == nil:
+					ui.Text(c, "Open a file to go to its symbols").FontSize(13).TextColor(p.muted).Padding(12, 16)
+				case len(q.results) == 0:
+					ui.Text(c, "No matching symbols").FontSize(13).TextColor(p.muted).Padding(12, 16)
+				default:
+					ui.Scroll(c.Key("quick-symbols")).MaxHeight(380).Padding(6).Children(func() {
+						for i, m := range q.results {
+							sym := syms[m.Index]
+							row := ui.ButtonBase(c.Key(fmt.Sprint("sym:", sym.line))).Padding(5, 10).Gap(10).Radius(6).
+								Justify(ui.Start).AlignItems(ui.Center).Label(sym.name)
+							switch {
+							case i == q.sel:
+								row.Background(p.active)
+							case row.Hovered():
+								row.Background(p.hover)
+							}
+							if i == q.sel && q.moved {
+								row.ScrollIntoView()
+							}
+							if row.Clicked() {
+								choose(i)
+							}
+							row.Children(func() { a.symbolRow(c, sym, m.Positions, query == "") })
+						}
+					})
+					q.moved = false
+				}
+				a.quickFooter(c, false, "go to")
+			})
+			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+				a.closeQuick()
+			}
+		})
+	})
+}
+
+// symbolRow shows a symbol of the results: its kind, its name with the
+// characters the query matched in the accent color, its declaration and
+// its line. Listed in order, symbols are indented as in the document.
+func (a *app) symbolRow(c *ui.Context, sym symbol, positions []int, nested bool) {
+	p := a.pal
+	if nested && sym.depth > 0 {
+		ui.Box(c).Width(float32(min(sym.depth, 24)) * 4).Shrink(0)
+	}
+	icon, col := a.symbolIcon(sym.kind)
+	ui.Icon(c, icon).FontSize(14).TextColor(col)
+	var spans []ui.Span
+	k := 0
+	for i, r := range sym.name {
+		for k < len(positions) && positions[k] < i {
+			k++
+		}
+		on := k < len(positions) && positions[k] == i
+		if n := len(spans); n > 0 && (spans[n-1].Weight == 650) == on {
+			spans[n-1].Text += string(r)
+			continue
+		}
+		sp := ui.Span{Text: string(r), Color: p.text}
+		if on {
+			sp.Color, sp.Weight = p.accent, 650
+		}
+		spans = append(spans, sp)
+	}
+	ui.RichText(c, spans...).FontSize(13).SingleLine().Shrink(0)
+	ui.Text(c, sym.detail).FontSize(12).Font(a.font.family).TextColor(p.faint).SingleLine().Shrink(1).Grow(1).MinWidth(0)
+	ui.Text(c, fmt.Sprint(sym.line+1)).FontSize(11.5).TextColor(p.faint).SingleLine().Shrink(0)
 }

@@ -4,9 +4,13 @@
 native UI on the GPU. It has no webview and no Electron. The packaged app is about 18 MB.
 
 - **Explorer:** a lazy file tree that follows the disk, with what Git ignores shown faint. You can create, rename, trash and reveal files from it.
-- **Editor:** tabs, line numbers, the caret's line, and Chroma syntax highlighting. Long lines scroll sideways instead of wrapping. Each tab keeps its own undo history. Files changed on disk reload unless you have unsaved edits.
+- **Editor:** tabs, line numbers, the caret's line, and Chroma syntax highlighting. Long lines scroll sideways instead of wrapping. Files changed on disk reload unless you have unsaved edits.
+  - **Editing:** Tab and ⇧Tab indent and outdent, with tabs or spaces as the file already uses. Enter keeps the indent, and indents further after an opening bracket. Brackets and quotes close themselves, wrap a selection, and are stepped over when typed again. There are commands to comment lines, move, copy and delete lines, and insert a line above or below. Home goes to the first character of the line. The status bar shows the file's indentation and line endings, and you can change either from there.
+  - **Undo:** each tab keeps its own history, and it covers the app's edits as well as typing: indenting, moving lines, replacing, and reloading from disk can all be undone. Undoing back to the saved text makes the tab clean again.
+  - **Reading:** indent guides, with the caret's block brighter. The bracket paired with the one at the caret is boxed, and other occurrences of the word at the caret are highlighted. Whitespace in the selection shows. Sticky scroll pins the lines that open the blocks in view to the top, and the breadcrumbs name the caret's blocks. Clicking either jumps there.
+  - **Git:** the gutter marks lines added, changed or removed since the last commit. A strip along the right edge shows these changes, find's matches and the caret for the whole file.
 - **Terminal panel:** Ghostty's emulator (libghostty-vt). You can run several terminals, maximize the panel, and colors follow the theme.
-- **Quick open** (⌘P, or the search box in the title bar): fuzzy file search, with recent files first. In a Git work tree it lists what Git does, so build output stays out. Type `:42` to go to a line.
+- **Quick open** (⌘P, or the search box in the title bar): fuzzy file search, with recent files first. In a Git work tree it lists what Git does, so build output stays out. Type `:42` to go to a line, or `@` for the file's functions, types and headings.
 - **Find and replace** (⌘F, ⌥⌘F): match case, whole word, and regular expressions with `$1` groups. In a large file the matches are found in the background as you type.
 - **Persistence:** follows the system's light or dark mode, or the one chosen in View → Appearance. It remembers the sidebar and panel sizes, the folder, and the open tabs.
 
@@ -26,17 +30,27 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 
 | | |
 |---|---|
-| ⌘P / ⌃G | Quick open / go to line |
+| ⌘P / ⇧⌘O / ⌃G | Quick open / go to symbol / go to line |
 | ⌘F / ⌥⌘F / ⌘G | Find / replace / next match |
 | ⌘S / ⇧⌘S / ⌥⌘S | Save / save as / save all |
 | ⌘N / ⌘W / ⌘1…9 / ⌃Tab | New file / close tab / show tab / next tab |
 | ⌘B / ⌃\` / ⌃⇧\` | Sidebar / terminal panel / new terminal |
+| ⌘Z / ⇧⌘Z | Undo / redo |
+| Tab / ⇧Tab, ⌘] / ⌘[ | Indent / outdent |
+| ⌘/ | Toggle line comment |
+| ⌥↑ / ⌥↓, ⇧⌥↑ / ⇧⌥↓ | Move line / copy line |
+| ⇧⌘K / ⌘↵ / ⇧⌘↵ | Delete line / insert line below / above |
+| ⌘L / ⇧⌘\\ | Select line / go to bracket |
 | ⌘= / ⌘- / ⌘0 | Text size |
 
 ## How it is built
 
 | File | |
 |---|---|
+| `history.go` | Undo and redo belong to the app, not to the text area. The buffer is a persistent tree, so each step keeps the text before an edit at little cost. Typing that the area does is found when its frame starts, and joins the step before it until a pause or a move of the caret. |
+| `editing.go`, `autoclose.go` | Editing commands are functions of a document and its selection. Keys reach them before the text area does, and they run in the next frame, once the selection is known. Brackets close by following up the edit that typing them made, within the same undo step. |
+| `decorations.go`, `sticky.go` | What is painted around the text: indent guides, bracket pairs, other occurrences of a word, and whitespace in the selection. Each is found for the lines in view only, and found again only when the text, the caret or the view changes. Sticky lines and breadcrumbs come from the indentation, so they work for any language. |
+| `gitmarks.go`, `internal/linediff` | The text at HEAD is read with `git show`, and the lines are compared with Myers' diff in the background after each edit. A few edits in a 100,000-line file take about 0.25 ms to compare. |
 | `editor.go` | The editor is a `TextAreaBufferBase` that never wraps, inside a container that scrolls sideways. Every line has the same height, so line numbers are painted into its left padding at paint time and stay in step while scrolling. Only the lines in view get `TextRanges` colors. |
 | `internal/highlight` | Chroma lexing on a background goroutine: the whole file up to 6,000 lines, and a window around the view beyond that. A line whose text has changed shows plain until the next pass, so stale colors never land on the wrong text. |
 | `internal/workspace` | Directories are read as they open and watched with fsnotify, with bursts of changes batched. Also the file index and the fuzzy matcher for quick open. |
@@ -44,4 +58,4 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | `app.go`, `commands.go` | State, documents and commands. Menus, accelerators and tests all run the same commands. |
 | `theme.go` | The palette, light and dark, for the window, the code and the terminal. |
 
-Measured in tests on an M-series Mac, a 100,000-line file opens in about 20 ms. Scrolling and typing cost about 2 ms per frame, and about 3.5 ms with find open on it. Quick open searches 100,000 paths in about 1.5 ms.
+Measured in tests on an M-series Mac, a 100,000-line file opens in about 20 ms. Scrolling and typing cost under 2 ms per frame, guides, sticky lines and Git marks included, and about 3 ms with find open on it. Quick open searches 100,000 paths in about 1.5 ms.
