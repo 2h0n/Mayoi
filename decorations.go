@@ -50,7 +50,7 @@ func (a *app) decorate(d *document, snap ui.TextSnapshot, first, last int) *deco
 	unit := max(d.indent.cols(), 1)
 	// The lines in view and those around them that blank lines are
 	// measured against, read at once.
-	w := newLineWindow(snap, first-maxLineScan, last+maxLineScan+1)
+	w := d.window(snap, first-maxLineScan, last+maxLineScan+1)
 	// indentOf returns a line's indent in columns, -1 for a blank line.
 	indentOf := w.indent
 	lines := snap.LineCount()
@@ -133,7 +133,7 @@ func (a *app) runeRectOf(snap ui.TextSnapshot, start, end int) runeRect {
 	line := snap.LineAt(start)
 	s, e := snap.LineRange(line)
 	x0 := a.textWidth(snap.Slice(s, start))
-	x1 := x0 + a.textWidth(snap.Slice(start, min(end, e)))
+	x1 := a.textWidth(snap.Slice(s, min(end, e)))
 	return runeRect{line, x0, max(x1, x0+2)}
 }
 
@@ -366,7 +366,7 @@ func (a *app) selectedWhitespace(d *document, snap ui.TextSnapshot, first, last 
 		}
 		text := snap.Slice(s, e)
 		from, to := max(sa, s)-s, min(sb, e)-s
-		col, x := 0, float32(0)
+		x := float32(0)
 		ascii := isASCII(text)
 		k := 0 // the rune
 		for j, r := range text {
@@ -376,15 +376,11 @@ func (a *app) selectedWhitespace(d *document, snap ui.TextSnapshot, first, last 
 			var w float32
 			switch {
 			case r == '\t':
-				next := col + tabWidth - col%tabWidth
-				w = float32(next-col) * a.font.charW
-				col = next
+				w = a.font.afterTab(x) - x
 			case ascii:
 				w = a.font.charW
-				col++
 			default:
 				w = a.textWidth(text[:j+utf8.RuneLen(r)]) - x
-				col++
 			}
 			if k >= from && (r == ' ' || r == '\t') && len(out) < 4000 {
 				out = append(out, whitespaceMark{line: i, x0: x, x1: x + w, tab: r == '\t'})

@@ -42,9 +42,16 @@ type document struct {
 	closers []int
 	// sticky are the lines stuck at the top of the editor in the last
 	// frame, which a click goes to.
-	sticky   []int
-	scopes   scopeCache
-	overview overview
+	sticky []int
+	scopes scopeCache
+	// win is the text of the lines around the view, of version winVersion,
+	// which the decorations and the scopes read their lines from.
+	win        *lineWindow
+	winVersion uint64
+	colors     colorCache
+	selShape   selectionShape
+	stuck      stickyCache
+	overview   overview
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways

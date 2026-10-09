@@ -109,3 +109,32 @@ func TestShotSymbols(t *testing.T) {
 	hs.settle()
 	hs.shot("symbols-dark")
 }
+
+// A selection over several lines, at twice the scale for a close look.
+func TestShotSelectionShape(t *testing.T) {
+	if os.Getenv("SHOTS") == "" {
+		t.Skip()
+	}
+	src, _ := os.ReadFile("editor.go")
+	for _, dark := range []bool{true, false} {
+		hs := newHarness(t, dark)
+		hs.tt.SetScale(2)
+		os.WriteFile(hs.path("editor.go"), src, 0o644)
+		hs.a.openFile(hs.path("editor.go"), true)
+		hs.settle()
+		d := hs.a.activeDoc()
+		d.vscroll.Focus()
+		i := strings.Index(string(src), "func (f codeFont) width")
+		j := strings.Index(string(src), "// afterTab returns")
+		a0 := len([]rune(string(src)[:i])) + 5
+		a1 := len([]rune(string(src)[:j])) + 12
+		hs.place(d, a0, a1)
+		d.vscroll.Y = editorPadY + float32(d.buf.Snapshot().LineAt(a0)-12)*hs.a.font.lineH
+		hs.settle()
+		name := "selection-shape-light"
+		if dark {
+			name = "selection-shape-dark"
+		}
+		hs.shot(name)
+	}
+}

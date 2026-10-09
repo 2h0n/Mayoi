@@ -204,6 +204,7 @@ type Highlighter struct {
 
 	mu      sync.Mutex
 	version uint64 // the version lexed
+	gen     uint64 // counts the passes: the tokens are the same while it is
 	first   int    // the line Lines[0] is
 	lines   []Line
 	running bool
@@ -281,6 +282,7 @@ func (h *Highlighter) run() {
 
 		h.mu.Lock()
 		h.version, h.first, h.lines = r.src.Version(), r.first, lines
+		h.gen++
 		if w := h.want; w.src != nil && w.src.Version() == h.version && w.first >= h.first && w.last < h.first+len(lines) {
 			h.want = request{} // asked again for what this pass lexed
 		}
@@ -289,6 +291,17 @@ func (h *Highlighter) run() {
 			h.notify()
 		}
 	}
+}
+
+// Gen returns a number that changes whenever the highlighter has new
+// tokens: what was built from Line's results holds while it is the same.
+func (h *Highlighter) Gen() uint64 {
+	if h == nil {
+		return 0
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.gen
 }
 
 // Line returns the tokens of line i, if the last pass lexed it from text.

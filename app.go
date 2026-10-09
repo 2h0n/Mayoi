@@ -41,7 +41,6 @@ type app struct {
 
 	pal      *palette
 	font     codeFont
-	ranges   []ui.TextRange
 	services ui.Services
 
 	// queue holds the functions other goroutines post for the main thread,

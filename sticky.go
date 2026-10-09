@@ -25,9 +25,12 @@ func scopes(snap ui.TextSnapshot, line int) []int {
 	if line <= 0 || line >= snap.LineCount() {
 		return nil
 	}
-	// The lines above, as far as the scan goes, and a few below for a
-	// blank line.
-	w := newLineWindow(snap, line-maxScopeScan, line+maxLineScan)
+	return scopesIn(snap, line, newLineWindow(snap, line-maxScopeScan, line+maxLineScan))
+}
+
+// scopesIn is scopes with the lines read from w, which has those above
+// line as far as the scan goes, and a few below for a blank line.
+func scopesIn(snap ui.TextSnapshot, line int, w *lineWindow) []int {
 	indentOf := func(i int) (int, string) {
 		if !w.has(i) {
 			return -1, ""
@@ -95,7 +98,10 @@ func (d *document) scopesOf(snap ui.TextSnapshot, line int) []int {
 	if s, ok := sc.lines[line]; ok {
 		return s
 	}
-	s := scopes(snap, line)
+	var s []int
+	if line > 0 && line < snap.LineCount() {
+		s = scopesIn(snap, line, d.window(snap, line-maxScopeScan, line+maxLineScan))
+	}
 	sc.lines[line] = s
 	return s
 }
@@ -146,7 +152,7 @@ func (a *app) stickyRows(d *document, snap ui.TextSnapshot, lines []int) []stick
 		s, e := snap.LineRange(i)
 		text := snap.Slice(s, min(e, s+300))
 		lead := leading(text)
-		row := stickyRow{line: i, indent: float32(columns(lead)) * f.charW}
+		row := stickyRow{line: i, indent: f.width(lead)}
 		var toks []tokenSpan
 		if d.hl != nil {
 			for _, t := range d.hl.Line(i, snap.Slice(s, e)) {
@@ -176,6 +182,27 @@ func (a *app) stickyRows(d *document, snap ui.TextSnapshot, lines []int) []stick
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// stickyCache keeps the rows of the lines that stick, which are the same
+// from frame to frame until the lines, their text or their colors change.
+type stickyCache struct {
+	version, gen uint64
+	pal          *palette
+	font         codeFont
+	lines        []int
+	out          []stickyRow
+}
+
+func (sc *stickyCache) rows(a *app, d *document, snap ui.TextSnapshot, lines []int) []stickyRow {
+	gen := d.hl.Gen()
+	if sc.version == snap.Version() && sc.gen == gen && sc.pal == a.pal && sc.font == a.font && slices.Equal(sc.lines, lines) {
+		return sc.out
+	}
+	sc.version, sc.gen, sc.pal, sc.font = snap.Version(), gen, a.pal, a.font
+	sc.lines = append(sc.lines[:0], lines...)
+	sc.out = a.stickyRows(d, snap, lines)
+	return sc.out
 }
 
 type tokenSpan struct {

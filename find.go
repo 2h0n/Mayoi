@@ -282,20 +282,14 @@ func (a *app) visibleMatches(d *document, first, last int) []matchRect {
 		line := snap.LineAt(m[0])
 		s, e := snap.LineRange(line)
 		x0 := a.textWidth(snap.Slice(s, m[0]))
-		x1 := x0 + a.textWidth(snap.Slice(m[0], min(m[1], e)))
+		x1 := a.textWidth(snap.Slice(s, min(m[1], e)))
 		out = append(out, matchRect{line: line, x0: x0, x1: max(x1, x0+2), cur: i == f.cur})
 	}
 	return out
 }
 
 // textWidth measures a run of a line as the editor lays it out.
-func (a *app) textWidth(s string) float32 {
-	if !strings.ContainsRune(s, '\t') && isASCII(s) {
-		return float32(len(s)) * a.font.charW
-	}
-	w, _ := ui.ShapeText(s, ui.Font{Family: a.font.family, Size: a.font.size}, 0).Size()
-	return w
-}
+func (a *app) textWidth(s string) float32 { return a.font.width(s) }
 
 // findView is the find widget, over the top right of the editor.
 func (a *app) findView(c *ui.Context, d *document) {

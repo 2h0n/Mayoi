@@ -40,6 +40,24 @@ func newLineWindow(snap ui.TextSnapshot, from, to int) *lineWindow {
 	return w
 }
 
+// covers reports whether the window has lines from up to to (exclusive).
+func (w *lineWindow) covers(from, to int) bool {
+	return from >= w.first && to-w.first <= len(w.starts)-1
+}
+
+// window returns a window of lines from up to to (exclusive) of a
+// snapshot of d, clamped to it. The window is read with as many lines
+// again around it and kept, so that the frames that follow, scrolling
+// line by line, find theirs in it.
+func (d *document) window(snap ui.TextSnapshot, from, to int) *lineWindow {
+	from, to = max(from, 0), min(to, snap.LineCount())
+	if w := d.win; w != nil && d.winVersion == snap.Version() && w.covers(from, to) {
+		return w
+	}
+	d.win, d.winVersion = newLineWindow(snap, from-maxLineScan, to+maxLineScan), snap.Version()
+	return d.win
+}
+
 // has reports whether line i is in the window.
 func (w *lineWindow) has(i int) bool { return i >= w.first && i-w.first < len(w.starts)-1 }
 

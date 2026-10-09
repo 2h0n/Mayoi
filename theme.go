@@ -25,23 +25,26 @@ type palette struct {
 	accentDim ui.Color
 	line      ui.Color // the caret's line
 	selection ui.Color
-	gutter    ui.Color // line numbers
-	gutterNow ui.Color // the caret's line number
-	status    ui.Color
-	statusFg  ui.Color
-	modified  ui.Color
-	danger    ui.Color
-	match     ui.Color // a match of find
-	matchNow  ui.Color // the current match
-	matchRing ui.Color
-	guide     ui.Color // indent guides
-	guideNow  ui.Color // the guide of the caret's block
-	bracket   ui.Color // the brackets paired at the caret
-	word      ui.Color // the other occurrences of the word at the caret
-	shadow    ui.Color
-	added     ui.Color // lines changed since Git's last commit
-	changed   ui.Color
-	removed   ui.Color
+	// The selection as the editor paints it, opaque over its background:
+	// while it has the keyboard, and fainter while it has not.
+	selected, selectedDim ui.Color
+	gutter                ui.Color // line numbers
+	gutterNow             ui.Color // the caret's line number
+	status                ui.Color
+	statusFg              ui.Color
+	modified              ui.Color
+	danger                ui.Color
+	match                 ui.Color // a match of find
+	matchNow              ui.Color // the current match
+	matchRing             ui.Color
+	guide                 ui.Color // indent guides
+	guideNow              ui.Color // the guide of the caret's block
+	bracket               ui.Color // the brackets paired at the caret
+	word                  ui.Color // the other occurrences of the word at the caret
+	shadow                ui.Color
+	added                 ui.Color // lines changed since Git's last commit
+	changed               ui.Color
+	removed               ui.Color
 
 	syntax [highlight.Kinds]ui.Color
 }
@@ -155,7 +158,14 @@ func lightPalette() *palette {
 	return p
 }
 
-var palettes = [2]*palette{lightPalette(), darkPalette()}
+var palettes = [2]*palette{lightPalette().derive(), darkPalette().derive()}
+
+// derive fills in the colors made from the others.
+func (p *palette) derive() *palette {
+	p.selected = p.selection.Over(p.editor)
+	p.selectedDim = p.selection.Alpha(0.5).Over(p.editor)
+	return p
+}
 
 // apply sets the window's theme from the palette of its appearance, and
 // returns that palette.

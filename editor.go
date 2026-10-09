@@ -23,12 +23,50 @@ type codeFont struct {
 	size   float32
 	lineH  float32
 	charW  float32
+	// tabW is how far apart the platform's text layout puts its tab stops,
+	// which is not a number of cells: a tab ends at the next stop.
+	tabW float32
 }
 
 func newCodeFont(family string, size float32) codeFont {
-	l := ui.ShapeText(strings.Repeat("0", 64), ui.Font{Family: family, Size: size}, 0)
-	w, _ := l.Size()
-	return codeFont{family: family, size: size, lineH: float32(int(size*1.55 + 0.5)), charW: w / 64}
+	font := ui.Font{Family: family, Size: size}
+	w, _ := ui.ShapeText(strings.Repeat("0", 64), font, 0).Size()
+	f := codeFont{family: family, size: size, lineH: float32(int(size*1.55 + 0.5)), charW: w / 64}
+	if f.tabW, _ = ui.ShapeText("\t", font, 0).Size(); f.tabW <= 0 {
+		f.tabW = tabWidth * f.charW
+	}
+	return f
+}
+
+// width measures a run from the start of a line as the text area lays it
+// out: ASCII by its cells and the tab stops, anything else by shaping it.
+func (f codeFont) width(s string) float32 {
+	var x float32
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\t':
+			x = f.afterTab(x)
+		case c < 0x80:
+			x += f.charW
+		default:
+			w, _ := ui.ShapeText(s, ui.Font{Family: f.family, Size: f.size}, 0).Size()
+			return w
+		}
+	}
+	return x
+}
+
+// afterTab returns where a tab at x ends: the next tab stop.
+func (f codeFont) afterTab(x float32) float32 {
+	return (float32(int(x/f.tabW+0.001)) + 1) * f.tabW
+}
+
+// indentWidth is the width of one level of indent of a style.
+func (f codeFont) indentWidth(s indentStyle) float32 {
+	if s.tabs {
+		return f.tabW
+	}
+	return float32(s.size) * f.charW
 }
 
 // gutterWidth is the width of the line numbers of a document of n lines.
@@ -107,7 +145,7 @@ func (a *app) editorView(c *ui.Context, d *document) {
 		d.sticky = append(d.sticky[:0], a.scrollToCaret(d, snap, caretLine, view.H, jump, caretMoved || edited)...)
 		var sticky []stickyRow
 		if len(d.sticky) > 0 {
-			sticky = a.stickyRows(d, snap, d.sticky)
+			sticky = d.stuck.rows(a, d, snap, d.sticky)
 		}
 
 		// The lines in view.
@@ -127,18 +165,7 @@ func (a *app) editorView(c *ui.Context, d *document) {
 
 		if d.hl != nil && d.hl.Lexer() != nil {
 			d.hl.Request(snap, first, last)
-			ranges := a.ranges[:0]
-			for i := first; i <= last; i++ {
-				s, e := snap.LineRange(i)
-				if e-s > highlight.MaxLineRunes {
-					continue
-				}
-				for _, tok := range d.hl.Line(i, snap.Slice(s, e)) {
-					ranges = append(ranges, ui.TextRange{Start: s + tok.Start, End: s + tok.End, Color: p.syntax[tok.Kind]})
-				}
-			}
-			area.TextRanges(ranges...)
-			a.ranges = ranges
+			area.TextRanges(d.colors.ranges(d.hl, p, snap, first, last)...)
 		}
 
 		lineH, charW, size, family := f.lineH, f.charW, f.size, f.family
@@ -148,15 +175,30 @@ func (a *app) editorView(c *ui.Context, d *document) {
 		a.refreshGit(d)
 		marks := d.git.marks
 		gitRuns := d.gitRuns()
-		guideW := float32(d.indent.cols()) * charW
+		guideW := f.indentWidth(d.indent)
 		rows := a.overviewRows(d, snap, view.H)
 		spaces := a.selectedWhitespace(d, snap, first, last)
+		// The editor paints the selection, rounded, and keeps it in sight,
+		// fainter, while the keyboard is elsewhere, as in find's field.
+		shape := a.selection(d, snap, first, last)
+		selecting := selStart != caret
+		selCol := p.selected
+		if !focused {
+			selCol = p.selectedDim
+		}
+		if !shape.native {
+			area.SelectionColor(ui.Color{})
+		}
 		area.Draw(func(pt *ui.Painter, r ui.Rect) {
 			lineY := func(i int) float32 { return r.Y + editorPadY + float32(i)*lineH - d.vscroll.Y }
-			if y := lineY(caretLine); y+lineH > r.Y && y < r.Y+r.H {
+			if y := lineY(caretLine); !selecting && y+lineH > r.Y && y < r.Y+r.H {
 				pt.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: lineH}, p.line, 0)
 			}
+			shape.paint(pt, r.X+textX, lineY, lineH, selCol)
 			for _, w := range deco.words {
+				if selecting && len(shape.rects) == 1 && shape.rects[0].line == w.line && shape.rects[0].x0 == w.x0 {
+					continue // the selection itself
+				}
 				pt.Fill(ui.Rect{X: r.X + textX + w.x0 - 1, Y: lineY(w.line) + 1, W: w.x1 - w.x0 + 2, H: lineH - 2}, p.word, 3)
 			}
 			// The indent guides, at the start of each level of a line's
@@ -177,18 +219,22 @@ func (a *app) editorView(c *ui.Context, d *document) {
 				pt.Fill(box, p.word, 2)
 				pt.Stroke(box, p.bracket, 2, 1)
 			}
-			// Spaces and tabs selected show, faint.
+			// Spaces and tabs selected show, faint: a dot, and an arrow as
+			// long as the tab.
+			var arrows ui.Path
 			for _, w := range spaces {
 				cy := lineY(w.line) + lineH/2
 				if w.tab {
-					x0, x1 := r.X+textX+w.x0+2, r.X+textX+w.x1-3
-					pt.Line(x0, cy, x1, cy, 1, p.faint)
-					pt.Line(x1-3, cy-3, x1, cy, 1, p.faint)
-					pt.Line(x1-3, cy+3, x1, cy, 1, p.faint)
+					x0, x1 := r.X+textX+w.x0+3, r.X+textX+w.x1-4
+					arrows.MoveTo(x0, cy).LineTo(x1, cy)
+					arrows.MoveTo(x1-3, cy-3).LineTo(x1, cy).LineTo(x1-3, cy+3)
 				} else {
 					cx := r.X + textX + (w.x0+w.x1)/2
 					pt.Fill(ui.Rect{X: cx - 1, Y: cy - 1, W: 2, H: 2}, p.faint, 1)
 				}
+			}
+			if len(spaces) > 0 {
+				pt.StrokePath(&arrows, 1, p.faint)
 			}
 			for _, m := range matches {
 				box := ui.Rect{X: r.X + textX + m.x0 - 1, Y: lineY(m.line) + 1, W: m.x1 - m.x0 + 2, H: lineH - 2}
@@ -251,6 +297,10 @@ func (a *app) editorView(c *ui.Context, d *document) {
 				caretAt := float32(caretLine) / float32(lines)
 				pt.Fill(ui.Rect{X: right, Y: r.Y + caretAt*r.H - 1, W: 9, H: 2}, p.text.Alpha(0.6), 1)
 			}
+			if stuck > 0 {
+				// A hairline closes the lines that stick off from the text.
+				pt.Fill(ui.Rect{X: x, Y: r.Y + stuck - 1, W: view.W, H: 1}, p.border, 0)
+			}
 			if top > 0 {
 				// A shadow under the breadcrumbs, or the lines that stick, as
 				// the text scrolls up under them.
@@ -290,6 +340,70 @@ func (a *app) editorView(c *ui.Context, d *document) {
 			}
 		})
 	})
+}
+
+// colorCache keeps the colors of the tokens of the lines in view, which
+// the text area is given every frame, and which are the same until the
+// text, the view, the tokens or the palette change.
+type colorCache struct {
+	version, gen uint64
+	first, last  int
+	pal          *palette
+	out          []ui.TextRange
+}
+
+// ranges returns the colors of the tokens of lines first up to last. The
+// text area looks through all of them for each of its lines, and makes a
+// span of each and of each gap between two, so they are as few as say the
+// same: a token in the color of the text is left out, and the blanks
+// after a token, which show no color, are part of it, so that tokens of
+// one color with only blanks between them are one range, and those of two
+// colors leave no gap.
+func (cc *colorCache) ranges(hl *highlight.Highlighter, p *palette, snap ui.TextSnapshot, first, last int) []ui.TextRange {
+	gen := hl.Gen()
+	if cc.out != nil && cc.version == snap.Version() && cc.gen == gen && cc.first == first && cc.last == last && cc.pal == p {
+		return cc.out
+	}
+	cc.version, cc.gen, cc.first, cc.last, cc.pal = snap.Version(), gen, first, last, p
+	out := cc.out[:0]
+	for i := first; i <= last; i++ {
+		s, e := snap.LineRange(i)
+		if e-s > highlight.MaxLineRunes {
+			continue
+		}
+		text := snap.Slice(s, e)
+		ascii := isASCII(text) // a rune is a byte: the blanks are easy to find
+		from := len(out)
+		for _, tok := range hl.Line(i, text) {
+			col := p.syntax[tok.Kind]
+			if col == p.text {
+				continue
+			}
+			if k := len(out) - 1; k >= from && ascii && out[k].End-s <= tok.Start && blank(text[out[k].End-s:tok.Start]) {
+				if out[k].Color == col {
+					out[k].End = s + tok.End
+					continue
+				}
+				out[k].End = s + tok.Start
+			}
+			out = append(out, ui.TextRange{Start: s + tok.Start, End: s + tok.End, Color: col})
+		}
+	}
+	if out == nil {
+		out = []ui.TextRange{}
+	}
+	cc.out = out
+	return out
+}
+
+// blank reports whether s is only spaces and tabs.
+func blank(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] != ' ' && s[i] != '\t' {
+			return false
+		}
+	}
+	return true
 }
 
 // scrollToCaret scrolls the editor to show the caret's line, below the
@@ -353,12 +467,7 @@ func (a *app) revealColumn(d *document, snap ui.TextSnapshot, caret int, viewW, 
 	s, _ := snap.LineRange(line)
 	// Measure the line as the area lays it out, tabs at the platform's
 	// stops.
-	prefix := snap.Slice(s, min(caret, snap.Len()))
-	w := float32(len(prefix)) * a.font.charW
-	if strings.ContainsRune(prefix, '\t') || !isASCII(prefix) {
-		w, _ = ui.ShapeText(prefix, ui.Font{Family: a.font.family, Size: a.font.size}, 0).Size()
-	}
-	x := textX + w
+	x := textX + a.font.width(snap.Slice(s, min(caret, snap.Len())))
 	left, right := d.hscroll.X+textX, d.hscroll.X+viewW-textPadR
 	switch {
 	case x < left:
