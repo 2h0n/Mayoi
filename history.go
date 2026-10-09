@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"slices"
 	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 )
@@ -43,7 +44,9 @@ func (h *history) push(s histStep) {
 }
 
 // observe records the edits made to d's text since it was last seen,
-// which are typing: typing without a pause joins the step before.
+// which are typing: typing without a pause joins the step before. The
+// typing is the editor's that has the keyboard, whose selection the step
+// keeps; the selections of the others move with the text.
 func (d *document) observe() {
 	h := &d.hist
 	snap := d.buf.Snapshot()
@@ -54,20 +57,26 @@ func (d *document) observe() {
 	if snap.Version() == h.snap.Version() {
 		return
 	}
+	t := d.main()
+	if t == nil {
+		h.snap = snap
+		return
+	}
 	now := time.Now()
-	old, sel := h.snap, d.sel
+	old, sel := h.snap, t.sel
 	if !h.typing || now.Sub(h.at) > typingPause || len(h.undo) == 0 {
-		h.push(histStep{h.snap, d.sel})
+		h.push(histStep{h.snap, t.sel})
 	} else {
 		clear(h.redo)
 		h.redo = h.redo[:0]
 	}
 	h.snap, h.typing, h.at = snap, true, now
 	// Brackets and quotes typed close, in the same step.
-	if d.autoClose(old, snap, sel) {
+	if t.autoClose(old, snap, sel) {
 		h.snap = d.buf.Snapshot()
 	}
-	d.keepClosers(h.snap)
+	t.keepClosers(h.snap)
+	t.followChange(old, h.snap, min(sel[0], sel[1]))
 }
 
 // textEdit replaces the runes start up to end with text.
@@ -78,11 +87,12 @@ type textEdit struct {
 
 // edit makes edits of the app's as one step of undo, then selects sel.
 // The edits must not overlap; they are made from the last.
-func (d *document) edit(sel [2]int, edits ...textEdit) {
+func (d *editor) edit(sel [2]int, edits ...textEdit) {
 	d.observe()
 	h := &d.hist
 	h.push(histStep{h.snap, d.sel})
 	sortEdits(edits)
+	before := h.snap.Len()
 	for _, e := range edits {
 		d.buf.Replace(e.start, e.end, e.text)
 	}
@@ -92,6 +102,15 @@ func (d *document) edit(sel [2]int, edits ...textEdit) {
 	sel = [2]int{min(max(sel[0], 0), n), min(max(sel[1], 0), n)}
 	d.selectRange(sel[0], sel[1], false)
 	d.sel = sel
+	if len(edits) == 1 && edits[0].start <= 0 && edits[0].end >= before {
+		edits = nil // the whole text, as reloading it: the offsets stay
+	}
+	d.follow(func(x int) int {
+		for _, e := range edits {
+			x = movedBy(x, e.start, e.end, utf8.RuneCountInString(e.text))
+		}
+		return x
+	})
 }
 
 // sortEdits orders edits from the last in the text to the first, so that
@@ -100,8 +119,87 @@ func sortEdits(edits []textEdit) {
 	slices.SortStableFunc(edits, func(a, b textEdit) int { return cmp.Compare(b.start, a.start) })
 }
 
+// movedBy returns where offset x of a text is once n runes take the place
+// of its runes start up to end: where it was before them, after them as
+// far as they grew or shrank, and at their start from inside them.
+func movedBy(x, start, end, n int) int {
+	switch {
+	case x >= end && x > start:
+		return x + n - (end - start)
+	case x > start:
+		return start
+	}
+	return x
+}
+
+// follow moves the selections of the other editors of d's document with
+// an edit d made, by where the edit leaves an offset of the text before.
+func (d *editor) follow(moved func(x int) int) {
+	n := d.buf.Len()
+	for _, o := range d.views {
+		if o == d {
+			continue
+		}
+		o.sel = [2]int{min(moved(o.sel[0]), n), min(moved(o.sel[1]), n)}
+		o.closers = o.closers[:0]
+		o.resync = true
+	}
+}
+
+// followChange is follow for an edit that is only known by the text
+// before and after it, as typing is, made near offset hint.
+func (d *editor) followChange(old, now ui.TextSnapshot, hint int) {
+	if len(d.views) < 2 {
+		return
+	}
+	start, end, ok := changedRunes(old, now, hint)
+	n := end - start + now.Len() - old.Len()
+	d.follow(func(x int) int {
+		if !ok {
+			return x
+		}
+		return movedBy(x, start, end, n)
+	})
+}
+
+// diffWindow is how far from where an edit was made its ends are looked
+// for.
+const diffWindow = 2048
+
+// changedRunes finds the runes start up to end of old that an edit near
+// offset hint replaced to make now, by the text the two share before and
+// after it. It reports false for an edit that reaches further than the
+// window around hint.
+func changedRunes(old, now ui.TextSnapshot, hint int) (start, end int, ok bool) {
+	n, m := old.Len(), now.Len()
+	hint = min(max(hint, 0), n, m)
+	lo, hi := max(0, hint-diffWindow), min(n, m, hint+diffWindow)
+	a, b := []rune(old.Slice(lo, hi)), []rune(now.Slice(lo, hi))
+	k := 0
+	for k < len(a) && k < len(b) && a[k] == b[k] {
+		k++
+	}
+	if k == 0 && lo > 0 {
+		return 0, 0, false
+	}
+	start = lo + k
+	// The texts line up again after the edit, as far apart as it grew
+	// or shrank.
+	delta := m - n
+	to := min(n, max(start, start-delta, hint)+diffWindow)
+	a, b = []rune(old.Slice(start, to)), []rune(now.Slice(start, to+delta))
+	k = 0
+	for k < len(a) && k < len(b) && a[len(a)-1-k] == b[len(b)-1-k] {
+		k++
+	}
+	if k == 0 && to < n {
+		return 0, 0, false
+	}
+	return start, to - k, true
+}
+
 // undo takes back the last step, reporting whether there was one.
-func (d *document) undo() bool {
+func (d *editor) undo() bool {
 	d.observe()
 	h := &d.hist
 	if len(h.undo) == 0 {
@@ -115,7 +213,7 @@ func (d *document) undo() bool {
 }
 
 // redo makes the step undone last again.
-func (d *document) redo() bool {
+func (d *editor) redo() bool {
 	d.observe()
 	h := &d.hist
 	if len(h.redo) == 0 {
@@ -130,7 +228,8 @@ func (d *document) redo() bool {
 
 // restore brings back the text and the selection of a step. The text as
 // it was on disk is clean again.
-func (d *document) restore(s histStep) {
+func (d *editor) restore(s histStep) {
+	old := d.buf.Snapshot()
 	d.buf.Restore(s.snap)
 	if s.snap == d.savedSnap {
 		d.markSaved()
@@ -141,6 +240,7 @@ func (d *document) restore(s histStep) {
 	d.selectRange(min(s.sel[0], n), min(s.sel[1], n), false)
 	d.sel = [2]int{min(s.sel[0], n), min(s.sel[1], n)}
 	d.measureWidest()
+	d.followChange(old, d.hist.snap, min(s.sel[0], s.sel[1]))
 }
 
 // markSaved takes the text as it is for the one on disk.

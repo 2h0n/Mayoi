@@ -21,7 +21,7 @@ var autoPairs = map[rune]rune{'(': ')', '[': ']', '{': '}', '"': '"', '\'': '\''
 
 // autoClose follows an edit of typing, from text old with selection sel
 // to text now, and reports whether it edited the text further.
-func (d *document) autoClose(old, now ui.TextSnapshot, sel [2]int) bool {
+func (d *editor) autoClose(old, now ui.TextSnapshot, sel [2]int) bool {
 	if d.hl == nil || d.hl.Lexer() == nil {
 		d.closers = d.closers[:0]
 		return false
@@ -69,7 +69,7 @@ func (d *document) autoClose(old, now ui.TextSnapshot, sel [2]int) bool {
 }
 
 // typed follows rune r typed at offset at of text now.
-func (d *document) typed(now ui.TextSnapshot, at int, r rune) bool {
+func (d *editor) typed(now ui.TextSnapshot, at int, r rune) bool {
 	next := runeAt(now, at+1)
 	// Typing a closing one that the editor put there steps over it.
 	if d.isCloser(at+1) && next == r {
@@ -115,7 +115,7 @@ func (d *document) typed(now ui.TextSnapshot, at int, r rune) bool {
 
 // shiftClosers moves the closing brackets the editor put after offset at
 // by delta, as text is put in or taken out before them.
-func (d *document) shiftClosers(at, delta int) {
+func (d *editor) shiftClosers(at, delta int) {
 	for i, c := range d.closers {
 		if c >= at {
 			d.closers[i] = c + delta
@@ -125,13 +125,13 @@ func (d *document) shiftClosers(at, delta int) {
 
 // keepClosers forgets the closing brackets the editor put that an edit
 // took out, as deleting forward does, which typing must not step over.
-func (d *document) keepClosers(snap ui.TextSnapshot) {
+func (d *editor) keepClosers(snap ui.TextSnapshot) {
 	d.closers = slices.DeleteFunc(d.closers, func(at int) bool {
 		return !strings.ContainsRune(")]}\"'`", runeAt(snap, at))
 	})
 }
 
-func (d *document) isCloser(at int) bool {
+func (d *editor) isCloser(at int) bool {
 	for _, c := range d.closers {
 		if c == at {
 			return true
@@ -140,7 +140,7 @@ func (d *document) isCloser(at int) bool {
 	return false
 }
 
-func (d *document) dropCloser(at int) {
+func (d *editor) dropCloser(at int) {
 	for i, c := range d.closers {
 		if c == at {
 			d.closers = append(d.closers[:i], d.closers[i+1:]...)

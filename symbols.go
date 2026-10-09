@@ -132,7 +132,7 @@ type symbolCache struct {
 
 // documentSymbols returns the symbols of the document shown.
 func (a *app) documentSymbols() ([]symbol, []string) {
-	d := a.activeDoc()
+	d := a.activeEditor()
 	sc := &a.quick.syms
 	if d == nil {
 		return nil, nil
@@ -141,7 +141,7 @@ func (a *app) documentSymbols() ([]symbol, []string) {
 		return sc.symbols, sc.names
 	}
 	sc.doc, sc.version = d.id, d.buf.Version()
-	sc.symbols = findSymbols(d)
+	sc.symbols = findSymbols(d.document)
 	if sc.symbols == nil {
 		sc.symbols = []symbol{}
 	}

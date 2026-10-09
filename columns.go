@@ -1,0 +1,526 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"slices"
+
+	"github.com/egoist/mygo/ui"
+
+	"mayoi/internal/highlight"
+)
+
+// column is a column of the editor area: its tabs, and the one it shows.
+// The columns are side by side, and a tab moves from one to another.
+type column struct {
+	id     int
+	tabs   []*colTab
+	active int // the tab shown, -1 for none
+	// weight is the column's share of the width of the editor area, among
+	// the weights of the others.
+	weight float32
+	// revealed is the tab the strip last scrolled into view.
+	revealed int
+	// body is where the tab shown is, which a tab dragged is dropped on.
+	body ui.Handle
+}
+
+// colTab is a tab of a column: an editor of a document, or a terminal.
+type colTab struct {
+	id   int
+	ed   *editor
+	term *session
+}
+
+func (t *colTab) name() string {
+	if t.term != nil {
+		return t.term.title
+	}
+	return t.ed.name()
+}
+
+// tab returns the tab the column shows, nil when it has none.
+func (col *column) tab() *colTab {
+	if col.active < 0 || col.active >= len(col.tabs) {
+		return nil
+	}
+	return col.tabs[col.active]
+}
+
+// showing returns the place of the tab of the column that shows doc, -1
+// when none does.
+func (col *column) showing(doc *document) int {
+	return slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.ed != nil && t.ed.document == doc })
+}
+
+// take takes the tab at place i out of the column, which shows the one
+// after it, or the one before the last.
+func (col *column) take(i int) {
+	col.tabs = slices.Delete(col.tabs, i, i+1)
+	switch {
+	case len(col.tabs) == 0:
+		col.active = -1
+	case col.active > i || col.active == len(col.tabs):
+		col.active--
+	}
+}
+
+func (a *app) newColumn() *column {
+	a.nextCol++
+	return &column{id: a.nextCol, active: -1, weight: 1}
+}
+
+// column returns the column that has the keyboard, or had it last.
+func (a *app) column() *column {
+	a.col = min(max(a.col, 0), len(a.cols)-1)
+	return a.cols[a.col]
+}
+
+// activeTab returns the tab shown in the column that has the keyboard.
+func (a *app) activeTab() *colTab { return a.column().tab() }
+
+// activeEditor returns the editor shown in the column that has the
+// keyboard, nil when it shows a terminal or nothing.
+func (a *app) activeEditor() *editor {
+	if t := a.activeTab(); t != nil {
+		return t.ed
+	}
+	return nil
+}
+
+// locate returns the column of a tab and its place there, nil for a tab
+// that was closed.
+func (a *app) locate(t *colTab) (*column, int) {
+	for _, col := range a.cols {
+		if i := slices.Index(col.tabs, t); i >= 0 {
+			return col, i
+		}
+	}
+	return nil, -1
+}
+
+// editorTabs returns the tabs of every column that show a document.
+func (a *app) editorTabs() []*colTab {
+	var out []*colTab
+	for _, col := range a.cols {
+		for _, t := range col.tabs {
+			if t.ed != nil {
+				out = append(out, t)
+			}
+		}
+	}
+	return out
+}
+
+// addTab puts a new tab at place at of a column.
+func (a *app) addTab(col *column, at int, t *colTab) {
+	a.nextTab++
+	t.id = a.nextTab
+	at = min(max(at, 0), len(col.tabs))
+	col.tabs = slices.Insert(col.tabs, at, t)
+	if col.active >= at {
+		col.active++
+	}
+}
+
+func (a *app) docIndex(path string) int {
+	if path == "" {
+		return -1
+	}
+	return slices.IndexFunc(a.docs, func(d *document) bool { return d.path == path })
+}
+
+// openFile shows a file in a tab of the column that has the keyboard,
+// opening one unless the column has one. A file open in another column
+// shows in both, which share its text.
+func (a *app) openFile(path string, focus bool) {
+	col := a.column()
+	var doc *document
+	if i := a.docIndex(path); i >= 0 {
+		doc = a.docs[i]
+		if at := col.showing(doc); at >= 0 {
+			a.activate(col, at, focus)
+			return
+		}
+	} else {
+		a.nextID++
+		d, err := readDocument(a.nextID, path, a.invalidate)
+		if errors.Is(err, errBinary) {
+			a.fail("%s is a binary file", filepath.Base(path))
+			return
+		}
+		if err != nil {
+			a.fail("Could not open %s: %v", filepath.Base(path), err)
+			return
+		}
+		doc = d
+		a.docs = append(a.docs, doc)
+		if a.tree != nil {
+			a.tree.Watch(path)
+		}
+	}
+	// A new tab goes after the one shown.
+	at := col.active + 1
+	a.addTab(col, at, &colTab{ed: newEditor(doc)})
+	a.activate(col, at, focus)
+}
+
+// newFile opens an untitled document.
+func (a *app) newFile() {
+	a.nextID++
+	a.untitled++
+	doc := newDocument(a.nextID, "", "", highlight.New(nil, nil))
+	doc.title = fmt.Sprintf("Untitled-%d", a.untitled)
+	a.docs = append(a.docs, doc)
+	col := a.column()
+	a.addTab(col, len(col.tabs), &colTab{ed: newEditor(doc)})
+	a.activate(col, len(col.tabs)-1, true)
+}
+
+// activate shows tab i of a column, which becomes the column commands
+// are for.
+func (a *app) activate(col *column, i int, focus bool) {
+	if i < 0 || i >= len(col.tabs) {
+		return
+	}
+	col.active = i
+	if at := slices.Index(a.cols, col); at >= 0 {
+		a.col = at
+	}
+	t := col.tabs[i]
+	if t.ed != nil && t.ed.path != "" && a.tree != nil {
+		p := t.ed.path
+		a.recent = slices.Insert(slices.DeleteFunc(a.recent, func(r string) bool { return r == p }), 0, p)
+		if len(a.recent) > 30 {
+			a.recent = a.recent[:30]
+		}
+	}
+	if focus {
+		a.focusTab(t)
+	}
+	a.find.stale = true
+	a.rememberTabs()
+}
+
+// focusTab gives the keyboard to a tab's editor, or its terminal.
+func (a *app) focusTab(t *colTab) {
+	if t.term != nil {
+		t.term.view.Focus()
+	} else {
+		t.ed.vscroll.Focus()
+	}
+	a.focus = paneEditor
+}
+
+// focusColumn gives the keyboard to the tab shown in the column that had
+// it last.
+func (a *app) focusColumn() {
+	if t := a.activeTab(); t != nil {
+		a.focusTab(t)
+	}
+}
+
+func (a *app) cycleTab(step int) {
+	col := a.column()
+	if len(col.tabs) == 0 {
+		return
+	}
+	a.activate(col, (col.active+step+len(col.tabs))%len(col.tabs), true)
+}
+
+// focusColumnBy gives the keyboard to the column step columns after the
+// one that has it, round the ends.
+func (a *app) focusColumnBy(step int) {
+	a.col = (a.col + step + len(a.cols)) % len(a.cols)
+	a.find.stale = true
+	a.focusColumn()
+	a.rememberTabs()
+}
+
+// closeTab closes a tab, asking first to save the changes of a document
+// that no other tab shows, then calls then unless it stayed open.
+func (a *app) closeTab(t *colTab, then func()) {
+	done := func() {
+		if then != nil {
+			then()
+		}
+	}
+	if col, _ := a.locate(t); col == nil {
+		done()
+		return
+	}
+	if t.term != nil {
+		a.removeTerminal(t.term)
+		done()
+		return
+	}
+	doc := t.ed.document
+	remove := func() {
+		if col, _ := a.locate(t); col != nil {
+			a.dropTab(t)
+			a.focusColumn()
+			a.rememberTabs()
+		}
+		done()
+	}
+	if !doc.dirty() || len(doc.views) > 1 {
+		remove()
+		return
+	}
+	a.host.confirmClose(doc.name(), func(choice int) {
+		switch choice {
+		case 0:
+			a.saveDoc(doc, remove)
+		case 1:
+			remove()
+		}
+	})
+}
+
+// closeTabs closes tabs from the last, asking about each changed
+// document, then calls then unless one stayed open.
+func (a *app) closeTabs(tabs []*colTab, then func()) {
+	if len(tabs) == 0 {
+		if then != nil {
+			then()
+		}
+		return
+	}
+	n := len(tabs) - 1
+	a.closeTab(tabs[n], func() { a.closeTabs(tabs[:n], then) })
+}
+
+// closeAll closes every document, asking about each changed one, then
+// calls then unless one stayed open. Terminals stay.
+func (a *app) closeAll(then func()) { a.closeTabs(a.editorTabs(), then) }
+
+// closeOthers closes the tabs of a column other than keep, but those
+// whose changes would be lost.
+func (a *app) closeOthers(col *column, keep *colTab) {
+	for _, t := range slices.Clone(col.tabs) {
+		if t != keep && (t.ed == nil || !t.ed.dirty() || len(t.ed.views) > 1) {
+			a.closeTab(t, nil)
+		}
+	}
+	if col, i := a.locate(keep); col != nil {
+		a.activate(col, i, true)
+	}
+}
+
+// dropTab takes a tab out of its column, and the column with its last
+// tab unless it is the only one. A document goes with its last editor.
+func (a *app) dropTab(t *colTab) {
+	col, i := a.locate(t)
+	if col == nil {
+		return
+	}
+	col.take(i)
+	if t.ed != nil {
+		doc := t.ed.document
+		t.ed.release()
+		if len(doc.views) == 0 {
+			doc.hl.Close()
+			a.docs = slices.DeleteFunc(a.docs, func(d *document) bool { return d == doc })
+		}
+	}
+	if len(col.tabs) == 0 {
+		a.removeColumn(col)
+	}
+}
+
+// removeColumn takes a column away, unless it is the only one: the others
+// share its room.
+func (a *app) removeColumn(col *column) {
+	i := slices.Index(a.cols, col)
+	if i < 0 || len(a.cols) < 2 {
+		return
+	}
+	a.cols = slices.Delete(a.cols, i, i+1)
+	if a.col > i || a.col == len(a.cols) {
+		a.col--
+	}
+}
+
+// splitColumn opens a column beside col, before it or after, with half
+// of its room.
+func (a *app) splitColumn(col *column, after bool) *column {
+	nc := a.newColumn()
+	col.weight /= 2
+	nc.weight = col.weight
+	at := max(slices.Index(a.cols, col), 0)
+	if after {
+		at++
+	}
+	a.cols = slices.Insert(a.cols, at, nc)
+	if a.col >= at {
+		a.col++
+	}
+	return nc
+}
+
+// splitRight opens a column to the right of the one that has the
+// keyboard, showing its document again where it is scrolled, or a new
+// terminal beside a terminal.
+func (a *app) splitRight() {
+	col := a.column()
+	t := col.tab()
+	if t == nil {
+		return
+	}
+	nc := a.splitColumn(col, true)
+	if t.term != nil {
+		if !a.newTerminalTab(nc, t.term.dir, true) {
+			col.weight *= 2
+			a.removeColumn(nc)
+		}
+		return
+	}
+	ed := newEditor(t.ed.document)
+	ed.sel, ed.caret = t.ed.sel, t.ed.caret
+	ed.vscroll.Y, ed.hscroll.X = t.ed.vscroll.Y, t.ed.hscroll.X
+	a.addTab(nc, 0, &colTab{ed: ed})
+	a.activate(nc, 0, true)
+}
+
+// moveTab moves a tab to place at of a column, which may be its own, and
+// shows it there. A column that shows the tab's document already keeps
+// its own tab of it, and the one moved goes.
+func (a *app) moveTab(t *colTab, to *column, at int) {
+	from, i := a.locate(t)
+	if from == nil || slices.Index(a.cols, to) < 0 {
+		return
+	}
+	if t.ed != nil && from != to {
+		if j := to.showing(t.ed.document); j >= 0 {
+			keep := to.tabs[j]
+			a.dropTab(t)
+			if col, k := a.locate(keep); col != nil {
+				a.activate(col, k, true)
+			}
+			return
+		}
+	}
+	from.take(i)
+	if from == to && at > i {
+		at--
+	}
+	at = min(max(at, 0), len(to.tabs))
+	to.tabs = slices.Insert(to.tabs, at, t)
+	if from != to {
+		if t.ed != nil {
+			t.ed.caretSeen = false // its text area is a new one there
+		}
+		if len(from.tabs) == 0 {
+			a.removeColumn(from)
+		}
+	}
+	a.activate(to, at, true)
+}
+
+// moveTabBy moves the tab shown to the column step columns after its
+// own, or to a new one past the last or before the first.
+func (a *app) moveTabBy(step int) {
+	col := a.column()
+	t := col.tab()
+	if t == nil {
+		return
+	}
+	switch to := a.col + step; {
+	case to >= 0 && to < len(a.cols):
+		a.moveTab(t, a.cols[to], len(a.cols[to].tabs))
+	case len(col.tabs) > 1:
+		a.moveTab(t, a.splitColumn(col, step > 0), 0)
+	}
+}
+
+// rememberTabs keeps the columns and the files open in them in the
+// settings.
+func (a *app) rememberTabs() {
+	s := a.settings
+	cols := make([]columnState, 0, len(a.cols))
+	for _, col := range a.cols {
+		cs := columnState{Tabs: []tabState{}, Active: -1, Weight: col.weight}
+		for i, t := range col.tabs {
+			switch {
+			case t.term != nil:
+				cs.Tabs = append(cs.Tabs, tabState{Terminal: true})
+			case t.ed.path != "":
+				cs.Tabs = append(cs.Tabs, tabState{File: t.ed.path})
+			default:
+				continue
+			}
+			if i == col.active {
+				cs.Active = len(cs.Tabs) - 1
+			}
+		}
+		cols = append(cols, cs)
+	}
+	s.Columns, s.Column = cols, a.col
+	s.OpenFiles, s.ActiveFile = nil, ""
+	s.changed()
+}
+
+// restoreTabs opens the columns of the last session and their files, and
+// starts a terminal where one was.
+func (a *app) restoreTabs() {
+	s := a.settings
+	saved, focused := s.Columns, s.Column
+	if len(saved) == 0 && len(s.OpenFiles) > 0 {
+		// The settings of a version without columns: the files of one.
+		cs := columnState{Active: -1, Weight: 1}
+		for _, p := range s.OpenFiles {
+			if p == s.ActiveFile {
+				cs.Active = len(cs.Tabs)
+			}
+			cs.Tabs = append(cs.Tabs, tabState{File: p})
+		}
+		saved, focused = []columnState{cs}, 0
+	}
+	at := -1 // the column to give the keyboard
+	for i, cs := range saved {
+		col := a.cols[len(a.cols)-1]
+		if len(col.tabs) > 0 {
+			col = a.newColumn()
+			a.cols = append(a.cols, col)
+		}
+		a.col = len(a.cols) - 1
+		if cs.Weight > 0 {
+			col.weight = cs.Weight
+		}
+		// Opening each makes it the tab shown: keep the one to show.
+		var shown *colTab
+		for k, ts := range cs.Tabs {
+			n := len(col.tabs)
+			switch {
+			case ts.Terminal:
+				if a.root != "" {
+					a.newTerminalTab(col, a.root, false)
+				}
+			case ts.File != "":
+				if _, err := os.Stat(ts.File); err == nil {
+					a.openFile(ts.File, false)
+				}
+			}
+			if k == cs.Active && len(col.tabs) > n {
+				shown = col.tab()
+			}
+		}
+		if _, k := a.locate(shown); k >= 0 {
+			a.activate(col, k, false)
+		}
+		if i == focused && len(col.tabs) > 0 {
+			at = len(a.cols) - 1
+		}
+	}
+	// A column whose files are gone goes too.
+	if last := a.cols[len(a.cols)-1]; len(last.tabs) == 0 {
+		a.removeColumn(last)
+	}
+	if at >= 0 && at < len(a.cols) {
+		a.col = at
+	}
+	a.column()
+	a.rememberTabs()
+}

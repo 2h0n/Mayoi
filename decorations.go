@@ -12,7 +12,7 @@ import (
 
 // decorations are what the editor paints around the text of the lines in
 // view: the indent guides, the brackets paired at the caret and the other
-// occurrences of the word at it. A document keeps the last it found, and
+// occurrences of the word at it. An editor keeps the last it found, and
 // finds them again only when its text, its caret or its view changes.
 type decorations struct {
 	version     uint64
@@ -41,7 +41,7 @@ const (
 )
 
 // decorate finds the decorations of lines first up to last of a snapshot.
-func (a *app) decorate(d *document, snap ui.TextSnapshot, first, last int) *decorations {
+func (a *app) decorate(d *editor, snap ui.TextSnapshot, first, last int) *decorations {
 	dc := &d.deco
 	if dc.version == snap.Version() && dc.sel == d.sel && dc.first == first && dc.last == last && dc.levels != nil {
 		return dc
@@ -192,7 +192,7 @@ func isWordRune(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode
 
 // findWords finds, on the lines in view, the other occurrences of the
 // word at the caret, or of the text selected on one line.
-func (a *app) findWords(d *document, snap ui.TextSnapshot, first, last int) {
+func (a *app) findWords(d *editor, snap ui.TextSnapshot, first, last int) {
 	dc := &d.deco
 	if a.find.open && len(a.find.matches) > 0 {
 		return // find shows its matches instead
@@ -288,7 +288,7 @@ type gitRun struct {
 }
 
 // gitRuns returns the runs of the lines changed since the last commit.
-func (d *document) gitRuns() []gitRun {
+func (d *editor) gitRuns() []gitRun {
 	ov, g := &d.overview, &d.git
 	if ov.gitVersion == g.version && ov.gitLines == len(g.marks) && ov.git != nil {
 		return ov.git
@@ -314,7 +314,7 @@ func (d *document) gitRuns() []gitRun {
 
 // overviewRows returns where find's matches are, as fractions of the
 // document's height, one per pixel row of a strip h high.
-func (a *app) overviewRows(d *document, snap ui.TextSnapshot, h float32) []float32 {
+func (a *app) overviewRows(d *editor, snap ui.TextSnapshot, h float32) []float32 {
 	f := &a.find
 	ov := &d.overview
 	if !f.open || f.doc != d.id || len(f.matches) == 0 || h <= 0 {
@@ -351,7 +351,7 @@ type whitespaceMark struct {
 
 // selectedWhitespace returns the spaces and tabs selected on lines first
 // up to last.
-func (a *app) selectedWhitespace(d *document, snap ui.TextSnapshot, first, last int) []whitespaceMark {
+func (a *app) selectedWhitespace(d *editor, snap ui.TextSnapshot, first, last int) []whitespaceMark {
 	sa, sb := min(d.sel[0], d.sel[1]), max(d.sel[0], d.sel[1])
 	n := snap.Len()
 	sa, sb = min(sa, n), min(sb, n)

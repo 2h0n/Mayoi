@@ -86,7 +86,7 @@ func main() {
 			if p, err := filepath.Abs(os.Args[1]); err == nil {
 				if info, err := os.Stat(p); err == nil {
 					if info.IsDir() {
-						s.Folder, s.OpenFiles, s.ActiveFile = p, nil, ""
+						s.Folder, s.Columns, s.OpenFiles, s.ActiveFile = p, nil, nil, ""
 					} else {
 						openPath = p
 					}

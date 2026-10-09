@@ -13,9 +13,9 @@ type command struct {
 }
 
 func (a *app) commands() []command {
-	doc := func(fn func(d *document)) func() {
+	doc := func(fn func(d *editor)) func() {
 		return func() {
-			if d := a.activeDoc(); d != nil {
+			if d := a.activeEditor(); d != nil {
 				fn(d)
 			}
 		}
@@ -30,24 +30,24 @@ func (a *app) commands() []command {
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
 		// control, the editor's history or a text field's.
-		{"edit.undo", "Undo", "", a.editActive(func(d *document) { d.undo() })},
-		{"edit.redo", "Redo", "", a.editActive(func(d *document) { d.redo() })},
+		{"edit.undo", "Undo", "", a.editActive(func(d *editor) { d.undo() })},
+		{"edit.redo", "Redo", "", a.editActive(func(d *editor) { d.redo() })},
 		{"edit.find", "Find", "CmdOrCtrl+F", func() { a.openFind(false) }},
 		{"edit.replace", "Replace", "Alt+CmdOrCtrl+F", func() { a.openFind(true) }},
-		{"edit.findNext", "Find Next", "CmdOrCtrl+G", doc(func(d *document) { a.find.open = true; a.step(d, 1) })},
-		{"edit.findPrev", "Find Previous", "Shift+CmdOrCtrl+G", doc(func(d *document) { a.find.open = true; a.step(d, -1) })},
+		{"edit.findNext", "Find Next", "CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, 1) })},
+		{"edit.findPrev", "Find Previous", "Shift+CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, -1) })},
 		{"sel.comment", "Toggle Line Comment", "CmdOrCtrl+/", a.editActive(toggleComment)},
-		{"sel.indent", "Indent Lines", "CmdOrCtrl+]", a.editActive(func(d *document) { indentLines(d, false) })},
-		{"sel.outdent", "Outdent Lines", "CmdOrCtrl+[", a.editActive(func(d *document) { indentLines(d, true) })},
+		{"sel.indent", "Indent Lines", "CmdOrCtrl+]", a.editActive(func(d *editor) { indentLines(d, false) })},
+		{"sel.outdent", "Outdent Lines", "CmdOrCtrl+[", a.editActive(func(d *editor) { indentLines(d, true) })},
 		// The arrows with Alt are the editor's own keys, which the terminal
 		// takes too.
-		{"sel.moveUp", "Move Line Up", "", a.editActive(func(d *document) { moveLines(d, false) })},
-		{"sel.moveDown", "Move Line Down", "", a.editActive(func(d *document) { moveLines(d, true) })},
-		{"sel.copyUp", "Copy Line Up", "", a.editActive(func(d *document) { copyLines(d, false) })},
-		{"sel.copyDown", "Copy Line Down", "", a.editActive(func(d *document) { copyLines(d, true) })},
+		{"sel.moveUp", "Move Line Up", "", a.editActive(func(d *editor) { moveLines(d, false) })},
+		{"sel.moveDown", "Move Line Down", "", a.editActive(func(d *editor) { moveLines(d, true) })},
+		{"sel.copyUp", "Copy Line Up", "", a.editActive(func(d *editor) { copyLines(d, false) })},
+		{"sel.copyDown", "Copy Line Down", "", a.editActive(func(d *editor) { copyLines(d, true) })},
 		{"sel.deleteLine", "Delete Line", "Shift+CmdOrCtrl+K", a.editActive(deleteLines)},
-		{"sel.lineBelow", "Insert Line Below", "", a.editActive(func(d *document) { insertLine(d, false) })},
-		{"sel.lineAbove", "Insert Line Above", "", a.editActive(func(d *document) { insertLine(d, true) })},
+		{"sel.lineBelow", "Insert Line Below", "", a.editActive(func(d *editor) { insertLine(d, false) })},
+		{"sel.lineAbove", "Insert Line Above", "", a.editActive(func(d *editor) { insertLine(d, true) })},
 		{"sel.line", "Select Line", "CmdOrCtrl+L", a.editActive(selectLines)},
 		{"go.bracket", "Go to Bracket", "Shift+CmdOrCtrl+\\", a.editActive(goToBracket)},
 		{"go.quickOpen", "Quick Open…", "CmdOrCtrl+P", func() { a.openQuick("") }},
@@ -58,6 +58,13 @@ func (a *app) commands() []command {
 		{"view.sidebar", "Toggle Sidebar", "CmdOrCtrl+B", a.toggleSidebar},
 		{"view.terminal", "Toggle Terminal", "Ctrl+`", a.togglePanel},
 		{"view.newTerminal", "New Terminal", "Ctrl+Shift+`", a.newTerminal},
+		{"view.terminalTab", "New Terminal in Editor Area", "", func() { a.newTerminalTab(a.column(), a.workDir(), true) }},
+		{"view.terminalMove", "Move Terminal to Editor Area or Panel", "", a.moveTerminal},
+		{"view.splitRight", "Split Right", "CmdOrCtrl+\\", a.splitRight},
+		{"view.nextColumn", "Focus Next Column", "Alt+CmdOrCtrl+Right", func() { a.focusColumnBy(1) }},
+		{"view.prevColumn", "Focus Previous Column", "Alt+CmdOrCtrl+Left", func() { a.focusColumnBy(-1) }},
+		{"view.moveTabNext", "Move Tab to Next Column", "", func() { a.moveTabBy(1) }},
+		{"view.moveTabPrev", "Move Tab to Previous Column", "", func() { a.moveTabBy(-1) }},
 		{"view.zoomIn", "Bigger Text", "CmdOrCtrl+=", func() { a.zoom(1) }},
 		{"view.zoomOut", "Smaller Text", "CmdOrCtrl+-", func() { a.zoom(-1) }},
 		{"view.zoomReset", "Actual Size", "CmdOrCtrl+0", func() { a.zoom(0) }},
@@ -80,13 +87,28 @@ func (a *app) chooseFolder() {
 	a.host.openFolder(func(dir string) { a.openFolder(dir) })
 }
 
-// closeActive closes the tab shown, or the window when there is none.
+// closeActive closes the tab shown in the column that has the keyboard,
+// or the window when there is none.
 func (a *app) closeActive() {
-	if a.active < 0 {
+	t := a.activeTab()
+	if t == nil {
 		a.host.closeWindow()
 		return
 	}
-	a.closeDoc(a.active, nil)
+	a.closeTab(t, nil)
+}
+
+// moveTerminal moves the terminal that has the keyboard, or had it last,
+// from the panel to a tab of the column, or from its tab to the panel.
+func (a *app) moveTerminal() {
+	switch t := a.activeTab(); {
+	case a.focus == paneTerminal && a.panelTerm != nil:
+		a.terminalToColumn(a.panelTerm, a.column(), a.column().active+1)
+	case t != nil && t.term != nil:
+		a.terminalToPanel(t.term)
+	case a.panelTerm != nil:
+		a.terminalToColumn(a.panelTerm, a.column(), a.column().active+1)
+	}
 }
 
 // setAppearance makes the window light, dark, or follow the system for
@@ -147,7 +169,10 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
-			item("view.sidebar"), item("view.terminal"), item("view.newTerminal"), mygo.Separator(),
+			item("view.sidebar"), mygo.Separator(),
+			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),
+			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),
+			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"), mygo.Separator(),
 			item("view.zoomIn"), item("view.zoomOut"), item("view.zoomReset"), mygo.Separator(),
 			{Label: "Appearance", Submenu: []*mygo.MenuItem{
 				radio("view.appearance.system", ""), radio("view.appearance.light", "light"), radio("view.appearance.dark", "dark"),
@@ -164,13 +189,14 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 
 // shortcuts are the keys the view takes itself.
 func (a *app) shortcuts(c *ui.Context) {
-	// Cmd+1…9 shows a tab, as in browsers.
+	// Cmd+1…9 shows a tab of the column, as in browsers.
 	for i, k := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
 		if c.Shortcut(ui.Cmd, k) {
+			col := a.column()
 			if k == ui.Key9 {
-				i = len(a.docs) - 1
+				i = len(col.tabs) - 1
 			}
-			a.activate(i, true)
+			a.activate(col, i, true)
 		}
 	}
 }

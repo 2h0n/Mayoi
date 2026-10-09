@@ -127,7 +127,7 @@ func TestOpenFolderShowsTreeAndOpensFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	hs.settle()
-	d := a.activeDoc()
+	d := a.activeEditor()
 	if d == nil || d.path != hs.path("main.go") {
 		t.Fatalf("active doc %v after clicking main.go", d)
 	}
@@ -152,7 +152,7 @@ func TestEditSaveAndDirtyClose(t *testing.T) {
 	hs.settle()
 	tt.Type("Hello ")
 	hs.settle()
-	d := a.activeDoc()
+	d := a.activeEditor()
 	if !d.dirty() || !strings.HasPrefix(d.buf.String(), "Hello # Mayoi") {
 		t.Fatalf("typed: dirty %v text %q", d.dirty(), d.buf.String())
 	}
@@ -200,10 +200,10 @@ func TestExternalChangeReloadsCleanDocument(t *testing.T) {
 	hs.settle()
 	os.WriteFile(hs.path("go.mod"), []byte("module changed\n"), 0o644)
 	deadline := time.Now().Add(5 * time.Second)
-	for a.activeDoc().buf.String() != "module changed\n" && time.Now().Before(deadline) {
+	for a.activeEditor().buf.String() != "module changed\n" && time.Now().Before(deadline) {
 		hs.settle()
 	}
-	if got := a.activeDoc().buf.String(); got != "module changed\n" {
+	if got := a.activeEditor().buf.String(); got != "module changed\n" {
 		t.Errorf("not reloaded: %q", got)
 	}
 }
@@ -226,7 +226,7 @@ func TestQuickOpenAndGoToLine(t *testing.T) {
 	hs.shot("03-quick-open")
 	tt.Key(0, ui.KeyEnter)
 	hs.settle()
-	if d := a.activeDoc(); d == nil || filepath.Base(d.path) != "b.ts" {
+	if d := a.activeEditor(); d == nil || filepath.Base(d.path) != "b.ts" {
 		t.Fatalf("quick open opened %v", d)
 	}
 	if a.quick.open {
@@ -240,7 +240,7 @@ func TestQuickOpenAndGoToLine(t *testing.T) {
 	tt.Type("6")
 	tt.Key(0, ui.KeyEnter)
 	hs.settle()
-	d := a.activeDoc()
+	d := a.activeEditor()
 	if line := d.buf.Snapshot().LineAt(d.caret); line != 5 {
 		t.Errorf("caret on line %d, want 5", line)
 	}
@@ -265,15 +265,15 @@ func TestFindAndReplace(t *testing.T) {
 		t.Errorf("current match %d after Enter", a.find.cur)
 	}
 	a.find.with = "entry"
-	a.replaceAll(a.activeDoc())
+	a.replaceAll(a.activeEditor())
 	hs.settle()
-	if got := a.activeDoc().buf.String(); strings.Contains(got, "main") || strings.Count(got, "entry") != 3 {
+	if got := a.activeEditor().buf.String(); strings.Contains(got, "main") || strings.Count(got, "entry") != 3 {
 		t.Errorf("after replace all: %q", got)
 	}
 	// Regular expressions, with groups.
 	a.find.regex, a.find.query, a.find.with, a.find.stale = true, `fmt\.(\w+)`, "log.$1", true
-	a.replaceAll(a.activeDoc())
-	if got := a.activeDoc().buf.String(); !strings.Contains(got, "log.Println") {
+	a.replaceAll(a.activeEditor())
+	if got := a.activeEditor().buf.String(); !strings.Contains(got, "log.Println") {
 		t.Errorf("regexp replace: %q", got)
 	}
 	tt.Key(0, ui.KeyEscape)
@@ -294,7 +294,7 @@ func TestNewFileAndRenameFromTheTree(t *testing.T) {
 	if _, err := os.Stat(hs.path("notes/todo.md")); err != nil {
 		t.Fatal(err)
 	}
-	if d := a.activeDoc(); d == nil || d.path != hs.path("notes/todo.md") {
+	if d := a.activeEditor(); d == nil || d.path != hs.path("notes/todo.md") {
 		t.Fatalf("new file not open: %v", d)
 	}
 	a.askRename(hs.path("notes/todo.md"))
@@ -307,7 +307,7 @@ func TestNewFileAndRenameFromTheTree(t *testing.T) {
 	if _, err := os.Stat(hs.path("notes/done.md")); err != nil {
 		t.Fatal(err)
 	}
-	if d := a.activeDoc(); d.path != hs.path("notes/done.md") {
+	if d := a.activeEditor(); d.path != hs.path("notes/done.md") {
 		t.Errorf("open document did not follow the rename: %s", d.path)
 	}
 }
@@ -321,7 +321,7 @@ func TestTabsKeepTheirState(t *testing.T) {
 	a.openFile(hs.path("README.md"), true)
 	hs.settle()
 	tt.Type("y")
-	a.activate(0, true)
+	a.activate(a.column(), 0, true)
 	hs.settle()
 	// Undo in the first tab undoes its own edit, after the other tab's.
 	tt.Key(ui.Cmd, ui.KeyZ)
@@ -333,8 +333,8 @@ func TestTabsKeepTheirState(t *testing.T) {
 		t.Error("the second tab lost its edit")
 	}
 	a.cycleTab(1)
-	if a.active != 1 {
-		t.Errorf("active %d after the next tab", a.active)
+	if got := a.column().active; got != 1 {
+		t.Errorf("active %d after the next tab", got)
 	}
 	hs.shot("06-tabs")
 }
@@ -362,8 +362,8 @@ func TestPanelWithTerminal(t *testing.T) {
 	}
 	a.run("view.newTerminal")
 	hs.settle()
-	if len(a.terms) != 2 || a.term != 1 {
-		t.Errorf("second terminal: %d, active %d", len(a.terms), a.term)
+	if len(a.terms) != 2 || a.panelTerm != a.terms[1] {
+		t.Errorf("second terminal: %d, the panel shows the first", len(a.terms))
 	}
 	hs.shot("07-terminal")
 	a.closeTerminals()
@@ -420,7 +420,7 @@ func TestLayoutChangesKeepEditorState(t *testing.T) {
 	hs.settle()
 	tt.Type("// edit\n")
 	hs.settle()
-	caret := a.activeDoc().caret
+	caret := a.activeEditor().caret
 	a.run("view.sidebar")
 	hs.settle()
 	a.settings.PanelOpen = true
@@ -430,7 +430,7 @@ func TestLayoutChangesKeepEditorState(t *testing.T) {
 	a.panelMax, a.settings.PanelOpen = false, false
 	a.run("view.sidebar")
 	hs.settle()
-	d := a.activeDoc()
+	d := a.activeEditor()
 	if d.caret != caret {
 		t.Errorf("caret %d after layout changes, was %d", d.caret, caret)
 	}
@@ -462,16 +462,18 @@ func TestRestoresTheActiveTab(t *testing.T) {
 	root := workspaceFixture(t)
 	s := defaultSettings()
 	s.Folder = root
-	s.OpenFiles = []string{filepath.Join(root, "main.go"), filepath.Join(root, "README.md"), filepath.Join(root, "go.mod")}
-	s.ActiveFile = filepath.Join(root, "README.md")
+	// The tabs as a version without columns kept them.
+	files := []string{filepath.Join(root, "main.go"), filepath.Join(root, "README.md"), filepath.Join(root, "go.mod")}
+	s.OpenFiles, s.ActiveFile = files, files[1]
 	a := newApp(&fakeHost{folder: root}, s)
 	tt := ui.NewTester(a.view, 1200, 760)
 	tt.Frame()
 	tt.Frame()
-	if d := a.activeDoc(); d == nil || d.path != s.OpenFiles[1] {
+	if d := a.activeEditor(); d == nil || d.path != files[1] {
 		t.Fatalf("active %v, want README.md", d)
 	}
-	if len(a.docs) != 3 || a.docs[0].path != s.OpenFiles[0] || a.docs[2].path != s.OpenFiles[2] {
+	tabs := a.column().tabs
+	if len(a.cols) != 1 || len(tabs) != 3 || tabs[0].ed.path != files[0] || tabs[2].ed.path != files[2] {
 		t.Fatalf("tabs out of order")
 	}
 }

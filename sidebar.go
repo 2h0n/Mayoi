@@ -69,7 +69,7 @@ func (a *app) fileTree(c *ui.Context) {
 		return kids
 	}
 	activePath := ""
-	if d := a.activeDoc(); d != nil {
+	if d := a.activeEditor(); d != nil {
 		activePath = d.path
 	}
 	// Follow the document shown: open the folders above it and choose it.

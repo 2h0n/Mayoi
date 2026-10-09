@@ -24,12 +24,32 @@ type settings struct {
 	Appearance string   `json:"appearance,omitempty"`
 	Folder     string   `json:"folder"`
 	Recent     []string `json:"recent"`
-	OpenFiles  []string `json:"openFiles"`
-	ActiveFile string   `json:"activeFile"`
+	// Columns are the columns of the editor area and what their tabs
+	// show, and Column the one that had the keyboard.
+	Columns []columnState `json:"columns,omitempty"`
+	Column  int           `json:"column,omitempty"`
+	// OpenFiles and ActiveFile are the tabs as a version without columns
+	// kept them, which the next start opens in one.
+	OpenFiles  []string `json:"openFiles,omitempty"`
+	ActiveFile string   `json:"activeFile,omitempty"`
 
 	path  string
 	mu    sync.Mutex
 	timer *time.Timer
+}
+
+// columnState is a column of the editor area, as the settings keep it.
+type columnState struct {
+	Tabs   []tabState `json:"tabs"`
+	Active int        `json:"active"`
+	Weight float32    `json:"weight"`
+}
+
+// tabState is a tab: the file it shows, or a terminal, which the next
+// start opens anew.
+type tabState struct {
+	File     string `json:"file,omitempty"`
+	Terminal bool   `json:"terminal,omitempty"`
 }
 
 func defaultSettings() *settings {

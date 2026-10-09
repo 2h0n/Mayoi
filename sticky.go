@@ -90,7 +90,7 @@ type scopeCache struct {
 
 // scopesOf returns scopes of a line of d, from its cache when the text is
 // the same.
-func (d *document) scopesOf(snap ui.TextSnapshot, line int) []int {
+func (d *editor) scopesOf(snap ui.TextSnapshot, line int) []int {
 	sc := &d.scopes
 	if sc.version != snap.Version() || sc.lines == nil || len(sc.lines) > 64 {
 		sc.version, sc.lines = snap.Version(), map[int][]int{}
@@ -145,7 +145,7 @@ type stickyRow struct {
 }
 
 // stickyRows builds the rows of the lines that stick.
-func (a *app) stickyRows(d *document, snap ui.TextSnapshot, lines []int) []stickyRow {
+func (a *app) stickyRows(d *editor, snap ui.TextSnapshot, lines []int) []stickyRow {
 	p, f := a.pal, a.font
 	rows := make([]stickyRow, 0, len(lines))
 	for _, i := range lines {
@@ -194,7 +194,7 @@ type stickyCache struct {
 	out          []stickyRow
 }
 
-func (sc *stickyCache) rows(a *app, d *document, snap ui.TextSnapshot, lines []int) []stickyRow {
+func (sc *stickyCache) rows(a *app, d *editor, snap ui.TextSnapshot, lines []int) []stickyRow {
 	gen := d.hl.Gen()
 	if sc.version == snap.Version() && sc.gen == gen && sc.pal == a.pal && sc.font == a.font && slices.Equal(sc.lines, lines) {
 		return sc.out

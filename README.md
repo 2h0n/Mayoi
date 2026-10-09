@@ -9,10 +9,11 @@ native UI on the GPU. It has no webview and no Electron. The packaged app is abo
   - **Undo:** each tab keeps its own history, and it covers the app's edits as well as typing: indenting, moving lines, replacing, and reloading from disk can all be undone. Undoing back to the saved text makes the tab clean again.
   - **Reading:** indent guides, with the caret's block brighter. The bracket paired with the one at the caret is boxed, and other occurrences of the word at the caret are highlighted. The selection has rounded corners, shows its spaces and tabs, and stays in sight, fainter, while the keyboard is elsewhere. Sticky scroll pins the lines that open the blocks in view to the top, and the breadcrumbs name the caret's blocks. Clicking either jumps there.
   - **Git:** the gutter marks lines added, changed or removed since the last commit. A strip along the right edge shows these changes, find's matches and the caret for the whole file.
-- **Terminal panel:** Ghostty's emulator (libghostty-vt). You can run several terminals, maximize the panel, and colors follow the theme.
+- **Columns:** the editor splits into columns side by side, each with its own tabs, and a handle between two resizes them. A file shows in several columns at once: they share its text and its undo history, and each keeps its own caret and place. Drag a tab along its strip, to another column, or to the side of one for a column of its own.
+- **Terminal:** Ghostty's emulator (libghostty-vt), in the panel or in a tab of a column. You can run several terminals, move one between the panel and a column by dragging it or from its menu, maximize the panel, and colors follow the theme.
 - **Quick open** (⌘P, or the search box in the title bar): fuzzy file search, with recent files first. In a Git work tree it lists what Git does, so build output stays out. Type `:42` to go to a line, or `@` for the file's functions, types and headings.
 - **Find and replace** (⌘F, ⌥⌘F): match case, whole word, and regular expressions with `$1` groups. In a large file the matches are found in the background as you type.
-- **Persistence:** follows the system's light or dark mode, or the one chosen in View → Appearance. It remembers the sidebar and panel sizes, the folder, and the open tabs.
+- **Persistence:** follows the system's light or dark mode, or the one chosen in View → Appearance. It remembers the sidebar and panel sizes, the folder, and the columns with their tabs.
 
 ## Run
 
@@ -35,6 +36,7 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | ⌘F / ⌥⌘F / ⌘G | Find / replace / next match |
 | ⌘S / ⇧⌘S / ⌥⌘S | Save / save as / save all |
 | ⌘N / ⌘W / ⌘1…9 / ⌃Tab | New file / close tab / show tab / next tab |
+| ⌘\\ / ⌥⌘→ / ⌥⌘← | Split right / next column / previous column |
 | ⌘B / ⌃\` / ⌃⇧\` | Sidebar / terminal panel / new terminal |
 | ⌘Z / ⇧⌘Z | Undo / redo |
 | Tab / ⇧Tab, ⌘] / ⌘[ | Indent / outdent |
@@ -55,8 +57,9 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | `editor.go` | The editor is a `TextAreaBufferBase` that never wraps, inside a container that scrolls sideways. Every line has the same height, so line numbers are painted into its left padding at paint time and stay in step while scrolling. Only the lines in view get `TextRanges` colors, kept from frame to frame and merged into as few ranges as color the same runes. |
 | `internal/highlight` | Chroma lexing on a background goroutine: the whole file up to 6,000 lines, and a window around the view beyond that. A line whose text has changed shows plain until the next pass, so stale colors never land on the wrong text. |
 | `internal/workspace` | Directories are read as they open and watched with fsnotify, with bursts of changes batched. Also the file index and the fuzzy matcher for quick open. |
-| `view.go` | The layout. The sidebar, editor and panel keep stable keys as panes come and go, so editors never lose their state. |
-| `app.go`, `commands.go` | State, documents and commands. Menus, accelerators and tests all run the same commands. |
+| `document.go`, `columns.go` | A document is a file's text, its undo history and its Git marks; an editor is a document as one tab shows it, with its own selection, scroll and paint caches. A column holds tabs, each an editor or a terminal. Typing is credited to the editor that has the keyboard, and the selections of the document's other editors move with the text. A text area scrolls to its caret when its text changes under it, so an editor without the keyboard parks the area's caret in view and keeps its own selection, and stays where it is scrolled. |
+| `view.go` | The layout. The sidebar, the columns and the panel keep stable keys as panes come and go, so editors never lose their state. Tabs are dragged as values within the window; the places a column takes one show only during a drag. |
+| `app.go`, `commands.go` | State and commands. Menus, accelerators and tests all run the same commands. |
 | `theme.go` | The palette, light and dark, for the window, the code and the terminal. |
 
 Measured in tests on an M-series Mac, a 100,000-line file opens in about 20 ms. Scrolling and typing cost under 2 ms per frame, guides, sticky lines and Git marks included, and about 3 ms with find open on it. Quick open searches 100,000 paths in about 1.5 ms.

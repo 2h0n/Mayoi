@@ -24,7 +24,7 @@ func TestFindInLargeFileStaysQuick(t *testing.T) {
 	a.find.query = "return x"
 	a.openFind(false)
 	hs.settle()
-	a.activeDoc().vscroll.Focus()
+	a.activeEditor().vscroll.Focus()
 	hs.settle()
 	start := time.Now()
 	const n = 30
@@ -36,7 +36,7 @@ func TestFindInLargeFileStaysQuick(t *testing.T) {
 
 	// The matches found in the background are those of the text as it is.
 	tt.Type(" return x")
-	d := a.activeDoc()
+	d := a.activeEditor()
 	for deadline := time.Now().Add(10 * time.Second); a.find.version != d.buf.Version() && time.Now().Before(deadline); {
 		hs.settle()
 	}

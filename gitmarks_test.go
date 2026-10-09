@@ -30,7 +30,7 @@ func TestGitMarksFollowEdits(t *testing.T) {
 	os.WriteFile(hs.path("m.txt"), []byte("a\nB\nc\nnew\nd\n"), 0o644)
 	hs.a.openFile(hs.path("m.txt"), true)
 	hs.settle()
-	d := hs.a.activeDoc()
+	d := hs.a.activeEditor()
 	want := []linediff.Kind{0, linediff.Modified, 0, linediff.Added, 0, 0}
 	if !slices.Equal(d.git.marks, want) {
 		t.Fatalf("marks %v, want %v (loaded %v, base %q)", d.git.marks, want, d.git.loaded, d.git.base)
@@ -75,7 +75,7 @@ func TestTypingInLargeTrackedFile(t *testing.T) {
 	}
 	hs.a.openFile(hs.path("big.go"), true)
 	hs.settle()
-	d := hs.a.activeDoc()
+	d := hs.a.activeEditor()
 	d.vscroll.Y = 50_000 * hs.a.font.lineH
 	hs.place(d, d.buf.Len()/2, d.buf.Len()/2)
 	start := time.Now()

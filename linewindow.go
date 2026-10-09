@@ -49,7 +49,7 @@ func (w *lineWindow) covers(from, to int) bool {
 // snapshot of d, clamped to it. The window is read with as many lines
 // again around it and kept, so that the frames that follow, scrolling
 // line by line, find theirs in it.
-func (d *document) window(snap ui.TextSnapshot, from, to int) *lineWindow {
+func (d *editor) window(snap ui.TextSnapshot, from, to int) *lineWindow {
 	from, to = max(from, 0), min(to, snap.LineCount())
 	if w := d.win; w != nil && d.winVersion == snap.Version() && w.covers(from, to) {
 		return w

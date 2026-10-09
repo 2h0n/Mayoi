@@ -48,7 +48,7 @@ func (f *findState) pattern() string {
 // when it is on one line.
 func (a *app) openFind(replace bool) {
 	f := &a.find
-	if d := a.activeDoc(); d != nil {
+	if d := a.activeEditor(); d != nil {
 		snap := d.buf.Snapshot()
 		if s, e := d.sel[0], d.sel[1]; s != e {
 			s, e = min(s, e), max(s, e)
@@ -65,9 +65,7 @@ func (a *app) openFind(replace bool) {
 
 func (a *app) closeFind() {
 	a.find.open = false
-	if d := a.activeDoc(); d != nil {
-		d.vscroll.Focus()
-	}
+	a.focusColumn()
 }
 
 // asyncSearchBytes is the size of a document past which find looks for
@@ -110,14 +108,14 @@ func scanMatches(re *regexp.Regexp, snap ui.TextSnapshot) [][2]int {
 
 // search finds the matches of the query in d, unless they were found for
 // its text as it is.
-func (a *app) search(d *document) {
+func (a *app) search(d *editor) {
 	a.searchIn(d, false)
 }
 
 // searchIn is search, which in the background, when async is set and d
 // is large, only changes the matches when they are found: until then the
 // matches of the text before the edit show.
-func (a *app) searchIn(d *document, async bool) {
+func (a *app) searchIn(d *editor, async bool) {
 	f := &a.find
 	snap := d.buf.Snapshot()
 	key := f.pattern()
@@ -125,6 +123,9 @@ func (a *app) searchIn(d *document, async bool) {
 		return
 	}
 	queryChanged := f.key != key || f.doc != d.id
+	// Another document shown, as in the column the keyboard moves to,
+	// shows its matches and keeps its selection.
+	sameQuery := f.key == key
 	if async && !queryChanged && f.re != nil && snap.ByteLen() > asyncSearchBytes {
 		if f.pending == snap.Version() && f.pendingDoc == d.id {
 			return // on its way
@@ -160,12 +161,15 @@ func (a *app) searchIn(d *document, async bool) {
 	}
 	f.re = re
 	a.applyMatches(d, scanMatches(re, snap), snap.Version(), queryChanged)
+	if sameQuery {
+		f.reveal = false
+	}
 }
 
 // applyMatches takes the matches found in a version of d's text, keeping
 // the current match in place, or choosing the first from the caret when
 // the query changed.
-func (a *app) applyMatches(d *document, matches [][2]int, version uint64, queryChanged bool) {
+func (a *app) applyMatches(d *editor, matches [][2]int, version uint64, queryChanged bool) {
 	f := &a.find
 	f.matches, f.version = matches, version
 	if queryChanged || f.cur >= len(f.matches) {
@@ -183,7 +187,7 @@ func (a *app) applyMatches(d *document, matches [][2]int, version uint64, queryC
 }
 
 // step moves to the next match, or the previous, round the ends.
-func (a *app) step(d *document, by int) {
+func (a *app) step(d *editor, by int) {
 	f := &a.find
 	a.search(d)
 	if len(f.matches) == 0 {
@@ -198,7 +202,7 @@ func (a *app) step(d *document, by int) {
 }
 
 // replaceOne replaces the current match, and goes to the next.
-func (a *app) replaceOne(d *document) {
+func (a *app) replaceOne(d *editor) {
 	f := &a.find
 	a.search(d)
 	if f.cur < 0 || f.cur >= len(f.matches) || f.re == nil {
@@ -221,7 +225,7 @@ func (a *app) replaceOne(d *document) {
 }
 
 // replaceAll replaces every match.
-func (a *app) replaceAll(d *document) {
+func (a *app) replaceAll(d *editor) {
 	f := &a.find
 	a.search(d)
 	if len(f.matches) == 0 || f.re == nil {
@@ -264,7 +268,7 @@ type matchRect struct {
 }
 
 // visibleMatches returns the matches on lines first up to last.
-func (a *app) visibleMatches(d *document, first, last int) []matchRect {
+func (a *app) visibleMatches(d *editor, first, last int) []matchRect {
 	f := &a.find
 	if !f.open || f.doc != d.id || len(f.matches) == 0 {
 		return nil
@@ -292,7 +296,7 @@ func (a *app) visibleMatches(d *document, first, last int) []matchRect {
 func (a *app) textWidth(s string) float32 { return a.font.width(s) }
 
 // findView is the find widget, over the top right of the editor.
-func (a *app) findView(c *ui.Context, d *document) {
+func (a *app) findView(c *ui.Context, d *editor) {
 	f := &a.find
 	if !f.open {
 		return

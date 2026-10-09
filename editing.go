@@ -152,7 +152,7 @@ func shiftSel(sel [2]int, at, delta int) [2]int {
 
 // indentLines indents the lines of a selection one level, or outdents
 // them, keeping the selection on the same text.
-func indentLines(d *document, outdent bool) {
+func indentLines(d *editor, outdent bool) {
 	snap := d.buf.Snapshot()
 	first, last := lineSpan(snap, d.sel)
 	unit := d.indent.unit()
@@ -205,7 +205,7 @@ func outdentWidth(line string, style indentStyle) int {
 
 // tab indents: the lines of a selection over several, or else the caret
 // to the next stop.
-func tab(d *document, outdent bool) {
+func tab(d *editor, outdent bool) {
 	snap := d.buf.Snapshot()
 	a, b := min(d.sel[0], d.sel[1]), max(d.sel[0], d.sel[1])
 	if outdent || snap.LineAt(min(a, snap.Len())) != snap.LineAt(min(b, snap.Len())) {
@@ -229,7 +229,7 @@ var pairs = map[byte]byte{'{': '}', '[': ']', '(': ')'}
 // one it leaves, and a level more after an opening bracket or a colon
 // that starts a block. Between brackets, the closing one goes to a line
 // of its own.
-func newline(d *document) {
+func newline(d *editor) {
 	snap := d.buf.Snapshot()
 	a, b := min(d.sel[0], d.sel[1]), max(d.sel[0], d.sel[1])
 	line := snap.LineAt(a)
@@ -247,7 +247,7 @@ func newline(d *document) {
 	if trimmed != "" {
 		last := trimmed[len(trimmed)-1]
 		closer, opens := pairs[last]
-		block := opens || last == ':' && opensColonBlock(d)
+		block := opens || last == ':' && opensColonBlock(d.document)
 		if block {
 			text += d.indent.unit()
 			caret = a + utf8.RuneCountInString(text)
@@ -280,8 +280,8 @@ func opensColonBlock(d *document) bool {
 
 // toggleComment comments the lines of the selection out, or in when all
 // of them are.
-func toggleComment(d *document) {
-	mark := commentFor(d)
+func toggleComment(d *editor) {
+	mark := commentFor(d.document)
 	if mark == "" {
 		return
 	}
@@ -340,7 +340,7 @@ func toggleComment(d *document) {
 }
 
 // moveLines moves the lines of the selection up a line, or down.
-func moveLines(d *document, down bool) {
+func moveLines(d *editor, down bool) {
 	snap := d.buf.Snapshot()
 	first, last := lineSpan(snap, d.sel)
 	lines := snap.LineCount()
@@ -365,7 +365,7 @@ func moveLines(d *document, down bool) {
 
 // copyLines puts a copy of the lines of the selection above them, or
 // below, selecting the copy.
-func copyLines(d *document, down bool) {
+func copyLines(d *editor, down bool) {
 	snap := d.buf.Snapshot()
 	first, last := lineSpan(snap, d.sel)
 	bs, _ := snap.LineRange(first)
@@ -380,7 +380,7 @@ func copyLines(d *document, down bool) {
 }
 
 // deleteLines deletes the lines of the selection.
-func deleteLines(d *document) {
+func deleteLines(d *editor) {
 	snap := d.buf.Snapshot()
 	first, last := lineSpan(snap, d.sel)
 	bs, _ := snap.LineRange(first)
@@ -405,7 +405,7 @@ func deleteLines(d *document) {
 }
 
 // insertLine opens a line below the caret's, or above, with its indent.
-func insertLine(d *document, above bool) {
+func insertLine(d *editor, above bool) {
 	snap := d.buf.Snapshot()
 	caret := min(d.sel[1], snap.Len())
 	line := snap.LineAt(caret)
@@ -427,7 +427,7 @@ func insertLine(d *document, above bool) {
 
 // selectLines selects the lines of the selection, newline and all; again,
 // the line below as well.
-func selectLines(d *document) {
+func selectLines(d *editor) {
 	snap := d.buf.Snapshot()
 	first, last := lineSpan(snap, d.sel)
 	bs, _ := snap.LineRange(first)
@@ -443,7 +443,7 @@ func selectLines(d *document) {
 
 // home moves the caret to the first character of its line, or to the
 // start of the line when it is there, selecting as it goes with shift.
-func home(d *document, extend bool) {
+func home(d *editor, extend bool) {
 	snap := d.buf.Snapshot()
 	caret := min(d.sel[1], snap.Len())
 	s, e := snap.LineRange(snap.LineAt(caret))
@@ -462,44 +462,44 @@ func home(d *document, extend bool) {
 
 // editorKey takes the keys of the editor that the app handles itself,
 // before its text area: they queue an edit for the next frame.
-func (a *app) editorKey(d *document, ev ui.InputEvent) bool {
+func (a *app) editorKey(d *editor, ev ui.InputEvent) bool {
 	if ev.Kind == ui.InputPointerDown && ev.Button == 0 && len(d.sticky) > 0 && a.font.lineH > 0 {
 		// A click on a line stuck at the top goes to it.
 		if k := int(ev.Y / a.font.lineH); ev.Y >= 0 && k < len(d.sticky) {
 			line := d.sticky[k]
-			d.cmds = append(d.cmds, func(d *document) { a.jumpToScope(d, line) })
+			d.cmds = append(d.cmds, func(d *editor) { a.jumpToScope(d, line) })
 			return true
 		}
 	}
 	if ev.Kind != ui.InputKeyDown {
 		return false
 	}
-	var cmd func(d *document)
+	var cmd func(d *editor)
 	cmdKey := ui.Cmd
 	switch m := ev.Mods; {
 	case ev.Key == ui.KeyTab && (m == 0 || m == ui.Shift):
 		outdent := m == ui.Shift
-		cmd = func(d *document) { tab(d, outdent) }
+		cmd = func(d *editor) { tab(d, outdent) }
 	case ev.Key == ui.KeyEnter && m == 0:
 		cmd = newline
 	case ev.Key == ui.KeyEnter && (m == cmdKey || m == cmdKey|ui.Shift):
 		above := m&ui.Shift != 0
-		cmd = func(d *document) { insertLine(d, above) }
+		cmd = func(d *editor) { insertLine(d, above) }
 	case ev.Key == ui.KeyZ && m == cmdKey:
-		cmd = func(d *document) { d.undo() }
+		cmd = func(d *editor) { d.undo() }
 	case ev.Key == ui.KeyZ && m == cmdKey|ui.Shift, ev.Key == ui.KeyY && m == ui.Ctrl && cmdKey == ui.Ctrl:
-		cmd = func(d *document) { d.redo() }
+		cmd = func(d *editor) { d.redo() }
 	case (ev.Key == ui.KeyUp || ev.Key == ui.KeyDown) && (m == ui.Alt || m == ui.Alt|ui.Shift):
 		down := ev.Key == ui.KeyDown
 		if m&ui.Shift != 0 {
-			cmd = func(d *document) { copyLines(d, down) }
+			cmd = func(d *editor) { copyLines(d, down) }
 		} else {
-			cmd = func(d *document) { moveLines(d, down) }
+			cmd = func(d *editor) { moveLines(d, down) }
 		}
 	case ev.Key == ui.KeyHome && (m == 0 || m == ui.Shift),
 		ev.Key == ui.KeyLeft && cmdKey == ui.Super && (m == ui.Super || m == ui.Super|ui.Shift):
 		extend := m&ui.Shift != 0
-		cmd = func(d *document) { home(d, extend) }
+		cmd = func(d *editor) { home(d, extend) }
 	default:
 		return false
 	}
@@ -507,20 +507,25 @@ func (a *app) editorKey(d *document, ev ui.InputEvent) bool {
 	return true
 }
 
-// editActive queues an edit of the document shown for its next frame.
-func (a *app) editActive(cmd func(d *document)) func() {
+// editActive queues an edit of the editor shown for its next frame.
+func (a *app) editActive(cmd func(d *editor)) func() {
 	return func() {
-		if d := a.activeDoc(); d != nil {
-			d.cmds = append(d.cmds, cmd)
-			a.invalidate()
+		if d := a.activeEditor(); d != nil {
+			a.queueEdit(d, cmd)
 		}
 	}
+}
+
+// queueEdit queues an edit of an editor for its next frame.
+func (a *app) queueEdit(d *editor, cmd func(d *editor)) {
+	d.cmds = append(d.cmds, cmd)
+	a.invalidate()
 }
 
 // jumpToScope puts the caret at the start of the text of a line opening
 // a block, scrolling it to the top of the editor, under the lines that
 // stick above it.
-func (a *app) jumpToScope(d *document, line int) {
+func (a *app) jumpToScope(d *editor, line int) {
 	snap := d.buf.Snapshot()
 	line = min(max(line, 0), snap.LineCount()-1)
 	s, e := snap.LineRange(line)
@@ -533,7 +538,7 @@ func (a *app) jumpToScope(d *document, line int) {
 
 // reindent converts the indent of every line to a style, keeping how
 // deep each is, and takes the style for the document.
-func reindent(d *document, style indentStyle) {
+func reindent(d *editor, style indentStyle) {
 	snap := d.buf.Snapshot()
 	from := d.indent.cols()
 	var edits []textEdit
@@ -560,7 +565,7 @@ func reindent(d *document, style indentStyle) {
 
 // goToBracket moves the caret to the bracket paired with the one beside
 // it.
-func goToBracket(d *document) {
+func goToBracket(d *editor) {
 	snap := d.buf.Snapshot()
 	caret := min(d.sel[1], snap.Len())
 	at, pair, ok := matchBracket(snap, caret)

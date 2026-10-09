@@ -34,8 +34,8 @@ func (a *app) openQuick(query string) {
 
 func (a *app) closeQuick() {
 	a.quick.open = false
-	if d := a.activeDoc(); d != nil && a.focus != paneTerminal {
-		d.vscroll.Focus()
+	if a.focus != paneTerminal {
+		a.focusColumn()
 	}
 }
 
@@ -130,7 +130,7 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 	p := a.pal
 	if isLine {
 		hint := "Type a line number to go to"
-		if d := a.activeDoc(); d == nil {
+		if d := a.activeEditor(); d == nil {
 			hint = "Open a file to go to a line"
 		} else if line > 0 {
 			hint = fmt.Sprintf("Go to line %d", line)
@@ -238,7 +238,7 @@ func (a *app) quickRow(c *ui.Context, rel string, positions []int) {
 // goToLine moves the caret to a line (and column) of the document shown,
 // 1-based.
 func (a *app) goToLine(line, col int) {
-	d := a.activeDoc()
+	d := a.activeEditor()
 	if d == nil {
 		return
 	}
@@ -312,9 +312,9 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 			return
 		}
 		q.open = false
-		if d := a.activeDoc(); d != nil {
+		if d := a.activeEditor(); d != nil {
 			sym := syms[q.results[i].Index]
-			a.editActive(func(d *document) {
+			a.editActive(func(d *editor) {
 				// To the line, with the name selected.
 				a.jumpToScope(d, sym.line)
 				s, _ := d.buf.Snapshot().LineRange(sym.line)
@@ -344,7 +344,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 					}
 				})
 				switch {
-				case a.activeDoc() == nil:
+				case a.activeEditor() == nil:
 					ui.Text(c, "Open a file to go to its symbols").FontSize(13).TextColor(p.muted).Padding(12, 16)
 				case len(q.results) == 0:
 					ui.Text(c, "No matching symbols").FontSize(13).TextColor(p.muted).Padding(12, 16)

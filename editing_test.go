@@ -10,17 +10,17 @@ import (
 )
 
 // editHarness opens a file of text, its caret at the start.
-func editHarness(t *testing.T, name, text string) (*harness, *document) {
+func editHarness(t *testing.T, name, text string) (*harness, *editor) {
 	t.Helper()
 	hs := newHarness(t, false)
 	os.WriteFile(hs.path(name), []byte(text), 0o644)
 	hs.a.openFile(hs.path(name), true)
 	hs.settle()
-	return hs, hs.a.activeDoc()
+	return hs, hs.a.activeEditor()
 }
 
 // place selects anchor up to caret, as a click and a drag would.
-func (hs *harness) place(d *document, anchor, caret int) {
+func (hs *harness) place(d *editor, anchor, caret int) {
 	d.selectRange(anchor, caret, false)
 	hs.settle()
 }
@@ -30,14 +30,14 @@ func (hs *harness) key(mods ui.Modifiers, key ui.Key) {
 	hs.settle()
 }
 
-func expectText(t *testing.T, d *document, want string) {
+func expectText(t *testing.T, d *editor, want string) {
 	t.Helper()
 	if got := d.buf.String(); got != want {
 		t.Fatalf("text:\n%q\nwant:\n%q", got, want)
 	}
 }
 
-func expectSel(t *testing.T, d *document, anchor, caret int) {
+func expectSel(t *testing.T, d *editor, anchor, caret int) {
 	t.Helper()
 	if d.sel != [2]int{anchor, caret} {
 		t.Fatalf("selection %v, want [%d %d]", d.sel, anchor, caret)
@@ -247,10 +247,10 @@ func TestReindent(t *testing.T) {
 	if d.indent.tabs || d.indent.size != 4 {
 		t.Fatalf("detected %v", d.indent)
 	}
-	hs.a.editActive(func(d *document) { reindent(d, indentStyle{size: 2}) })()
+	hs.a.editActive(func(d *editor) { reindent(d, indentStyle{size: 2}) })()
 	hs.settle()
 	expectText(t, d, "def f():\n  if x:\n    y()\n")
-	hs.a.editActive(func(d *document) { reindent(d, indentStyle{tabs: true, size: 4}) })()
+	hs.a.editActive(func(d *editor) { reindent(d, indentStyle{tabs: true, size: 4}) })()
 	hs.settle()
 	expectText(t, d, "def f():\n\tif x:\n\t\ty()\n")
 }
@@ -328,7 +328,7 @@ func longGo(n int) string {
 	return b.String()
 }
 
-func viewTop(hs *harness, d *document) int {
+func viewTop(hs *harness, d *editor) int {
 	return int((d.vscroll.Y-editorPadY)/hs.a.font.lineH + 0.5)
 }
 
@@ -395,7 +395,7 @@ func TestCaretStaysBelowStickyLines(t *testing.T) {
 	}
 }
 
-func lineOf(d *document) int {
+func lineOf(d *editor) int {
 	s := d.buf.Snapshot()
 	return s.LineAt(min(d.sel[1], s.Len()))
 }

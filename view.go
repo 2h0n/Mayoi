@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo/ui"
@@ -27,23 +28,39 @@ func (a *app) view(c *ui.Context) {
 		a.services, a.hasServices = c.Services(), true
 	}
 	a.mu.Unlock()
+	if !a.started {
+		// Before what was posted meanwhile, as opening the file the app was
+		// started with: it opens in the columns of the last session.
+		a.started = true
+		a.start()
+	}
 	a.drain()
 	a.pal = applyTheme(c)
 	p := a.pal
 	if f := a.settings; a.font.charW == 0 || a.font.size != f.FontSize || a.font.family != f.FontFamily {
 		a.font = newCodeFont(f.FontFamily, f.FontSize)
 	}
-	if !a.started {
-		a.started = true
-		a.start()
+	if now := c.Now(); now != a.frameAt {
+		a.frameAt = now
+		a.frame++
+		a.dragging, a.dragNow = a.dragNow, false
 	}
 	a.shortcuts(c)
-	// Which pane has the keyboard focus, as the frame before left it.
-	switch d := a.activeDoc(); {
-	case a.termView.FocusWithin(c):
+	// Which pane has the keyboard focus, as the frame before left it, and
+	// which column: its editor is the one typing is of.
+	for i, col := range a.cols {
+		switch t := col.tab(); {
+		case t == nil:
+		case t.ed != nil && t.ed.vscroll.FocusWithin(c):
+			a.focus, a.col = paneEditor, i
+			t.ed.typist = t.ed
+		case t.term != nil && t.term.view.FocusWithin(c):
+			a.focus, a.col = paneEditor, i
+		}
+	}
+	switch {
+	case a.panelTerm != nil && a.panelTerm.view.FocusWithin(c):
 		a.focus = paneTerminal
-	case d != nil && d.vscroll.FocusWithin(c):
-		a.focus = paneEditor
 	case a.files.List.FocusWithin(c):
 		a.focus = paneFiles
 	}
@@ -57,7 +74,7 @@ func (a *app) view(c *ui.Context) {
 				s := a.settings
 				ui.Column(c.Key("sidebar")).Width(s.SidebarWidth).Shrink(0).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
 					a.sidebar(c)
-					a.splitter(c, false, func(d float32) {
+					a.splitter(c, edgeRight, func(d float32) {
 						w, _ := c.Size()
 						s.SidebarWidth = clamp(s.SidebarWidth+d, 160, max(w-320, 160))
 					})
@@ -76,7 +93,7 @@ func (a *app) view(c *ui.Context) {
 	a.tick()
 }
 
-// main is the editor and, below it, the panel.
+// main is the columns of editors and, below them, the panel.
 func (a *app) main(c *ui.Context) {
 	p, s := a.pal, a.settings
 	panel := s.PanelOpen
@@ -85,7 +102,7 @@ func (a *app) main(c *ui.Context) {
 		// Out of sight, but built, so that the editors keep their state.
 		editor.Grow(0).Height(0).Invisible()
 	}
-	editor.Children(func() { a.editorArea(c) })
+	editor.Children(func() { a.columns(c) })
 	if !panel {
 		return
 	}
@@ -101,21 +118,32 @@ func (a *app) main(c *ui.Context) {
 	box.Children(func() {
 		a.panel(c)
 		if !a.panelMax {
-			a.splitter(c, true, func(d float32) {
+			a.splitter(c, edgeTop, func(d float32) {
 				s.PanelHeight = clamp(height-d, 80, max(room-80, 80))
 			})
 		}
 	})
 }
 
-// splitter is the handle along the edge of a pane that resizes it: the
-// right edge of the sidebar, or the top of the panel. drag gets how far
-// the pointer moved.
-func (a *app) splitter(c *ui.Context, vertical bool, drag func(d float32)) {
+// edge is an edge of a pane, which its splitter is along.
+type edge int
+
+const (
+	edgeRight edge = iota // the sidebar's
+	edgeTop               // the panel's
+	edgeLeft              // a column's, after the first
+)
+
+// splitter is the handle along an edge of a pane that resizes it. drag
+// gets how far the pointer moved, across the edge.
+func (a *app) splitter(c *ui.Context, at edge, drag func(d float32)) {
 	h := ui.Box(c).Absolute()
-	if vertical {
+	switch at {
+	case edgeTop:
 		h.Top(0).Left(0).Right(0).Height(5).Cursor(ui.CursorResizeNS)
-	} else {
+	case edgeLeft:
+		h.Top(0).Bottom(0).Left(0).Width(5).Cursor(ui.CursorResizeEW)
+	default:
 		h.Top(0).Bottom(0).Right(0).Width(5).Cursor(ui.CursorResizeEW)
 	}
 	lit := h.Hovered() || h.Dragging()
@@ -124,15 +152,18 @@ func (a *app) splitter(c *ui.Context, vertical bool, drag func(d float32)) {
 			return
 		}
 		line := ui.Box(c).Absolute().Background(a.pal.accentDim)
-		if vertical {
+		switch at {
+		case edgeTop:
 			line.Top(0).Left(0).Right(0).Height(2)
-		} else {
+		case edgeLeft:
+			line.Top(0).Bottom(0).Left(0).Width(2)
+		default:
 			line.Top(0).Bottom(0).Right(0).Width(2)
 		}
 	})
 	dx, dy, held := h.Dragged()
 	if held && (dx != 0 || dy != 0) {
-		if vertical {
+		if at == edgeTop {
 			drag(dy)
 		} else {
 			drag(dx)
@@ -180,9 +211,9 @@ func (a *app) commandCenter(c *ui.Context) {
 		}
 		ui.Icon(c, iconSearch).FontSize(12).TextColor(col)
 		name, folder := "", ""
-		if d := a.activeDoc(); d != nil {
-			name = d.name()
-			if d.dirty() {
+		if t := a.activeTab(); t != nil {
+			name = t.name()
+			if t.ed != nil && t.ed.dirty() {
 				name = "● " + name
 			}
 		}
@@ -225,47 +256,167 @@ func (a *app) iconButton(c *ui.Context, icon *ui.SVG, label string, on bool) ui.
 	return b
 }
 
-// editorArea is the tab strip, the breadcrumbs, and the editor of the
-// document shown, or the welcome page.
-func (a *app) editorArea(c *ui.Context) {
-	if len(a.docs) == 0 {
-		a.welcome(c)
-		return
+// minColumnW is the least width a column is dragged to.
+const minColumnW = 160
+
+// columns is the editor area: its columns side by side, which share its
+// width by their weights, with a handle between two that moves the width
+// from one to the other.
+func (a *app) columns(c *ui.Context) {
+	p := a.pal
+	width := a.colsView.Bounds(c).W
+	var total float32
+	for _, col := range a.cols {
+		total += col.weight
 	}
-	a.tabStrip(c)
-	a.breadcrumbs(c)
-	// Every open document keeps its editor, so that its undo history, its
-	// selection and its place stay as tabs change: those not shown are
-	// built invisible, out of the way.
-	ui.Box(c).Grow(1).Children(func() {
-		for i, d := range a.docs {
-			box := ui.Column(c.Key(d.id)).Absolute().Top(0).Left(0).Right(0).Bottom(0)
-			if i != a.active {
-				box.Invisible()
+	ui.Row(c.Key("columns")).Bind(&a.colsView).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+		for i, col := range a.cols {
+			box := ui.Column(c.Key(col.id)).Basis(0).Grow(col.weight).MinWidth(0)
+			if i > 0 {
+				box.BorderWidth(0, 0, 0, 1).BorderColor(p.border)
 			}
 			box.Children(func() {
-				if i == a.active {
-					a.editorView(c, d)
-					a.findView(c, d)
-				} else {
-					a.hiddenEditor(c, d)
+				a.columnView(c, col)
+				if i == 0 || width <= 0 {
+					return
 				}
+				prev := a.cols[i-1]
+				a.splitter(c, edgeLeft, func(d float32) {
+					least := minColumnW / width * total
+					by := d / width * total
+					if lo, hi := least-prev.weight, col.weight-least; lo <= hi {
+						by = clamp(by, lo, hi)
+						prev.weight, col.weight = prev.weight+by, col.weight-by
+						a.rememberTabs()
+					}
+				})
 			})
 		}
 	})
 }
 
-// hiddenEditor keeps the state of a document's text area while another
-// is shown.
-func (a *app) hiddenEditor(c *ui.Context, d *document) {
+// columnView is a column: its tab strip, the breadcrumbs, and the editor
+// or the terminal of the tab shown, or the welcome page.
+func (a *app) columnView(c *ui.Context, col *column) {
+	if len(col.tabs) == 0 {
+		ui.Column(c).Bind(&col.body).Grow(1).MinHeight(0).Children(func() {
+			a.welcome(c)
+			a.dropZones(c, col)
+		})
+		return
+	}
+	a.tabStrip(c, col)
+	shown := col.tab()
+	if shown != nil && shown.ed != nil {
+		a.breadcrumbs(c, shown.ed)
+	}
+	// Every tab keeps its editor, so that its selection and its place stay
+	// as tabs change: those not shown are built invisible, out of the way.
+	// The key keeps them as the breadcrumbs above come and go.
+	ui.Box(c.Key("body")).Bind(&col.body).Grow(1).Children(func() {
+		for _, t := range col.tabs {
+			box := ui.Column(c.Key(t.id)).Absolute().Top(0).Left(0).Right(0).Bottom(0)
+			if t != shown {
+				box.Invisible()
+			}
+			box.Children(func() {
+				switch {
+				case t.term != nil:
+					// A terminal keeps its state itself.
+					if t == shown {
+						a.terminalView(c, t.term)
+					}
+				case t == shown:
+					a.editorView(c, t.ed)
+					if col == a.column() {
+						a.findView(c, t.ed)
+					}
+				default:
+					a.hiddenEditor(c, t.ed)
+				}
+			})
+		}
+		a.dropZones(c, col)
+	})
+}
+
+// hiddenEditor keeps the state of an editor's text area while another
+// tab is shown. The area scrolls to its caret when its text changes, as
+// an edit made in another column changes it: it stays where it was.
+func (a *app) hiddenEditor(c *ui.Context, d *editor) {
+	if !d.hidden {
+		d.hidden, d.hiddenY = true, d.vscroll.Y
+	}
+	d.vscroll.Y = d.hiddenY
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Children(func() {
 		ui.TextAreaBufferBase(c, d.buf).NoWrap().Font(a.font.family).FontSize(a.font.size).FixedLineHeight(a.font.lineH).
 			Fill().TrackScroll(&d.vscroll)
 	})
 }
 
-func (a *app) breadcrumbs(c *ui.Context) {
-	d := a.activeDoc()
+// dragItem is what is dragged to a column: one of its tabs, or of
+// another's, or a terminal of the panel.
+type dragItem struct {
+	tab  *colTab
+	term *session
+}
+
+// dropInColumn puts what was dragged at place at of a column.
+func (a *app) dropInColumn(it dragItem, col *column, at int) {
+	if slices.Index(a.cols, col) < 0 {
+		return
+	}
+	switch {
+	case it.term != nil:
+		a.terminalToColumn(it.term, col, at)
+	case it.tab != nil:
+		a.moveTab(it.tab, col, at)
+	}
+}
+
+// dropBeside puts what was dragged in a column of its own, before a
+// column or after it.
+func (a *app) dropBeside(it dragItem, col *column, after bool) {
+	if slices.Index(a.cols, col) < 0 {
+		return
+	}
+	if from, _ := a.locate(it.tab); from == col && len(col.tabs) == 1 {
+		return // it is the column
+	}
+	a.dropInColumn(it, a.splitColumn(col, after), 0)
+}
+
+// dropZones are where a tab dragged over a column is dropped: on a side,
+// for a column of its own there, or between them, for a tab of this one.
+// They are there only while a tab is dragged, over the editor.
+func (a *app) dropZones(c *ui.Context, col *column) {
+	if !a.dragging {
+		return
+	}
+	w := col.body.Bounds(c).W
+	side := min(w/4, 140)
+	zone := func(key string, left, width, markLeft, markW float32, drop func(it dragItem)) {
+		z := ui.Box(c.Key(key)).Absolute().Top(0).Bottom(0).Left(left).Width(width)
+		if _, ok := ui.DragOver[dragItem](z); ok {
+			ui.Box(c.Key(key+"-mark")).Absolute().Top(0).Bottom(0).Left(markLeft).Width(markW).PassThrough().
+				Background(a.pal.accent.Alpha(0.14)).Border(1, a.pal.accentDim)
+		}
+		if it, ok := ui.Drop[dragItem](z); ok {
+			a.post(func() { drop(it) })
+		}
+	}
+	zone("drop-before", 0, side, 0, w/2, func(it dragItem) { a.dropBeside(it, col, false) })
+	zone("drop-in", side, w-2*side, 0, w, func(it dragItem) { a.dropInColumn(it, col, len(col.tabs)) })
+	zone("drop-after", w-side, side, w/2, w/2, func(it dragItem) { a.dropBeside(it, col, true) })
+}
+
+// dropMark tints a pane that takes what is dragged over it.
+func (a *app) dropMark(c *ui.Context) {
+	ui.Box(c).Absolute().Top(0).Bottom(0).Left(0).Right(0).PassThrough().
+		Background(a.pal.accent.Alpha(0.14)).Border(1, a.pal.accentDim)
+}
+
+func (a *app) breadcrumbs(c *ui.Context, d *editor) {
 	p := a.pal
 	var parts []string
 	if d.path != "" {
@@ -280,7 +431,7 @@ func (a *app) breadcrumbs(c *ui.Context) {
 	// The blocks the caret is in, after the file: the innermost two.
 	snap := d.buf.Snapshot()
 	var scope []int
-	if isCode(d) {
+	if isCode(d.document) {
 		scope = d.scopesOf(snap, snap.LineAt(min(d.sel[1], snap.Len())))
 		scope = scope[max(0, len(scope)-2):]
 	}
@@ -310,7 +461,7 @@ func (a *app) breadcrumbs(c *ui.Context) {
 				ui.Text(c, label).FontSize(12).Font(a.font.family).SingleLine().TextColor(p.muted)
 			})
 			if b.Clicked() {
-				a.editActive(func(d *document) { a.jumpToScope(d, line) })()
+				a.queueEdit(d, func(d *editor) { a.jumpToScope(d, line) })
 			}
 			if i < len(scope)-1 {
 				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)
@@ -369,7 +520,7 @@ func (a *app) statusBar(c *ui.Context) {
 			item("folder", filepath.Base(a.root), "Reveal "+shortenHome(a.root)+" in Finder", iconFolder, func() { a.host.reveal(a.root) })
 		}
 		ui.Spacer(c)
-		d := a.activeDoc()
+		d := a.activeEditor()
 		if d == nil {
 			return
 		}
@@ -400,14 +551,14 @@ func (a *app) statusBar(c *ui.Context) {
 			}
 			m.Separator()
 			if m.Item("Convert Indentation to Tabs").Chosen() {
-				a.editActive(func(d *document) { reindent(d, indentStyle{tabs: true, size: tabWidth}) })()
+				a.editActive(func(d *editor) { reindent(d, indentStyle{tabs: true, size: tabWidth}) })()
 			}
 			if m.Item("Convert Indentation to Spaces").Chosen() {
 				size := d.indent.size
 				if d.indent.tabs {
 					size = tabWidth
 				}
-				a.editActive(func(d *document) { reindent(d, indentStyle{size: size}) })()
+				a.editActive(func(d *editor) { reindent(d, indentStyle{size: size}) })()
 			}
 		})
 		item("enc", "UTF-8", "", nil, nil)
@@ -556,20 +707,19 @@ func (a *app) toggleSidebar() {
 // first time it shows.
 func (a *app) togglePanel() {
 	s := a.settings
-	if s.PanelOpen && a.focus != paneTerminal && len(a.terms) > 0 {
+	if s.PanelOpen && a.focus != paneTerminal && a.panelTerm != nil {
 		// Shown but not focused: focus it, as VS Code does.
 		a.focusTerminal()
 		return
 	}
 	s.PanelOpen = !s.PanelOpen
 	if s.PanelOpen {
-		if len(a.terms) == 0 {
+		if a.panelTerm == nil {
 			a.newTerminal()
 		}
 		a.focusTerminal()
-	} else if d := a.activeDoc(); d != nil {
-		d.vscroll.Focus()
-		a.focus = paneEditor
+	} else {
+		a.focusColumn()
 	}
 	s.changed()
 }

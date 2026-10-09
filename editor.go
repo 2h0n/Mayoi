@@ -82,17 +82,27 @@ func (f codeFont) gutterWidth(n int) float32 {
 // The lines are all lineH high, so that line i is at editorPadY+i*lineH
 // in the area's content, which places the line numbers and the caret's
 // line, and finds the lines in view to highlight.
-func (a *app) editorView(c *ui.Context, d *document) {
+func (a *app) editorView(c *ui.Context, d *editor) {
 	p, f := a.pal, a.font
+	switch {
+	case d.hidden:
+		// Back in sight, where it was.
+		d.hidden, d.pinFrame = false, 0
+		d.vscroll.Y = d.hiddenY
+	case d.pinFrame != 0 && a.frame > d.pinFrame:
+		d.pinFrame = 0
+		d.vscroll.Y = d.pinY
+	}
 	// What was typed since the last frame, for undo.
-	seen := d.hist.snap.Version()
 	d.observe()
 	snap := d.buf.Snapshot()
-	edited := snap.Version() != seen
+	edited := snap.Version() != d.version
+	d.version = snap.Version()
 	lines := snap.LineCount()
 	gutterW := f.gutterWidth(lines)
 	view := d.hscroll.Bounds(c)
 	textX := gutterW + gutterGap
+	focused := d.vscroll.Focused(c)
 
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Background(p.editor).Children(func() {
 		area := ui.TextAreaBufferBase(c, d.buf).
@@ -102,16 +112,41 @@ func (a *app) editorView(c *ui.Context, d *document) {
 			Label("Editor " + d.name()).
 			HandleInput(func(ev ui.InputEvent) bool { return a.editorKey(d, ev) })
 
-		if !d.caretSeen {
-			// A new area puts the caret at the end: open at the start.
-			area.SetTextSelection(0, 0)
-		}
+		// A new area puts the caret at the end: at the editor's selection,
+		// which is the start for a file just opened.
+		d.resync = d.resync || !d.caretSeen
 		jump := d.pending != nil
 		if r := d.pending; r != nil {
 			area.SetTextSelection(r[0], r[1])
-			d.pending = nil
+			d.pending, d.resync, d.parked = nil, false, -1
+		}
+		if d.resync {
+			// The area scrolls to its caret when it is given one, and when
+			// its text changes under it: out of view, and the keyboard
+			// elsewhere, the caret waits in view instead, so that an edit
+			// made in another column leaves this one where it is.
+			d.resync, d.parked = false, -1
+			if !focused && view.H > 0 && !a.inView(d, snap, d.sel[1], view.H) {
+				d.parked = a.offsetInView(d, snap, view.H)
+				area.SetTextSelection(d.parked, d.parked)
+			} else {
+				a.setSelection(d, area)
+			}
 		}
 		selStart, caret := area.TextSelection()
+		if d.parked >= 0 {
+			switch {
+			case selStart != d.parked || caret != d.parked:
+				d.parked = -1 // the pointer put the caret
+			case focused:
+				// The keyboard is back: so is the caret.
+				d.parked = -1
+				a.setSelection(d, area)
+				selStart, caret = d.sel[0], d.sel[1]
+			default:
+				selStart, caret = d.sel[0], d.sel[1]
+			}
+		}
 		if sel := [2]int{selStart, caret}; sel != d.sel {
 			if !edited {
 				d.hist.typing = false // the caret moved: typing after starts a step
@@ -132,17 +167,20 @@ func (a *app) editorView(c *ui.Context, d *document) {
 			a.invalidate()
 		}
 		caretLine := snap.LineAt(min(caret, snap.Len()))
-		caretMoved := caret != d.caret && d.caretSeen
+		// The view follows the caret of the editor typed in, not one that
+		// an edit made in another column moved.
+		follows := focused || jump
+		caretMoved := caret != d.caret && d.caretSeen && follows
 
 		if caret != d.caret || !d.caretSeen {
-			if d.caretSeen {
+			if d.caretSeen && follows {
 				a.revealColumn(d, snap, caret, view.W, textX)
 			}
 			d.caret, d.caretSeen = caret, true
 		}
 		// Show the caret's line before the area takes the offset, so that
 		// it finds the caret in view and leaves the offset be.
-		d.sticky = append(d.sticky[:0], a.scrollToCaret(d, snap, caretLine, view.H, jump, caretMoved || edited)...)
+		d.sticky = append(d.sticky[:0], a.scrollToCaret(d, snap, caretLine, view.H, jump, caretMoved || edited && follows)...)
 		var sticky []stickyRow
 		if len(d.sticky) > 0 {
 			sticky = d.stuck.rows(a, d, snap, d.sticky)
@@ -169,10 +207,9 @@ func (a *app) editorView(c *ui.Context, d *document) {
 		}
 
 		lineH, charW, size, family := f.lineH, f.charW, f.size, f.family
-		focused := d.vscroll.Focused(c)
 		matches := a.visibleMatches(d, first, last)
 		deco := a.decorate(d, snap, first, last)
-		a.refreshGit(d)
+		a.refreshGit(d.document)
 		marks := d.git.marks
 		gitRuns := d.gitRuns()
 		guideW := f.indentWidth(d.indent)
@@ -413,7 +450,7 @@ func blank(s string) bool {
 //
 // It runs before the text area takes the offset, which would otherwise
 // scroll to the caret itself, under the lines that stick.
-func (a *app) scrollToCaret(d *document, snap ui.TextSnapshot, line int, viewH float32, jump, reveal bool) []int {
+func (a *app) scrollToCaret(d *editor, snap ui.TextSnapshot, line int, viewH float32, jump, reveal bool) []int {
 	lineH := a.font.lineH
 	sticky := a.stickyAt(d, snap, viewH)
 	if viewH <= 0 || !jump && !reveal {
@@ -448,18 +485,40 @@ func (a *app) scrollToCaret(d *document, snap ui.TextSnapshot, line int, viewH f
 
 // stickyAt returns the lines that stick at the top of the editor where it
 // is scrolled: above the first line wholly in view.
-func (a *app) stickyAt(d *document, snap ui.TextSnapshot, viewH float32) []int {
+func (a *app) stickyAt(d *editor, snap ui.TextSnapshot, viewH float32) []int {
 	lineH := a.font.lineH
-	if d.vscroll.Y <= editorPadY || !isCode(d) {
+	if d.vscroll.Y <= editorPadY || !isCode(d.document) {
 		return nil
 	}
 	topLine := int((d.vscroll.Y - editorPadY + lineH - 1) / lineH)
 	return stickyLines(snap, topLine, min(maxSticky, int(viewH/lineH/3)), d.scopesOf)
 }
 
+// setSelection gives an editor's text area its selection without the
+// view following it: the area scrolls to its caret, for a frame, and the
+// next puts the editor back where it is.
+func (a *app) setSelection(d *editor, area ui.Element) {
+	area.SetTextSelection(d.sel[0], d.sel[1])
+	d.pinFrame, d.pinY = a.frame, d.vscroll.Y
+}
+
+// inView reports whether the line of offset at shows whole in a view
+// viewH high, where the editor is scrolled.
+func (a *app) inView(d *editor, snap ui.TextSnapshot, at int, viewH float32) bool {
+	top := editorPadY + float32(snap.LineAt(min(at, snap.Len())))*a.font.lineH
+	return top >= d.vscroll.Y && top+a.font.lineH <= d.vscroll.Y+viewH
+}
+
+// offsetInView returns the start of a line in the middle of the view.
+func (a *app) offsetInView(d *editor, snap ui.TextSnapshot, viewH float32) int {
+	line := int((d.vscroll.Y + viewH/2 - editorPadY) / a.font.lineH)
+	s, _ := snap.LineRange(min(max(line, 0), snap.LineCount()-1))
+	return s
+}
+
 // revealColumn scrolls the editor sideways, as little as it takes, to show
 // the caret.
-func (a *app) revealColumn(d *document, snap ui.TextSnapshot, caret int, viewW, textX float32) {
+func (a *app) revealColumn(d *editor, snap ui.TextSnapshot, caret int, viewW, textX float32) {
 	if viewW <= 0 {
 		return
 	}

@@ -2,11 +2,9 @@ package main
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -71,19 +69,32 @@ type app struct {
 	indexing   bool
 	indexStale bool
 
-	docs        []*document
-	active      int // the document shown, -1 for none
-	nextID      int
-	tabRevealed int
-	untitled    int
+	// docs are the documents open, each in a tab or several; cols the
+	// columns of the editor area, and col the one that has the keyboard,
+	// or had it last, which commands are for.
+	docs     []*document
+	cols     []*column
+	col      int
+	nextID   int
+	nextTab  int
+	nextCol  int
+	untitled int
 
-	terms    []*session
-	term     int
-	nextTerm int
+	// terms are the terminals, those of the panel and those in tabs, and
+	// panelTerm the one the panel shows.
+	terms     []*session
+	panelTerm *session
+	nextTerm  int
 
 	panelMax    bool // the panel takes the editor's room
-	termView    ui.Handle
 	welcomeView ui.Handle
+	colsView    ui.Handle // the columns, whose width their weights share
+	// frame counts the frames, and frameAt is when the last started: a
+	// frame may build the view several times.
+	frame   int
+	frameAt time.Time
+	// dragging is set while a tab is dragged, as the frame before found.
+	dragging, dragNow bool
 
 	quick  quickOpen
 	find   findState
@@ -100,13 +111,14 @@ type pane int
 const (
 	paneNone pane = iota
 	paneFiles
-	paneEditor
-	paneTerminal
+	paneEditor   // a column: its editor, or its terminal
+	paneTerminal // the panel
 )
 
 func newApp(h host, s *settings) *app {
-	a := &app{host: h, settings: s, active: -1, fileRow: -1}
+	a := &app{host: h, settings: s, fileRow: -1}
 	a.files.List.Selected = &a.fileRow
+	a.cols = []*column{a.newColumn()}
 	return a
 }
 
@@ -157,16 +169,7 @@ func (a *app) start() {
 			a.openFolder(s.Folder)
 		}
 	}
-	// Opening each file makes it the active one: keep the one to show.
-	activeFile := s.ActiveFile
-	for _, p := range s.OpenFiles {
-		if _, err := os.Stat(p); err == nil {
-			a.openFile(p, false)
-		}
-	}
-	if i := a.docIndex(activeFile); i >= 0 {
-		a.activate(i, false)
-	}
+	a.restoreTabs()
 	if s.TerminalOpen && s.PanelOpen && a.root != "" {
 		a.newTerminal()
 	}
@@ -208,136 +211,6 @@ func (a *app) closeFolder() {
 	})
 }
 
-func (a *app) docIndex(path string) int {
-	if path == "" {
-		return -1
-	}
-	return slices.IndexFunc(a.docs, func(d *document) bool { return d.path == path })
-}
-
-func (a *app) activeDoc() *document {
-	if a.active < 0 || a.active >= len(a.docs) {
-		return nil
-	}
-	return a.docs[a.active]
-}
-
-// openFile shows a file in a tab, opening one unless it has one.
-func (a *app) openFile(path string, focus bool) {
-	if i := a.docIndex(path); i >= 0 {
-		a.activate(i, focus)
-		return
-	}
-	a.nextID++
-	d, err := readDocument(a.nextID, path, a.invalidate)
-	if errors.Is(err, errBinary) {
-		a.fail("%s is a binary file", filepath.Base(path))
-		return
-	}
-	if err != nil {
-		a.fail("Could not open %s: %v", filepath.Base(path), err)
-		return
-	}
-	// A new tab goes after the one shown.
-	at := len(a.docs)
-	if a.active >= 0 {
-		at = a.active + 1
-	}
-	a.docs = slices.Insert(a.docs, at, d)
-	if a.tree != nil {
-		a.tree.Watch(path)
-	}
-	a.activate(at, focus)
-	a.rememberTabs()
-}
-
-// newFile opens an untitled document.
-func (a *app) newFile() {
-	a.nextID++
-	a.untitled++
-	d := newDocument(a.nextID, "", "", highlight.New(nil, nil))
-	d.title = fmt.Sprintf("Untitled-%d", a.untitled)
-	a.docs = append(a.docs, d)
-	a.activate(len(a.docs)-1, true)
-}
-
-func (a *app) activate(i int, focus bool) {
-	if i < 0 || i >= len(a.docs) {
-		return
-	}
-	a.active = i
-	if p := a.docs[i].path; p != "" && a.tree != nil {
-		a.recent = slices.Insert(slices.DeleteFunc(a.recent, func(r string) bool { return r == p }), 0, p)
-		if len(a.recent) > 30 {
-			a.recent = a.recent[:30]
-		}
-	}
-	if focus {
-		a.docs[i].vscroll.Focus()
-		a.focus = paneEditor
-	}
-	a.find.stale = true
-	a.rememberTabs()
-}
-
-func (a *app) cycleTab(step int) {
-	if len(a.docs) == 0 {
-		return
-	}
-	a.activate((a.active+step+len(a.docs))%len(a.docs), true)
-}
-
-// closeDoc closes tab i, asking first to save changes.
-func (a *app) closeDoc(i int, then func()) {
-	if i < 0 || i >= len(a.docs) {
-		return
-	}
-	d := a.docs[i]
-	remove := func() {
-		j := slices.Index(a.docs, d)
-		if j < 0 {
-			return
-		}
-		d.hl.Close()
-		a.docs = slices.Delete(a.docs, j, j+1)
-		switch {
-		case len(a.docs) == 0:
-			a.active = -1
-		case a.active > j || a.active == len(a.docs):
-			a.active--
-		}
-		if d := a.activeDoc(); d != nil {
-			d.vscroll.Focus()
-		}
-		a.rememberTabs()
-		if then != nil {
-			then()
-		}
-	}
-	if !d.dirty() {
-		remove()
-		return
-	}
-	a.host.confirmClose(d.name(), func(choice int) {
-		switch choice {
-		case 0:
-			a.saveDoc(d, remove)
-		case 1:
-			remove()
-		}
-	})
-}
-
-// closeAll closes every tab, asking about each changed one, then calls
-// then unless one stayed open.
-func (a *app) closeAll(then func()) {
-	if len(a.docs) == 0 {
-		then()
-		return
-	}
-	a.closeDoc(len(a.docs)-1, func() { a.closeAll(then) })
-}
-
 // saveDoc saves a document, asking where an untitled one goes.
 func (a *app) saveDoc(d *document, then func()) {
 	if d.path == "" {
@@ -367,16 +240,17 @@ func (a *app) saveDoc(d *document, then func()) {
 }
 
 func (a *app) saveActive() {
-	if d := a.activeDoc(); d != nil {
-		a.saveDoc(d, nil)
+	if d := a.activeEditor(); d != nil {
+		a.saveDoc(d.document, nil)
 	}
 }
 
 func (a *app) saveActiveAs() {
-	d := a.activeDoc()
-	if d == nil {
+	ed := a.activeEditor()
+	if ed == nil {
 		return
 	}
+	d := ed.document
 	a.host.saveAs(d.name(), func(path string) {
 		if path == "" {
 			return
@@ -419,7 +293,9 @@ func (a *app) diskChanged(changed, removed []string) {
 			continue // as when the editor saved it
 		}
 		// Reloading is a step of undo, as in other editors.
-		d.edit(d.sel, textEdit{0, d.buf.Len(), string(data)})
+		if ed := d.main(); ed != nil {
+			ed.edit(ed.sel, textEdit{0, d.buf.Len(), string(data)})
+		}
 		d.markSaved()
 		d.measureWidest()
 	}
@@ -432,22 +308,6 @@ func (a *app) diskChanged(changed, removed []string) {
 	}
 	a.branch = gitBranch(a.root)
 	a.gitChanged()
-}
-
-// rememberTabs keeps the open files in the settings.
-func (a *app) rememberTabs() {
-	var open []string
-	for _, d := range a.docs {
-		if d.path != "" {
-			open = append(open, d.path)
-		}
-	}
-	a.settings.OpenFiles = open
-	a.settings.ActiveFile = ""
-	if d := a.activeDoc(); d != nil {
-		a.settings.ActiveFile = d.path
-	}
-	a.settings.changed()
 }
 
 // refreshIndex lists the workspace's files again in the background, for
@@ -529,9 +389,9 @@ func gitBranch(dir string) string {
 // windowTitle is the title the window shows.
 func (a *app) windowTitle() string {
 	parts := []string{}
-	if d := a.activeDoc(); d != nil {
-		name := d.name()
-		if d.dirty() {
+	if t := a.activeTab(); t != nil {
+		name := t.name()
+		if t.ed != nil && t.ed.dirty() {
 			name = "● " + name
 		}
 		parts = append(parts, name)

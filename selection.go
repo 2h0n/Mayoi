@@ -10,7 +10,7 @@ const selRadius = 3
 // selectionShape is the selection on the lines in view, which the editor
 // paints itself, in place of the text area: a box for each line, with the
 // corners rounded where the line above or below does not go on past them.
-// A document keeps the last it found, as its decorations.
+// An editor keeps the last it found, as its decorations.
 type selectionShape struct {
 	version     uint64
 	sel         [2]int
@@ -25,7 +25,7 @@ type selectionShape struct {
 }
 
 // selection finds the shape of the selection on lines first up to last.
-func (a *app) selection(d *document, snap ui.TextSnapshot, first, last int) *selectionShape {
+func (a *app) selection(d *editor, snap ui.TextSnapshot, first, last int) *selectionShape {
 	sh := &d.selShape
 	if sh.found && sh.version == snap.Version() && sh.sel == d.sel && sh.first == first && sh.last == last && sh.font == a.font {
 		return sh

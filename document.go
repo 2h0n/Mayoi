@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
@@ -17,7 +18,8 @@ const maxOpenBytes = 64 << 20
 
 var errBinary = errors.New("binary file")
 
-// document is a file open in a tab.
+// document is a file open in the editor: its text, and what follows from
+// the text alone. Each tab that shows it has an editor of its own.
 type document struct {
 	id    int
 	path  string // absolute; "" for an untitled document
@@ -32,11 +34,30 @@ type document struct {
 	hl        *highlight.Highlighter
 	indent    indentStyle
 	hist      history
+	git       gitMarks
+
+	// widest is the longest line in columns seen, which sizes the text
+	// area's width; widestVersion is the version it was last measured at
+	// in full.
+	widest        int
+	widestVersion uint64
+	diskGone      bool // the file was removed from the disk
+
+	// views are the editors that show the document, and typist the one
+	// that has the keyboard, or had it last, whose typing its is.
+	views  []*editor
+	typist *editor
+}
+
+// editor is a document as a tab shows it: its selection, its place, and
+// what is painted around its text. The editors of a document share its
+// text and its undo history, so that a file shows in several columns.
+type editor struct {
+	*document
 	// cmds are edits asked for by keys and menus, which the next frame
 	// makes, once the editor has its selection.
-	cmds []func(d *document)
+	cmds []func(d *editor)
 	deco decorations
-	git  gitMarks
 	// closers are the offsets of the closing brackets and quotes the
 	// editor put after the caret, which typing them steps over.
 	closers []int
@@ -55,20 +76,62 @@ type document struct {
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways
-	area    ui.Handle
 
-	// widest is the longest line in columns seen, which sizes the text
-	// area's width; widestVersion is the version it was last measured at
-	// in full.
-	widest        int
-	widestVersion uint64
-	caret         int    // the caret's rune offset in the last frame
-	sel           [2]int // the selection in the last frame
-	caretSeen     bool
+	caret     int    // the caret's rune offset in the last frame
+	sel       [2]int // the selection in the last frame
+	caretSeen bool
 	// pending is a selection the app asked for, which the next frame
 	// makes, scrolling the editor to it.
-	pending  *[2]int
-	diskGone bool // the file was removed from the disk
+	pending *[2]int
+	// version is the version of the text the editor showed last.
+	version uint64
+	// resync has the next frame give the text area the selection, which
+	// an edit made in another editor moved, without scrolling to it.
+	resync bool
+	// parked is where the text area's caret waits, in view, while the
+	// selection is out of view and the keyboard elsewhere, -1 otherwise:
+	// the area scrolls to its caret when its text changes under it.
+	parked int
+	// hidden is set while another tab shows in the editor's place, and
+	// hiddenY is where it was scrolled then.
+	hidden  bool
+	hiddenY float32
+	// pinFrame is the frame that gave the text area a selection the view
+	// is not to follow, 0 for none, and pinY where the editor was scrolled
+	// then, which the frame after puts back.
+	pinFrame int
+	pinY     float32
+}
+
+// newEditor makes an editor of doc, its caret at the start.
+func newEditor(doc *document) *editor {
+	d := &editor{document: doc, parked: -1, version: doc.buf.Version()}
+	doc.views = append(doc.views, d)
+	if doc.typist == nil {
+		doc.typist = d
+	}
+	return d
+}
+
+// release takes the editor from its document, as its tab closes.
+func (d *editor) release() {
+	doc := d.document
+	doc.views = slices.DeleteFunc(doc.views, func(o *editor) bool { return o == d })
+	if doc.typist == d {
+		doc.typist = nil
+		if len(doc.views) > 0 {
+			doc.typist = doc.views[0]
+		}
+	}
+}
+
+// main returns the editor that edits of the document as a whole are
+// made in, as reloading it from the disk: the one typed in last.
+func (d *document) main() *editor {
+	if d.typist == nil && len(d.views) > 0 {
+		return d.views[0]
+	}
+	return d.typist
 }
 
 func (d *document) name() string {
@@ -227,6 +290,6 @@ func columns(s string) int {
 // selectRange selects runes start up to end in the next frame, and
 // scrolls the editor to show them, nearer its top than its bottom when
 // center is set or they are out of view.
-func (d *document) selectRange(start, end int, center bool) {
+func (d *editor) selectRange(start, end int, center bool) {
 	d.pending = &[2]int{start, end}
 }

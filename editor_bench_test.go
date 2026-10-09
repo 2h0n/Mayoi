@@ -22,7 +22,7 @@ func benchDoc(b *testing.B) *harness {
 
 func BenchmarkIdleFrame(b *testing.B) {
 	hs := benchDoc(b)
-	hs.a.activeDoc().vscroll.Y = 4000
+	hs.a.activeEditor().vscroll.Y = 4000
 	hs.settle()
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -47,8 +47,8 @@ func BenchmarkScrollFrame(b *testing.B) {
 
 func BenchmarkTypeFrame(b *testing.B) {
 	hs := benchDoc(b)
-	hs.a.activeDoc().vscroll.Y = 4000
-	d := hs.a.activeDoc()
+	hs.a.activeEditor().vscroll.Y = 4000
+	d := hs.a.activeEditor()
 	hs.place(d, 5000, 5000)
 	hs.settle()
 	b.ReportAllocs()
