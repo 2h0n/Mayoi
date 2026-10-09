@@ -56,49 +56,11 @@ func (a *app) editorView(c *ui.Context, d *document) {
 	view := d.hscroll.Bounds(c)
 	textX := gutterW + gutterGap
 
-	// A selection the app asked for: scroll to it, unless it shows.
-	if r := d.pending; r != nil && view.H > 0 {
-		d.clampFrames = 3
-		line := snap.LineAt(min(r[0], snap.Len()))
-		top := editorPadY + float32(line)*f.lineH
-		stuck := float32(len(d.sticky)) * f.lineH
-		if top < d.vscroll.Y+stuck || top+f.lineH > d.vscroll.Y+view.H-f.lineH {
-			d.vscroll.Y = max(0, top-view.H/3)
-		}
-	}
-
-	if d.clampFrames > 0 && view.H > 0 {
-		// The text area reveals the caret, in the frames after it moved,
-		// as if the room below the last line were text: a short document
-		// scrolled, or a long one past its end. Keep the last line at
-		// the bottom.
-		d.clampFrames--
-		end := max(0, editorPadY*2+float32(lines)*f.lineH-view.H)
-		caretY := editorPadY + float32(snap.LineAt(min(d.sel[1], snap.Len())))*f.lineH
-		if d.vscroll.Y > end && caretY >= end && caretY+f.lineH <= end+view.H {
-			d.vscroll.Y = end
-		}
-	}
-	// The lines in view, and the caret.
-	first := max(0, int((d.vscroll.Y-editorPadY)/f.lineH))
-	last := min(lines-1, first+int(view.H/f.lineH)+1)
-	for i := first; i <= last; i++ {
-		s, e := snap.LineRange(i)
-		if e-s > d.widest {
-			d.widest = max(d.widest, columns(snap.Slice(s, e)))
-		}
-	}
-	contentW := max(view.W, textX+float32(d.widest)*f.charW+textPadR)
-
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Background(p.editor).Children(func() {
 		area := ui.TextAreaBufferBase(c, d.buf).
 			NoWrap().Font(f.family).FontSize(f.size).FixedLineHeight(f.lineH).TextColor(p.text).
-			Width(contentW).FillHeight().
-			Padding(editorPadY, textPadR, max(view.H-3*f.lineH, 0), textX).
-			TrackScroll(&d.vscroll).
-			// The area is as wide as its widest line: keep its scroll bar
-			// at the right of the view, wherever it scrolls sideways.
-			ScrollbarInsets(2, max(0, d.hscroll.MaxX-d.hscroll.X)+2, 2, 0).
+			FillHeight().
+			Padding(editorPadY, textPadR, editorPadY, textX).
 			Label("Editor " + d.name()).
 			HandleInput(func(ev ui.InputEvent) bool { return a.editorKey(d, ev) })
 
@@ -106,6 +68,7 @@ func (a *app) editorView(c *ui.Context, d *document) {
 			// A new area puts the caret at the end: open at the start.
 			area.SetTextSelection(0, 0)
 		}
+		jump := d.pending != nil
 		if r := d.pending; r != nil {
 			area.SetTextSelection(r[0], r[1])
 			d.pending = nil
@@ -132,9 +95,6 @@ func (a *app) editorView(c *ui.Context, d *document) {
 		}
 		caretLine := snap.LineAt(min(caret, snap.Len()))
 		caretMoved := caret != d.caret && d.caretSeen
-		if caretMoved {
-			d.clampFrames = 3
-		}
 
 		if caret != d.caret || !d.caretSeen {
 			if d.caretSeen {
@@ -142,6 +102,28 @@ func (a *app) editorView(c *ui.Context, d *document) {
 			}
 			d.caret, d.caretSeen = caret, true
 		}
+		// Show the caret's line before the area takes the offset, so that
+		// it finds the caret in view and leaves the offset be.
+		d.sticky = append(d.sticky[:0], a.scrollToCaret(d, snap, caretLine, view.H, jump, caretMoved || edited)...)
+		var sticky []stickyRow
+		if len(d.sticky) > 0 {
+			sticky = a.stickyRows(d, snap, d.sticky)
+		}
+
+		// The lines in view.
+		first := max(0, int((d.vscroll.Y-editorPadY)/f.lineH))
+		last := min(lines-1, first+int(view.H/f.lineH)+1)
+		for i := first; i <= last; i++ {
+			s, e := snap.LineRange(i)
+			if e-s > d.widest {
+				d.widest = max(d.widest, columns(snap.Slice(s, e)))
+			}
+		}
+		contentW := max(view.W, textX+float32(d.widest)*f.charW+textPadR)
+		area.TrackScroll(&d.vscroll).Width(contentW).
+			// The area is as wide as its widest line: keep its scroll bar
+			// at the right of the view, wherever it scrolls sideways.
+			ScrollbarInsets(2, max(0, d.hscroll.MaxX-d.hscroll.X)+2, 2, 0)
 
 		if d.hl != nil && d.hl.Lexer() != nil {
 			d.hl.Request(snap, first, last)
@@ -169,19 +151,6 @@ func (a *app) editorView(c *ui.Context, d *document) {
 		guideW := float32(d.indent.cols()) * charW
 		rows := a.overviewRows(d, snap, view.H)
 		spaces := a.selectedWhitespace(d, snap, first, last)
-		// The first line wholly in view, and the lines that stick above it.
-		topLine := int((d.vscroll.Y - editorPadY + f.lineH - 1) / f.lineH)
-		d.sticky = d.sticky[:0]
-		var sticky []stickyRow
-		if d.vscroll.Y > editorPadY && isCode(d) {
-			d.sticky = append(d.sticky, stickyLines(snap, topLine, min(maxSticky, int(view.H/f.lineH/3)), d.scopesOf)...)
-			sticky = a.stickyRows(d, snap, d.sticky)
-			// A caret moved under the lines that stick: scroll it out.
-			if caretMoved && caretLine >= topLine-1 && caretLine < topLine+len(sticky) {
-				d.vscroll.Y = max(0, d.vscroll.Y-float32(topLine+len(sticky)-caretLine)*f.lineH)
-				a.invalidate()
-			}
-		}
 		area.Draw(func(pt *ui.Painter, r ui.Rect) {
 			lineY := func(i int) float32 { return r.Y + editorPadY + float32(i)*lineH - d.vscroll.Y }
 			if y := lineY(caretLine); y+lineH > r.Y && y < r.Y+r.H {
@@ -321,6 +290,57 @@ func (a *app) editorView(c *ui.Context, d *document) {
 			}
 		})
 	})
+}
+
+// scrollToCaret scrolls the editor to show the caret's line, below the
+// lines that stick at the top, and returns those lines. jump brings a line
+// out of view a third of the way down, as going to a line does; reveal
+// scrolls as little as it takes, as the caret moves.
+//
+// It runs before the text area takes the offset, which would otherwise
+// scroll to the caret itself, under the lines that stick.
+func (a *app) scrollToCaret(d *document, snap ui.TextSnapshot, line int, viewH float32, jump, reveal bool) []int {
+	lineH := a.font.lineH
+	sticky := a.stickyAt(d, snap, viewH)
+	if viewH <= 0 || !jump && !reveal {
+		return sticky
+	}
+	end := max(0, 2*editorPadY+float32(snap.LineCount())*lineH-viewH)
+	top := editorPadY + float32(line)*lineH // in the content
+	if jump {
+		stuck := float32(len(sticky)) * lineH
+		if top < d.vscroll.Y+stuck || top+lineH > d.vscroll.Y+viewH-lineH {
+			d.vscroll.Y = clamp(top-viewH/3, 0, end)
+			sticky = a.stickyAt(d, snap, viewH)
+		}
+	}
+	// Scrolling changes which lines stick: until the two agree.
+	for range 3 {
+		y, was := top-d.vscroll.Y, d.vscroll.Y
+		switch from, to := max(editorPadY, float32(len(sticky))*lineH), viewH-editorPadY; {
+		case y < from:
+			d.vscroll.Y -= from - y
+		case y+lineH > to:
+			d.vscroll.Y += y + lineH - to
+		}
+		d.vscroll.Y = clamp(d.vscroll.Y, 0, end)
+		if d.vscroll.Y == was {
+			break
+		}
+		sticky = a.stickyAt(d, snap, viewH)
+	}
+	return sticky
+}
+
+// stickyAt returns the lines that stick at the top of the editor where it
+// is scrolled: above the first line wholly in view.
+func (a *app) stickyAt(d *document, snap ui.TextSnapshot, viewH float32) []int {
+	lineH := a.font.lineH
+	if d.vscroll.Y <= editorPadY || !isCode(d) {
+		return nil
+	}
+	topLine := int((d.vscroll.Y - editorPadY + lineH - 1) / lineH)
+	return stickyLines(snap, topLine, min(maxSticky, int(viewH/lineH/3)), d.scopesOf)
 }
 
 // revealColumn scrolls the editor sideways, as little as it takes, to show

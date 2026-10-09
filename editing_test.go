@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/egoist/mygo/ui"
@@ -309,4 +311,91 @@ func TestAutoCloseForgetsDeletedCloser(t *testing.T) {
 	hs.settle()
 	expectText(t, d, "x()\n")
 	expectSel(t, d, 3, 3)
+}
+
+// longGo is Go source of n functions, each a few lines deep, for tests
+// that scroll.
+func longGo(n int) string {
+	var b strings.Builder
+	b.WriteString("package p\n")
+	for i := range n {
+		fmt.Fprintf(&b, "\nfunc f%d() {\n\tif x {\n\t\tfor {\n", i)
+		for k := range 12 {
+			fmt.Fprintf(&b, "\t\t\ty%d()\n", k)
+		}
+		b.WriteString("\t\t}\n\t}\n}\n")
+	}
+	return b.String()
+}
+
+func viewTop(hs *harness, d *document) int {
+	return int((d.vscroll.Y-editorPadY)/hs.a.font.lineH + 0.5)
+}
+
+// Moving the caret within the view leaves the view where it is, and
+// moving it past the bottom scrolls a line at a time.
+func TestCaretMovesKeepTheView(t *testing.T) {
+	hs, d := editHarness(t, "long.go", longGo(40))
+	d.vscroll.Focus()
+	hs.settle()
+	lineH := hs.a.font.lineH
+	r, ok := hs.tt.TextCaret()
+	if !ok {
+		t.Fatal("no caret")
+	}
+	// The caret is on the first line: the view is from there to the
+	// status bar.
+	rows := int((760 - statusBarH - r.Y) / lineH)
+	for i := range rows - 2 {
+		hs.key(0, ui.KeyDown)
+		if top := viewTop(hs, d); top != 0 {
+			t.Fatalf("down %d: scrolled to line %d", i+1, top)
+		}
+	}
+	for _, k := range []int{3, 10, 1, 20} {
+		hs.tt.ClickAt(r.X+40, r.Y+float32(k)*lineH+lineH/2)
+		hs.settle()
+		if top, line := viewTop(hs, d), lineOf(d); top != 0 || line != k {
+			t.Fatalf("click on row %d: caret on line %d, scrolled to line %d", k, line, top)
+		}
+	}
+	for range rows {
+		hs.key(0, ui.KeyDown)
+	}
+	for i := range 3 {
+		was := viewTop(hs, d)
+		hs.key(0, ui.KeyDown)
+		if top := viewTop(hs, d); top != was+1 {
+			t.Fatalf("down %d past the bottom: scrolled from line %d to %d", i+1, was, top)
+		}
+	}
+}
+
+// Moving the caret up past the lines that stick scrolls it out from
+// under them.
+func TestCaretStaysBelowStickyLines(t *testing.T) {
+	hs, d := editHarness(t, "long.go", longGo(40))
+	d.vscroll.Focus()
+	lineH := hs.a.font.lineH
+	// The view starts deep in a function, the caret further down.
+	s := d.buf.Snapshot()
+	at, _ := s.LineRange(19*5 + 14)
+	hs.place(d, at, at)
+	d.vscroll.Y = editorPadY + float32(lineOf(d)-6)*lineH
+	hs.settle()
+	for i := range 12 {
+		hs.key(0, ui.KeyUp)
+		if len(d.sticky) == 0 {
+			continue
+		}
+		y := editorPadY + float32(lineOf(d))*lineH - d.vscroll.Y
+		if y < float32(len(d.sticky))*lineH {
+			t.Fatalf("up %d: caret on line %d under %d lines that stick, view at line %d", i+1, lineOf(d), len(d.sticky), viewTop(hs, d))
+		}
+	}
+}
+
+func lineOf(d *document) int {
+	s := d.buf.Snapshot()
+	return s.LineAt(min(d.sel[1], s.Len()))
 }

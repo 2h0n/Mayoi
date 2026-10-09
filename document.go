@@ -42,12 +42,9 @@ type document struct {
 	closers []int
 	// sticky are the lines stuck at the top of the editor in the last
 	// frame, which a click goes to.
-	sticky []int
-	scopes scopeCache
-	// clampFrames counts the frames after the caret moved, in which the
-	// editor keeps the text area from scrolling past the last line.
-	clampFrames int
-	overview    overview
+	sticky   []int
+	scopes   scopeCache
+	overview overview
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways
