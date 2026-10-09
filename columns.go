@@ -470,6 +470,7 @@ func (a *app) splitRight() {
 	ed := newEditor(t.ed.document)
 	ed.sel, ed.caret = t.ed.sel, t.ed.caret
 	ed.vscroll.Y, ed.hscroll.X = t.ed.vscroll.Y, t.ed.hscroll.X
+	ed.wrap, ed.wrapGen = t.ed.wrap, t.ed.wrapGen
 	a.addTab(nc, 0, &colTab{ed: ed})
 	a.activate(nc, 0, true)
 }

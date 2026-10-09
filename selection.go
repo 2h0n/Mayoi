@@ -22,6 +22,7 @@ type selectionShape struct {
 	// native is set when a line selected runs from right to left, which
 	// only the text area knows the places of: it paints the selection.
 	native bool
+	boxes  []rowBox
 }
 
 // selection finds the shape of the selection on lines first up to last.
@@ -87,28 +88,49 @@ func hasRTL(s string) bool {
 	return false
 }
 
-// paint fills the selection, with x the left of the text and lineY the top
-// of a line. The color is opaque, so that the boxes may overlap.
-func (sh *selectionShape) paint(pt *ui.Painter, x float32, lineY func(int) float32, lineH float32, col ui.Color) {
+// paint fills the selection, with place calling fn with the part on each
+// row of a run along a line: its top and its x's. The color is opaque, so
+// that the boxes may overlap.
+func (sh *selectionShape) paint(pt *ui.Painter, place func(line int, x0, x1 float32, fn func(y, x0, x1 float32)), lineH float32, col ui.Color) {
 	const r = selRadius
-	for k, b := range sh.rects {
-		y := lineY(b.line)
-		pt.Fill(ui.Rect{X: x + b.x0, Y: y, W: b.x1 - b.x0, H: lineH}, col, r)
-		// Square the corners the lines above and below go on past.
-		square := func(o runeRect, cy float32) {
+	boxes := sh.rowBoxes(place)
+	for k, b := range boxes {
+		pt.Fill(ui.Rect{X: b.x0, Y: b.y, W: b.x1 - b.x0, H: lineH}, col, r)
+		// Square the corners the rows above and below go on past.
+		square := func(o rowBox, cy float32) {
 			if o.x0 <= b.x0 && o.x1 > b.x0 {
-				pt.Fill(ui.Rect{X: x + b.x0, Y: cy, W: min(r, b.x1-b.x0), H: r}, col, 0)
+				pt.Fill(ui.Rect{X: b.x0, Y: cy, W: min(r, b.x1-b.x0), H: r}, col, 0)
 			}
 			if o.x0 < b.x1 && o.x1 >= b.x1 {
 				w := min(r, b.x1-b.x0)
-				pt.Fill(ui.Rect{X: x + b.x1 - w, Y: cy, W: w, H: r}, col, 0)
+				pt.Fill(ui.Rect{X: b.x1 - w, Y: cy, W: w, H: r}, col, 0)
 			}
 		}
-		if k > 0 && sh.rects[k-1].line == b.line-1 {
-			square(sh.rects[k-1], y)
+		if k > 0 && near(boxes[k-1].y+lineH, b.y) {
+			square(boxes[k-1], b.y)
 		}
-		if k+1 < len(sh.rects) && sh.rects[k+1].line == b.line+1 {
-			square(sh.rects[k+1], y+lineH-r)
+		if k+1 < len(boxes) && near(b.y+lineH, boxes[k+1].y) {
+			square(boxes[k+1], b.y+lineH-r)
 		}
 	}
 }
+
+// rowBoxes returns the boxes of the selection on each row, as place puts
+// the runs along its lines.
+func (sh *selectionShape) rowBoxes(place func(line int, x0, x1 float32, fn func(y, x0, x1 float32))) []rowBox {
+	boxes := sh.boxes[:0]
+	for _, b := range sh.rects {
+		place(b.line, b.x0, b.x1, func(y, x0, x1 float32) {
+			if x1 > x0 {
+				boxes = append(boxes, rowBox{y, x0, x1})
+			}
+		})
+	}
+	sh.boxes = boxes
+	return boxes
+}
+
+// rowBox is the selection on a row, as painted.
+type rowBox struct{ y, x0, x1 float32 }
+
+func near(a, b float32) bool { return a-b < 0.5 && b-a < 0.5 }

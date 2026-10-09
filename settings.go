@@ -21,6 +21,11 @@ type settings struct {
 	// AutoSave saves changed files a moment after an edit, and as the
 	// keyboard leaves them.
 	AutoSave bool `json:"autoSave"`
+	// WordWrap wraps long lines at the edge of the editor, rather than
+	// scrolling sideways to them. A tab may choose otherwise, until this
+	// changes: wrapGen counts its changes.
+	WordWrap bool `json:"wordWrap,omitempty"`
+	wrapGen  int
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string   `json:"appearance,omitempty"`
 	Recent     []string `json:"recent"`

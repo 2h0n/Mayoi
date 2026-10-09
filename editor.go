@@ -75,13 +75,16 @@ func (f codeFont) gutterWidth(n int) float32 {
 	return float32(digits)*f.charW + 28
 }
 
-// editorView shows a document: its text in a text area that never wraps,
-// inside a container that scrolls it sideways, with the line numbers
-// painted over the area's left padding, where they stay as it scrolls.
+// editorView shows a document: its text in a text area inside a container
+// that scrolls it sideways, with the line numbers painted over the area's
+// left padding, where they stay as it scrolls.
 //
-// The lines are all lineH high, so that line i is at editorPadY+i*lineH
-// in the area's content, which places the line numbers and the caret's
-// line, and finds the lines in view to highlight.
+// Unwrapped, the lines are all lineH high, so that line i is at
+// editorPadY+i*lineH in the area's content, which places the line numbers
+// and the caret's line, and finds the lines in view to highlight. Wrapped,
+// the area is as wide as the view, and says where it laid out its lines
+// (geometry): what is painted on a line is placed along it as if it did
+// not wrap, and then on its rows (wrapRows).
 func (a *app) editorView(c *ui.Context, d *editor) {
 	p, f := a.pal, a.font
 	switch {
@@ -103,14 +106,24 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 	view := d.hscroll.Bounds(c)
 	textX := gutterW + gutterGap
 	focused := d.vscroll.Focused(c)
+	g := a.geometry(d, lines)
+	wrap := g.lines != nil
+	if wrap {
+		d.hscroll.X = 0
+	}
 
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Background(p.editor).Children(func() {
 		area := ui.TextAreaBufferBase(c, d.buf).
-			NoWrap().Font(f.family).FontSize(f.size).FixedLineHeight(f.lineH).TextColor(p.text).
+			Font(f.family).FontSize(f.size).FixedLineHeight(f.lineH).TextColor(p.text).
 			FillHeight().
 			Padding(editorPadY, textPadR, editorPadY, textX).
 			Label("Editor " + d.name()).
 			HandleInput(func(ev ui.InputEvent) bool { return a.editorKey(d, ev) })
+		if wrap {
+			area.TrackLines(&d.lines)
+		} else {
+			area.NoWrap()
+		}
 
 		// A new area puts the caret at the end: at the editor's selection,
 		// which is the start for a file just opened.
@@ -126,8 +139,8 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			// elsewhere, the caret waits in view instead, so that an edit
 			// made in another column leaves this one where it is.
 			d.resync, d.parked = false, -1
-			if !focused && view.H > 0 && !a.inView(d, snap, d.sel[1], view.H) {
-				d.parked = a.offsetInView(d, snap, view.H)
+			if !focused && view.H > 0 && !a.inView(d, g, snap, d.sel[1], view.H) {
+				d.parked = a.offsetInView(d, g, snap, view.H)
 				area.SetTextSelection(d.parked, d.parked)
 			} else {
 				a.setSelection(d, area)
@@ -173,30 +186,37 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		caretMoved := caret != d.caret && d.caretSeen && follows
 
 		if caret != d.caret || !d.caretSeen {
-			if d.caretSeen && follows {
+			if d.caretSeen && follows && !wrap {
 				a.revealColumn(d, snap, caret, view.W, textX)
 			}
 			d.caret, d.caretSeen = caret, true
 		}
 		// Show the caret's line before the area takes the offset, so that
 		// it finds the caret in view and leaves the offset be.
-		d.sticky = append(d.sticky[:0], a.scrollToCaret(d, snap, caretLine, view.H, jump, caretMoved || edited && follows)...)
+		d.sticky = append(d.sticky[:0], a.scrollToCaret(d, g, snap, caret, view.H, jump, caretMoved || edited && follows)...)
 		var sticky []stickyRow
 		if len(d.sticky) > 0 {
 			sticky = d.stuck.rows(a, d, snap, d.sticky)
 		}
 
 		// The lines in view.
-		first := max(0, int((d.vscroll.Y-editorPadY)/f.lineH))
-		last := min(lines-1, first+int(view.H/f.lineH)+1)
-		for i := first; i <= last; i++ {
-			s, e := snap.LineRange(i)
-			if e-s > d.widest {
-				d.widest = max(d.widest, columns(snap.Slice(s, e)))
+		first, last := a.linesInView(g, d.vscroll.Y, view.H)
+		contentW := view.W
+		if !wrap {
+			for i := first; i <= last; i++ {
+				s, e := snap.LineRange(i)
+				if e-s > d.widest {
+					d.widest = max(d.widest, columns(snap.Slice(s, e)))
+				}
 			}
+			contentW = max(view.W, textX+float32(d.widest)*f.charW+textPadR)
 		}
-		contentW := max(view.W, textX+float32(d.widest)*f.charW+textPadR)
-		area.TrackScroll(&d.vscroll).Width(contentW).
+		if contentW > 0 {
+			area.Width(contentW)
+		} else {
+			area.FillWidth()
+		}
+		area.TrackScroll(&d.vscroll).
 			// The area is as wide as its widest line: keep its scroll bar
 			// at the right of the view, wherever it scrolls sideways.
 			ScrollbarInsets(2, max(0, d.hscroll.MaxX-d.hscroll.X)+2, 2, 0)
@@ -226,68 +246,104 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		if !shape.native {
 			area.SelectionColor(ui.Color{})
 		}
-		area.Draw(func(pt *ui.Painter, r ui.Rect) {
-			lineY := func(i int) float32 { return r.Y + editorPadY + float32(i)*lineH - d.vscroll.Y }
-			if y := lineY(caretLine); !selecting && y+lineH > r.Y && y < r.Y+r.H {
-				pt.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: lineH}, p.line, 0)
+		// rowsAt finds where the lines in view wrap, as this frame laid
+		// them out, and lineY places line i's first row.
+		var wr *wrapRows
+		rowsAt := func(r ui.Rect) {
+			if wrap {
+				// The lines in view now, with those the decorations were
+				// found for, unless the view went far.
+				from, to := a.linesInView(g, d.vscroll.Y, r.H)
+				if first >= from-rowSlack && last <= to+rowSlack {
+					from, to = min(from, first), max(to, last)
+				}
+				wr = a.rowsOf(d, snap, from, to, r.W-textX-textPadR)
 			}
-			shape.paint(pt, r.X+textX, lineY, lineH, selCol)
+		}
+		lineY := func(r ui.Rect, i int) float32 { return r.Y + editorPadY + g.top(i) - d.vscroll.Y }
+		// lineHeight is the height of line i, all its rows.
+		lineHeight := func(i int) float32 { return float32(wr.rowCount(i)) * lineH }
+		// place calls fn with the part on each row of a run along line i:
+		// its top, and its x's in the area.
+		place := func(r ui.Rect, i int, x0, x1 float32, fn func(y, x0, x1 float32)) {
+			y := lineY(r, i)
+			wr.pieces(i, x0, x1, func(row int, x0, x1 float32) {
+				fn(y+float32(row)*lineH, r.X+textX+x0, r.X+textX+x1)
+			})
+		}
+		area.Draw(func(pt *ui.Painter, r ui.Rect) {
+			rowsAt(r)
+			if y := lineY(r, caretLine); !selecting && y+lineH > r.Y && y < r.Y+r.H {
+				pt.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: lineHeight(caretLine)}, p.line, 0)
+			}
+			shape.paint(pt, func(i int, x0, x1 float32, fn func(y, x0, x1 float32)) { place(r, i, x0, x1, fn) }, lineH, selCol)
 			for _, w := range deco.words {
 				if selecting && len(shape.rects) == 1 && shape.rects[0].line == w.line && shape.rects[0].x0 == w.x0 {
 					continue // the selection itself
 				}
-				pt.Fill(ui.Rect{X: r.X + textX + w.x0 - 1, Y: lineY(w.line) + 1, W: w.x1 - w.x0 + 2, H: lineH - 2}, p.word, 3)
+				place(r, w.line, w.x0, w.x1, func(y, x0, x1 float32) {
+					pt.Fill(ui.Rect{X: x0 - 1, Y: y + 1, W: x1 - x0 + 2, H: lineH - 2}, p.word, 3)
+				})
 			}
 			// The indent guides, at the start of each level of a line's
-			// indent, and brighter along the caret's block.
+			// indent, and brighter along the caret's block, down all the
+			// rows of a line that wraps.
 			for k, level := range deco.levels {
 				i := deco.first + k
-				y := lineY(i)
+				y, h := lineY(r, i), lineHeight(i)
 				for l := range level {
 					col := p.guide
 					if l == deco.active-1 && i >= deco.activeFrom && i <= deco.activeTo {
 						col = p.guideNow
 					}
-					pt.Fill(ui.Rect{X: r.X + textX + float32(l)*guideW, Y: y, W: 1, H: lineH}, col, 0)
+					pt.Fill(ui.Rect{X: r.X + textX + float32(l)*guideW, Y: y, W: 1, H: h}, col, 0)
 				}
 			}
 			for _, b := range deco.brackets {
-				box := ui.Rect{X: r.X + textX + b.x0 - 0.5, Y: lineY(b.line) + 1.5, W: b.x1 - b.x0 + 1, H: lineH - 3}
-				pt.Fill(box, p.word, 2)
-				pt.Stroke(box, p.bracket, 2, 1)
+				place(r, b.line, b.x0, b.x1, func(y, x0, x1 float32) {
+					box := ui.Rect{X: x0 - 0.5, Y: y + 1.5, W: x1 - x0 + 1, H: lineH - 3}
+					pt.Fill(box, p.word, 2)
+					pt.Stroke(box, p.bracket, 2, 1)
+				})
 			}
 			// Spaces and tabs selected show, faint: a dot, and an arrow as
 			// long as the tab.
 			var arrows ui.Path
 			for _, w := range spaces {
-				cy := lineY(w.line) + lineH/2
-				if w.tab {
-					x0, x1 := r.X+textX+w.x0+3, r.X+textX+w.x1-4
-					arrows.MoveTo(x0, cy).LineTo(x1, cy)
-					arrows.MoveTo(x1-3, cy-3).LineTo(x1, cy).LineTo(x1-3, cy+3)
-				} else {
-					cx := r.X + textX + (w.x0+w.x1)/2
-					pt.Fill(ui.Rect{X: cx - 1, Y: cy - 1, W: 2, H: 2}, p.faint, 1)
-				}
+				place(r, w.line, w.x0, w.x1, func(y, x0, x1 float32) {
+					cy := y + lineH/2
+					if w.tab {
+						x0, x1 := x0+3, x1-4
+						arrows.MoveTo(x0, cy).LineTo(x1, cy)
+						arrows.MoveTo(x1-3, cy-3).LineTo(x1, cy).LineTo(x1-3, cy+3)
+					} else {
+						cx := (x0 + x1) / 2
+						pt.Fill(ui.Rect{X: cx - 1, Y: cy - 1, W: 2, H: 2}, p.faint, 1)
+					}
+				})
 			}
 			if len(spaces) > 0 {
 				pt.StrokePath(&arrows, 1, p.faint)
 			}
 			for _, m := range matches {
-				box := ui.Rect{X: r.X + textX + m.x0 - 1, Y: lineY(m.line) + 1, W: m.x1 - m.x0 + 2, H: lineH - 2}
-				if m.cur {
-					pt.Fill(box, p.matchNow, 3)
-					pt.Stroke(box, p.matchRing, 3, 1)
-				} else {
-					pt.Fill(box, p.match, 3)
-				}
+				place(r, m.line, m.x0, m.x1, func(y, x0, x1 float32) {
+					box := ui.Rect{X: x0 - 1, Y: y + 1, W: x1 - x0 + 2, H: lineH - 2}
+					if m.cur {
+						pt.Fill(box, p.matchNow, 3)
+						pt.Stroke(box, p.matchRing, 3, 1)
+					} else {
+						pt.Fill(box, p.match, 3)
+					}
+				})
 			}
 		})
 		area.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			if wr == nil {
+				rowsAt(r)
+			}
 			x := r.X + d.hscroll.X
 			top := d.vscroll.Y
-			from := max(0, int((top-editorPadY)/lineH))
-			to := min(lines-1, from+int(r.H/lineH)+1)
+			from, to := a.linesInView(g, top, r.H)
 			stuck := float32(len(sticky)) * lineH
 			_, numH := pt.MeasureText(0, ui.Span{Text: "0", Font: family, Size: size})
 			number := func(i int, y float32, col ui.Color) {
@@ -347,21 +403,23 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			}
 			pt.Clip(ui.Rect{X: x, Y: r.Y + stuck, W: gutterW, H: r.H - stuck}, 0, func() {
 				// The lines changed since the last commit: a bar by their
-				// numbers, and a notch where lines were removed.
+				// numbers, down all the rows of a line that wraps, and a
+				// notch where lines were removed.
 				barX := x + gutterW - 7
 				for i := from; i <= min(to, len(marks)-1); i++ {
-					y := r.Y + editorPadY + float32(i)*lineH - top
+					y, h := lineY(r, i), lineHeight(i)
 					switch marks[i] {
 					case linediff.Added:
-						pt.Fill(ui.Rect{X: barX, Y: y, W: 3, H: lineH}, p.added, 0)
+						pt.Fill(ui.Rect{X: barX, Y: y, W: 3, H: h}, p.added, 0)
 					case linediff.Modified:
-						pt.Fill(ui.Rect{X: barX, Y: y, W: 3, H: lineH}, p.changed, 0)
+						pt.Fill(ui.Rect{X: barX, Y: y, W: 3, H: h}, p.changed, 0)
 					case linediff.Deleted:
 						pt.Fill(ui.Rect{X: barX, Y: y - 2.5, W: 7, H: 5}, p.removed, 2.5)
 					case linediff.DeletedBelow:
-						pt.Fill(ui.Rect{X: barX, Y: y + lineH - 2.5, W: 7, H: 5}, p.removed, 2.5)
+						pt.Fill(ui.Rect{X: barX, Y: y + h - 2.5, W: 7, H: 5}, p.removed, 2.5)
 					}
 				}
+				// A number by the first row of each line.
 				for i := from; i <= to; i++ {
 					col := p.gutter
 					if i == caretLine && focused {
@@ -369,7 +427,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 					} else if i == caretLine {
 						col = p.muted
 					}
-					number(i, r.Y+editorPadY+float32(i)*lineH-top, col)
+					number(i, lineY(r, i), col)
 				}
 			})
 			for k, row := range sticky {
@@ -377,6 +435,16 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			}
 		})
 	})
+}
+
+// linesInView returns the first and last lines that show, a little of
+// them or all, in a view viewH high, the area scrolled to y.
+func (a *app) linesInView(g geometry, y, viewH float32) (first, last int) {
+	if g.lines == nil {
+		first = max(0, int((y-editorPadY)/g.lineH))
+		return first, min(g.n-1, first+int(viewH/g.lineH)+1)
+	}
+	return g.at(y - editorPadY), g.at(y - editorPadY + viewH)
 }
 
 // colorCache keeps the colors of the tokens of the lines in view, which
@@ -443,26 +511,29 @@ func blank(s string) bool {
 	return true
 }
 
-// scrollToCaret scrolls the editor to show the caret's line, below the
-// lines that stick at the top, and returns those lines. jump brings a line
+// scrollToCaret scrolls the editor to show the caret's row, below the
+// lines that stick at the top, and returns those lines. jump brings a row
 // out of view a third of the way down, as going to a line does; reveal
 // scrolls as little as it takes, as the caret moves.
 //
 // It runs before the text area takes the offset, which would otherwise
 // scroll to the caret itself, under the lines that stick.
-func (a *app) scrollToCaret(d *editor, snap ui.TextSnapshot, line int, viewH float32, jump, reveal bool) []int {
+func (a *app) scrollToCaret(d *editor, g geometry, snap ui.TextSnapshot, caret int, viewH float32, jump, reveal bool) []int {
 	lineH := a.font.lineH
-	sticky := a.stickyAt(d, snap, viewH)
+	sticky := a.stickyAt(d, g, snap, viewH)
 	if viewH <= 0 || !jump && !reveal {
 		return sticky
 	}
-	end := max(0, 2*editorPadY+float32(snap.LineCount())*lineH-viewH)
-	top := editorPadY + float32(line)*lineH // in the content
+	caret = min(caret, snap.Len())
+	line := snap.LineAt(caret)
+	s, _ := snap.LineRange(line)
+	end := max(0, 2*editorPadY+g.height()-viewH)
+	top := editorPadY + g.top(line) + float32(g.row(line, caret-s))*lineH // in the content
 	if jump {
 		stuck := float32(len(sticky)) * lineH
 		if top < d.vscroll.Y+stuck || top+lineH > d.vscroll.Y+viewH-lineH {
 			d.vscroll.Y = clamp(top-viewH/3, 0, end)
-			sticky = a.stickyAt(d, snap, viewH)
+			sticky = a.stickyAt(d, g, snap, viewH)
 		}
 	}
 	// Scrolling changes which lines stick: until the two agree.
@@ -478,19 +549,23 @@ func (a *app) scrollToCaret(d *editor, snap ui.TextSnapshot, line int, viewH flo
 		if d.vscroll.Y == was {
 			break
 		}
-		sticky = a.stickyAt(d, snap, viewH)
+		sticky = a.stickyAt(d, g, snap, viewH)
 	}
 	return sticky
 }
 
 // stickyAt returns the lines that stick at the top of the editor where it
 // is scrolled: above the first line wholly in view.
-func (a *app) stickyAt(d *editor, snap ui.TextSnapshot, viewH float32) []int {
+func (a *app) stickyAt(d *editor, g geometry, snap ui.TextSnapshot, viewH float32) []int {
 	lineH := a.font.lineH
 	if d.vscroll.Y <= editorPadY || !isCode(d.document) {
 		return nil
 	}
-	topLine := int((d.vscroll.Y - editorPadY + lineH - 1) / lineH)
+	y := d.vscroll.Y - editorPadY
+	topLine := g.at(y)
+	if g.top(topLine) <= y-1 {
+		topLine++ // a pixel of it may be under the top
+	}
 	return stickyLines(snap, topLine, min(maxSticky, int(viewH/lineH/3)), d.scopesOf)
 }
 
@@ -502,17 +577,16 @@ func (a *app) setSelection(d *editor, area ui.Element) {
 	d.pinFrame, d.pinY = a.frame, d.vscroll.Y
 }
 
-// inView reports whether the line of offset at shows whole in a view
-// viewH high, where the editor is scrolled.
-func (a *app) inView(d *editor, snap ui.TextSnapshot, at int, viewH float32) bool {
-	top := editorPadY + float32(snap.LineAt(min(at, snap.Len())))*a.font.lineH
+// inView reports whether the first row of the line of offset at shows
+// whole in a view viewH high, where the editor is scrolled.
+func (a *app) inView(d *editor, g geometry, snap ui.TextSnapshot, at int, viewH float32) bool {
+	top := editorPadY + g.top(snap.LineAt(min(at, snap.Len())))
 	return top >= d.vscroll.Y && top+a.font.lineH <= d.vscroll.Y+viewH
 }
 
 // offsetInView returns the start of a line in the middle of the view.
-func (a *app) offsetInView(d *editor, snap ui.TextSnapshot, viewH float32) int {
-	line := int((d.vscroll.Y + viewH/2 - editorPadY) / a.font.lineH)
-	s, _ := snap.LineRange(min(max(line, 0), snap.LineCount()-1))
+func (a *app) offsetInView(d *editor, g geometry, snap ui.TextSnapshot, viewH float32) int {
+	s, _ := snap.LineRange(g.at(d.vscroll.Y + viewH/2 - editorPadY))
 	return s
 }
 

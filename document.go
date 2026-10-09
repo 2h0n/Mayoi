@@ -77,6 +77,16 @@ type editor struct {
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways
+	// lines is where the text area lays out the lines, while it wraps
+	// them.
+	lines ui.TextLines
+	// wrap is the tab's own choice to wrap its lines or not, made while
+	// the settings' WordWrap was of generation wrapGen; nil to follow it.
+	wrap    *bool
+	wrapGen int
+	// rows are where the lines in view wrap, as the last frame laid them
+	// out.
+	rows wrapRows
 
 	caret     int    // the caret's rune offset in the last frame
 	sel       [2]int // the selection in the last frame

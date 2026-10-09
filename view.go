@@ -369,8 +369,20 @@ func (a *app) hiddenEditor(c *ui.Context, d *editor) {
 	}
 	d.vscroll.Y = d.hiddenY
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Children(func() {
-		ui.TextAreaBufferBase(c, d.buf).NoWrap().Font(a.font.family).FontSize(a.font.size).FixedLineHeight(a.font.lineH).
+		// Laid out as the editor shows it, so that its place stays.
+		area := ui.TextAreaBufferBase(c, d.buf).Font(a.font.family).FontSize(a.font.size).FixedLineHeight(a.font.lineH).
 			Fill().TrackScroll(&d.vscroll)
+		if a.wraps(d) {
+			// The rows the editor measured stay measured only at its width
+			// and in its style.
+			gutterW := a.font.gutterWidth(d.buf.Snapshot().LineCount())
+			area.Padding(editorPadY, textPadR, editorPadY, gutterW+gutterGap).TextColor(a.pal.text).TrackLines(&d.lines)
+			if w := d.hscroll.Bounds(c).W; w > 0 {
+				area.Width(w)
+			}
+		} else {
+			area.NoWrap()
+		}
 	})
 }
 

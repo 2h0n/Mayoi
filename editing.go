@@ -531,7 +531,7 @@ func (a *app) jumpToScope(d *editor, line int) {
 	s, e := snap.LineRange(line)
 	at := s + utf8.RuneCountInString(leading(snap.Slice(s, e)))
 	above := float32(len(scopes(snap, line)))
-	d.vscroll.Y = max(0, float32(line)*a.font.lineH-above*a.font.lineH)
+	d.vscroll.Y = max(0, a.geometry(d, snap.LineCount()).top(line)-above*a.font.lineH)
 	d.selectRange(at, at, false)
 	d.vscroll.Focus()
 }

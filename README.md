@@ -4,7 +4,7 @@
 native UI on the GPU. It has no webview and no Electron. The packaged app is about 18 MB.
 
 - **Explorer:** a lazy file tree that follows the disk, with what Git ignores shown faint. You can create, rename, trash and reveal files from it.
-- **Editor:** tabs, line numbers, the caret's line, and Chroma syntax highlighting. Long lines scroll sideways instead of wrapping. Files changed on disk reload unless you have unsaved edits.
+- **Editor:** tabs, line numbers, the caret's line, and Chroma syntax highlighting. Long lines scroll sideways, or wrap at the edge of the editor with View → Word Wrap; ⌥Z wraps or unwraps just the tab shown, until the setting changes. Files changed on disk reload unless you have unsaved edits.
   - **Auto save:** a changed file saves a second after the last edit, when its column shows another tab or the keyboard moves to another column, and when the window loses focus. Closing a changed file saves it without asking. Untitled files wait for ⌘S. Turn it off from File → Auto Save.
   - **Editing:** Tab and ⇧Tab indent and outdent, with tabs or spaces as the file already uses. Enter keeps the indent, and indents further after an opening bracket. Brackets and quotes close themselves, wrap a selection, and are stepped over when typed again. There are commands to comment lines, move, copy and delete lines, and insert a line above or below. Home goes to the first character of the line. The status bar shows the file's indentation and line endings, and you can change either from there.
   - **Undo:** each tab keeps its own history, and it covers the app's edits as well as typing: indenting, moving lines, replacing, and reloading from disk can all be undone. Undoing back to the saved text makes the tab clean again.
@@ -30,7 +30,7 @@ go test -short -run XXX -bench Frame   # the cost of a frame of the editor
 go run ./tools/icongen         # redraw resources/icon.png
 ```
 
-The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also builds for Linux and Windows.
+The app needs Go 1.27+ and macOS 13+, because of the terminal library. It builds against a fork of MyGo, [sorrycc/mygo](https://github.com/sorrycc/mygo) on the `text-geometry` branch, which adds `TrackLines`; `go.mod` replaces MyGo with it. It also builds for Linux and Windows.
 
 ## Keys
 
@@ -51,6 +51,7 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | ⌘L / ⇧⌘\\ | Select line / go to bracket |
 | ⌘= / ⌘- / ⌘0 | Text size, or zoom the picture shown |
 | ⇧⌘V | SVG preview / source |
+| ⌥Z | Word wrap in the tab |
 
 ## How it is built
 
@@ -61,7 +62,7 @@ The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also b
 | `decorations.go`, `selection.go`, `sticky.go` | What is painted around the text: indent guides, bracket pairs, other occurrences of a word, and the selection with its whitespace. Each is found for the lines in view only, and found again only when the text, the caret or the view changes. They are placed by measuring the text as the text area lays it out, tabs at the platform's stops. Sticky lines and breadcrumbs come from the indentation, so they work for any language. |
 | `viewer.go` | An image tab holds a viewer, not a document: the bitmap is decoded off the main thread and painted with the checks under it, at a scale and offset the viewer keeps. An SVG's preview is a viewer in its editor's place, which parses the text a moment after an edit and keeps the last picture that parsed. The text area stays built, out of sight, so the editor keeps its place. |
 | `gitmarks.go`, `internal/linediff` | The text at HEAD is read with `git show`, and the lines are compared with Myers' diff in the background after each edit. A few edits in a 100,000-line file take about 0.25 ms to compare. |
-| `editor.go` | The editor is a `TextAreaBufferBase` that never wraps, inside a container that scrolls sideways. Every line has the same height, so line numbers are painted into its left padding at paint time and stay in step while scrolling. Only the lines in view get `TextRanges` colors, kept from frame to frame and merged into as few ranges as color the same runes. |
+| `editor.go`, `wrap.go` | The editor is a `TextAreaBufferBase` inside a container that scrolls sideways. Unwrapped, every line has the same height, so line numbers are painted into its left padding at paint time and stay in step while scrolling. Wrapped, the area is as wide as the view and reports where it laid out its lines (`TrackLines`, which the MyGo fork adds): what is painted on a line is placed along it as if it did not wrap, then split onto its rows. Only the lines in view get `TextRanges` colors, kept from frame to frame and merged into as few ranges as color the same runes. |
 | `internal/highlight` | Chroma lexing on a background goroutine: the whole file up to 6,000 lines, and a window around the view beyond that. A line whose text has changed shows plain until the next pass, so stale colors never land on the wrong text. |
 | `internal/workspace` | Directories are read as they open and watched with fsnotify, with bursts of changes batched. Also the file index and the fuzzy matcher for quick open. |
 | `document.go`, `columns.go` | A document is a file's text, its undo history and its Git marks; an editor is a document as one tab shows it, with its own selection, scroll and paint caches. A column holds tabs, each an editor or a terminal. Typing is credited to the editor that has the keyboard, and the selections of the document's other editors move with the text. A text area scrolls to its caret when its text changes under it, so an editor without the keyboard parks the area's caret in view and keeps its own selection, and stays where it is scrolled. |

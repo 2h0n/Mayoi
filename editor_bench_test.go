@@ -58,3 +58,35 @@ func BenchmarkTypeFrame(b *testing.B) {
 		hs.tt.Frame()
 	}
 }
+
+func BenchmarkWrapScrollFrame(b *testing.B) {
+	hs := benchDoc(b)
+	hs.a.run("view.wordWrap")
+	hs.settle()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := range b.N {
+		dy := float32(60)
+		if i/200%2 == 1 {
+			dy = -60
+		}
+		hs.tt.Scroll(700, 400, 0, dy)
+		hs.tt.Frame()
+	}
+}
+
+func BenchmarkWrapTypeFrame(b *testing.B) {
+	hs := benchDoc(b)
+	hs.a.run("view.wordWrap")
+	hs.settle()
+	d := hs.a.activeEditor()
+	d.vscroll.Y = 4000
+	hs.place(d, 5000, 5000)
+	hs.settle()
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		hs.tt.Type("a")
+		hs.tt.Frame()
+	}
+}
