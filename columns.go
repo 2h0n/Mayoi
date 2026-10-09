@@ -269,6 +269,10 @@ func (a *app) closeTab(t *colTab, then func()) {
 		remove()
 		return
 	}
+	if a.autoSaves(doc) {
+		a.saveDoc(doc, remove)
+		return
+	}
 	a.host.confirmClose(doc.name(), func(choice int) {
 		switch choice {
 		case 0:
@@ -300,7 +304,7 @@ func (a *app) closeAll(then func()) { a.closeTabs(a.editorTabs(), then) }
 // whose changes would be lost.
 func (a *app) closeOthers(col *column, keep *colTab) {
 	for _, t := range slices.Clone(col.tabs) {
-		if t != keep && (t.ed == nil || !t.ed.dirty() || len(t.ed.views) > 1) {
+		if t != keep && (t.ed == nil || !t.ed.dirty() || len(t.ed.views) > 1 || a.autoSaves(t.ed.document)) {
 			a.closeTab(t, nil)
 		}
 	}

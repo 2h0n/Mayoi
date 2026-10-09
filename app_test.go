@@ -148,6 +148,7 @@ func TestOpenFolderShowsTreeAndOpensFiles(t *testing.T) {
 func TestEditSaveAndDirtyClose(t *testing.T) {
 	hs := newHarness(t, false)
 	a, tt := hs.a, hs.tt
+	a.settings.AutoSave = false // the prompts are for files that do not save themselves
 	a.openFile(hs.path("README.md"), true)
 	hs.settle()
 	tt.Type("Hello ")

@@ -133,6 +133,7 @@ func TestHiddenTabStaysWhereItIsScrolled(t *testing.T) {
 func TestClosingAsksForTheLastTabOfADocument(t *testing.T) {
 	hs, _, right := splitHarness(t, func(hs *harness) string { return hs.path("README.md") })
 	a, tt := hs.a, hs.tt
+	a.settings.AutoSave = false // the prompts are for files that do not save themselves
 	tt.Type("changed ")
 	hs.settle()
 	if !right.dirty() {

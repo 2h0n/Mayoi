@@ -42,6 +42,7 @@ type document struct {
 	widest        int
 	widestVersion uint64
 	diskGone      bool // the file was removed from the disk
+	autoSave      autoSave
 
 	// views are the editors that show the document, and typist the one
 	// that has the keyboard, or had it last, whose typing its is.

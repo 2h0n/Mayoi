@@ -79,6 +79,9 @@ type app struct {
 	nextTab  int
 	nextCol  int
 	untitled int
+	// shownDoc is the document the column with the keyboard showed last
+	// frame, which saves itself once it shows another.
+	shownDoc *document
 
 	// terms are the terminals, those of the panel and those in tabs, and
 	// panelTerm the one the panel shows.
@@ -232,7 +235,7 @@ func (a *app) saveDoc(d *document, then func()) {
 		a.fail("Could not save %s: %v", d.name(), err)
 		return
 	}
-	d.diskGone = false
+	d.diskGone, d.autoSave.failed = false, false
 	a.rememberTabs()
 	if then != nil {
 		then()

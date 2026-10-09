@@ -20,6 +20,9 @@ type settings struct {
 	TerminalOpen bool    `json:"terminalOpen"`
 	FontSize     float32 `json:"fontSize"`
 	FontFamily   string  `json:"fontFamily"`
+	// AutoSave saves changed files a moment after an edit, and as the
+	// keyboard leaves them.
+	AutoSave bool `json:"autoSave"`
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string   `json:"appearance,omitempty"`
 	Folder     string   `json:"folder"`
@@ -57,6 +60,7 @@ func defaultSettings() *settings {
 		SidebarOpen: true, SidebarWidth: 248,
 		PanelOpen: false, PanelHeight: 260,
 		FontSize: 13, FontFamily: "monospace",
+		AutoSave: true,
 	}
 }
 

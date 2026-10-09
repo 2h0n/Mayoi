@@ -126,7 +126,8 @@ func main() {
 			}()
 		}
 
-		// Closing the window with unsaved changes asks about each first.
+		// Closing the window saves the files that save themselves, and with
+		// other unsaved changes asks about each first.
 		closing := false
 		win.OnClose(func(e *mygo.CloseEvent) {
 			if closing || !a.anyDirty() {
@@ -134,15 +135,21 @@ func main() {
 			}
 			e.PreventDefault()
 			a.post(func() {
-				a.closeAll(func() {
+				done := func() {
 					closing = true
 					win.Close()
-				})
+				}
+				if a.autoSaveAll(); !a.anyDirty() {
+					done()
+					return
+				}
+				a.closeAll(done)
 			})
 			win.Invalidate()
 		})
 		// Back from another app, which may have committed.
 		win.OnFocus(func() { a.post(a.gitChanged) })
+		win.OnBlur(func() { a.post(a.autoSaveAll) })
 		win.OnClosed(func() {
 			a.closeTerminals()
 			s.flush()

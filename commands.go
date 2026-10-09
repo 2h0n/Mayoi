@@ -26,6 +26,7 @@ func (a *app) commands() []command {
 		{"file.save", "Save", "CmdOrCtrl+S", a.saveActive},
 		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
+		{"file.autoSave", "Auto Save", "", a.toggleAutoSave},
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
@@ -145,6 +146,11 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 			win.Invalidate()
 		}}
 	}
+	checkbox := func(id string, checked bool) *mygo.MenuItem {
+		it := item(id)
+		it.Type, it.Checked = mygo.MenuItemCheckbox, checked
+		return it
+	}
 	radio := func(id, appearance string) *mygo.MenuItem {
 		it := item(id)
 		it.Type, it.Checked = mygo.MenuItemRadio, a.settings.Appearance == appearance
@@ -154,7 +160,7 @@ func (a *app) menu(win *mygo.Window) *mygo.Menu {
 		{Role: mygo.RoleAppMenu},
 		{Label: "File", Submenu: []*mygo.MenuItem{
 			item("file.new"), item("file.openFolder"), mygo.Separator(),
-			item("file.save"), item("file.saveAs"), item("file.saveAll"), mygo.Separator(),
+			item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), mygo.Separator(),
 			item("file.close"), item("file.closeFolder"),
 		}},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{

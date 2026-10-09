@@ -58,6 +58,7 @@ func (a *app) view(c *ui.Context) {
 			a.focus, a.col = paneEditor, i
 		}
 	}
+	a.autoSaveTick()
 	switch {
 	case a.panelTerm != nil && a.panelTerm.view.FocusWithin(c):
 		a.focus = paneTerminal
