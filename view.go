@@ -1,11 +1,16 @@
 package main
 
 import (
+	"bytes"
+	_ "embed"
 	"fmt"
+	"image"
+	"image/png"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/egoist/mygo/ui"
 
@@ -589,12 +594,27 @@ func abs(n int) int {
 	return n
 }
 
-// logo is Mayoi's mark, as on its icon: an M in a gradient of the accent,
-// and the dot of a moment's hesitation below it.
-var logo = ui.MustParseSVG([]byte(`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#c2b5ff"/><stop offset="1" stop-color="#8b7cf6"/></linearGradient></defs>
-<path d="M14 42V14L32 32L50 14V42" fill="none" stroke="url(#g)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-<circle cx="32" cy="51" r="4" fill="#e8b86d"/></svg>`))
+// iconArt is the app icon's art, which tools/icongen places on the
+// macOS icon grid.
+//
+//go:embed resources/icon-art.png
+var iconArt []byte
+
+// iconFrame is the width of the art's own pixel tile border, which the
+// icon crops, in pixels of the 1254 px art; as in tools/icongen.
+const iconFrame = 52
+
+// logo is Mayoi's mark: the app icon itself, its border cropped as on
+// the Dock, decoded the first time the welcome page shows.
+var logo = sync.OnceValue(func() *ui.Bitmap {
+	art, err := png.Decode(bytes.NewReader(iconArt))
+	if err != nil {
+		panic(err)
+	}
+	return ui.NewBitmap(art.(interface {
+		SubImage(image.Rectangle) image.Image
+	}).SubImage(art.Bounds().Inset(iconFrame)))
+})
 
 // welcome shows while no file is open: what to start with, and the
 // folders opened last.
@@ -606,7 +626,10 @@ func (a *app) welcome(c *ui.Context) {
 		ui.Column(c).FillWidth().MinHeight(view.H).Center().Padding(40, 24, 64).Children(func() {
 			ui.Column(c).Width(380).MaxWidthPercent(100).Gap(32).Children(func() {
 				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-					ui.Image(c, logo).Size(52, 52)
+					// Clipped to the icon's squircle: 185 of its 824 DIPs.
+					ui.Column(c).Size(52, 52).Radius(52.0 * 185 / 824).Clip().Children(func() {
+						ui.Image(c, logo()).Size(52, 52)
+					})
 					ui.Column(c).Gap(3).Children(func() {
 						ui.Text(c, "Mayoi").FontSize(26).FontWeight(600).LetterSpacing(-0.3).TextColor(p.text)
 						ui.Text(c, "迷い · a small, quick code editor").FontSize(13).TextColor(p.muted)
