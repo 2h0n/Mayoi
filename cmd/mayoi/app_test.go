@@ -561,6 +561,40 @@ func TestReopenClosedTabInItsColumn(t *testing.T) {
 	}
 }
 
+func TestReopenClosedTabBringsBackItsColumn(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	a.openFile(hs.path("main.go"), true)
+	a.openFile(hs.path("go.mod"), true)
+	a.splitRight()
+	a.openFile(hs.path("README.md"), true)
+	hs.settle()
+	right := a.column()
+	weight := right.weight
+	// The right column goes with its last tab.
+	a.closeActive()
+	a.closeActive()
+	hs.settle()
+	if len(a.cols) != 1 {
+		t.Fatalf("%d columns after closing the right one's tabs", len(a.cols))
+	}
+	a.run("file.reopenClosed")
+	hs.settle()
+	if len(a.cols) != 2 || a.col != 1 || a.column().weight != weight {
+		t.Fatalf("%d columns, column %d has the keyboard", len(a.cols), a.col)
+	}
+	// The other tab closed from it goes back to it too, where it was.
+	a.run("file.reopenClosed")
+	hs.settle()
+	var got []string
+	for _, t := range a.cols[1].tabs {
+		got = append(got, filepath.Base(t.path()))
+	}
+	if len(a.cols) != 2 || strings.Join(got, " ") != "go.mod README.md" {
+		t.Errorf("%d columns, the right one has %v", len(a.cols), got)
+	}
+}
+
 func TestReopenClosedTerminal(t *testing.T) {
 	if testing.Short() {
 		t.Skip("starts a shell")

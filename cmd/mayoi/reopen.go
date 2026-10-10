@@ -14,7 +14,11 @@ type closedTab struct {
 	path    string // the file or image; "" for a terminal
 	termDir string // where the terminal started
 	col, at int    // the column's id and the tab's place there
-	preview bool   // an SVG showed as an image
+	// colAt and weight are the column's place among the columns and its
+	// share of their width, to make it again once it is gone.
+	colAt   int
+	weight  float32
+	preview bool // an SVG showed as an image
 	sel     [2]int
 	caret   int
 	x, y    float32
@@ -29,7 +33,7 @@ func (a *app) rememberClosed(t *colTab) {
 	if col == nil {
 		return
 	}
-	c := closedTab{col: col.id, at: i}
+	c := closedTab{col: col.id, at: i, colAt: slices.Index(a.cols, col), weight: col.weight}
 	switch {
 	case t.term != nil:
 		c.termDir = t.term.dir
@@ -50,29 +54,29 @@ func (a *app) rememberClosed(t *colTab) {
 	}
 }
 
-// reopenClosed opens the tab closed last again, in its column and place
-// when the column is still there, and otherwise in the column that has
-// the keyboard. Files gone from the disk are passed over.
+// reopenClosed opens the tab closed last again, in its column and place,
+// making the column again where it was when its last tab closed. Files
+// gone from the disk are passed over.
 func (a *app) reopenClosed() {
 	for len(a.closed) > 0 {
 		c := a.closed[len(a.closed)-1]
 		a.closed = a.closed[:len(a.closed)-1]
-		col := a.column()
-		if i := slices.IndexFunc(a.cols, func(k *column) bool { return k.id == c.col }); i >= 0 {
-			col = a.cols[i]
-		}
+		col, made := a.closedColumn(c)
 		if c.path == "" {
 			if a.newTerminalTabAt(col, c.at, c.termDir, true) {
 				return
 			}
+			a.dropColumn(col, made)
 			continue
 		}
 		if _, err := os.Stat(c.path); err != nil {
+			a.dropColumn(col, made)
 			continue
 		}
 		n := len(col.tabs)
 		a.openFileIn(col, c.at, c.path, true)
 		if len(col.tabs) == n {
+			a.dropColumn(col, made)
 			// The column showed it already, or it could not open.
 			return
 		}
@@ -86,5 +90,40 @@ func (a *app) reopenClosed() {
 			a.focusTab(col.tab())
 		}
 		return
+	}
+}
+
+// closedColumn returns the column a closed tab goes back to: its own, or
+// one made again in its place when it went with its last tab, which the
+// other tabs closed from it go back to too. made reports the latter.
+func (a *app) closedColumn(c closedTab) (col *column, made bool) {
+	if i := slices.IndexFunc(a.cols, func(k *column) bool { return k.id == c.col }); i >= 0 {
+		return a.cols[i], false
+	}
+	if c.colAt < 0 || len(a.cols) == 1 && len(a.cols[0].tabs) == 0 {
+		// The window's only column is empty: it takes the column's place.
+		col = a.column()
+	} else {
+		col = a.newColumn()
+		col.weight = c.weight
+		at := min(c.colAt, len(a.cols))
+		a.cols = slices.Insert(a.cols, at, col)
+		if a.col >= at {
+			a.col++
+		}
+		made = true
+	}
+	for i := range a.closed {
+		if a.closed[i].col == c.col {
+			a.closed[i].col = col.id
+		}
+	}
+	return col, made
+}
+
+// dropColumn takes away a column made again for a tab that did not open.
+func (a *app) dropColumn(col *column, made bool) {
+	if made && len(col.tabs) == 0 {
+		a.removeColumn(col)
 	}
 }
