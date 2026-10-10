@@ -1,7 +1,11 @@
-# Mayoi
+<p align="center">
+  <img src="resources/icon.png" width="128" height="128" alt="Mayoi icon">
+</p>
 
-迷い — a small, fast code editor written in Go. It draws a native UI on the GPU with
-[MyGo](https://github.com/egoist/mygo), with no webview and no Electron, and the packaged app is about 18 MB.
+<h1 align="center">Mayoi</h1>
+
+<p align="center">迷い — a small, fast code editor written in Go. It draws a native UI on the GPU with
+<a href="https://github.com/egoist/mygo">MyGo</a>, with no webview and no Electron, and the packaged app is about 18 MB.</p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/screenshot-dark.png">
