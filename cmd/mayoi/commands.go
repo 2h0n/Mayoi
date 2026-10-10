@@ -142,7 +142,7 @@ func (a *app) moveTerminal() {
 // "".
 func (a *app) setAppearance(appearance string) {
 	a.settings.Appearance = appearance
-	a.settings.changed()
+	a.settings.Changed()
 	a.host.setAppearance(appearance)
 }
 
@@ -159,7 +159,7 @@ func (a *app) zoom(by float32) {
 	} else {
 		s.FontSize = clamp(s.FontSize+by, 9, 28)
 	}
-	s.changed()
+	s.Changed()
 	for _, t := range a.terms {
 		t.term.SetFont(termFont(a.settings))
 	}

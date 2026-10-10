@@ -9,6 +9,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/symbols"
 	"mayoi/internal/workspace"
 )
 
@@ -316,9 +317,9 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 			sym := syms[q.results[i].Index]
 			a.editActive(func(d *editor) {
 				// To the line, with the name selected.
-				a.jumpToScope(d, sym.line)
-				s, _ := d.buf.Snapshot().LineRange(sym.line)
-				d.selectRange(s+sym.col, s+sym.col+utf8.RuneCountInString(sym.name), false)
+				a.jumpToScope(d, sym.Line)
+				s, _ := d.buf.Snapshot().LineRange(sym.Line)
+				d.selectRange(s+sym.Col, s+sym.Col+utf8.RuneCountInString(sym.Name), false)
 			})()
 		}
 	}
@@ -352,8 +353,8 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 					ui.Scroll(c.Key("quick-symbols")).MaxHeight(380).Padding(6).Children(func() {
 						for i, m := range q.results {
 							sym := syms[m.Index]
-							row := ui.ButtonBase(c.Key(fmt.Sprint("sym:", sym.line))).Padding(5, 10).Gap(10).Radius(6).
-								Justify(ui.Start).AlignItems(ui.Center).Label(sym.name)
+							row := ui.ButtonBase(c.Key(fmt.Sprint("sym:", sym.Line))).Padding(5, 10).Gap(10).Radius(6).
+								Justify(ui.Start).AlignItems(ui.Center).Label(sym.Name)
 							switch {
 							case i == q.sel:
 								row.Background(p.active)
@@ -383,16 +384,16 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 // symbolRow shows a symbol of the results: its kind, its name with the
 // characters the query matched in the accent color, its declaration and
 // its line. Listed in order, symbols are indented as in the document.
-func (a *app) symbolRow(c *ui.Context, sym symbol, positions []int, nested bool) {
+func (a *app) symbolRow(c *ui.Context, sym symbols.Symbol, positions []int, nested bool) {
 	p := a.pal
-	if nested && sym.depth > 0 {
-		ui.Box(c).Width(float32(min(sym.depth, 24)) * 4).Shrink(0)
+	if nested && sym.Depth > 0 {
+		ui.Box(c).Width(float32(min(sym.Depth, 24)) * 4).Shrink(0)
 	}
-	icon, col := a.symbolIcon(sym.kind)
+	icon, col := a.symbolIcon(sym.Kind)
 	ui.Icon(c, icon).FontSize(14).TextColor(col)
 	var spans []ui.Span
 	k := 0
-	for i, r := range sym.name {
+	for i, r := range sym.Name {
 		for k < len(positions) && positions[k] < i {
 			k++
 		}
@@ -408,6 +409,6 @@ func (a *app) symbolRow(c *ui.Context, sym symbol, positions []int, nested bool)
 		spans = append(spans, sp)
 	}
 	ui.RichText(c, spans...).FontSize(13).SingleLine().Shrink(0)
-	ui.Text(c, sym.detail).FontSize(12).Font(a.font.family).TextColor(p.faint).SingleLine().Shrink(1).Grow(1).MinWidth(0)
-	ui.Text(c, fmt.Sprint(sym.line+1)).FontSize(11.5).TextColor(p.faint).SingleLine().Shrink(0)
+	ui.Text(c, sym.Detail).FontSize(12).Font(a.font.family).TextColor(p.faint).SingleLine().Shrink(1).Grow(1).MinWidth(0)
+	ui.Text(c, fmt.Sprint(sym.Line+1)).FontSize(11.5).TextColor(p.faint).SingleLine().Shrink(0)
 }

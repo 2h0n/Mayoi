@@ -10,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/highlight"
+	"mayoi/internal/settings"
 )
 
 // column is a column of the editor area: its tabs, and the one it shows.
@@ -535,15 +536,15 @@ func (a *app) moveTabBy(step int) {
 // rememberTabs keeps the columns and the files open in them in the
 // settings.
 func (a *app) rememberTabs() {
-	cols := make([]columnState, 0, len(a.cols))
+	cols := make([]settings.Column, 0, len(a.cols))
 	for _, col := range a.cols {
-		cs := columnState{Tabs: []tabState{}, Active: -1, Weight: col.weight}
+		cs := settings.Column{Tabs: []settings.Tab{}, Active: -1, Weight: col.weight}
 		for i, t := range col.tabs {
 			switch {
 			case t.term != nil:
-				cs.Tabs = append(cs.Tabs, tabState{Terminal: true})
+				cs.Tabs = append(cs.Tabs, settings.Tab{Terminal: true})
 			case t.path() != "":
-				cs.Tabs = append(cs.Tabs, tabState{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil})
+				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil})
 			default:
 				continue
 			}
@@ -554,7 +555,7 @@ func (a *app) rememberTabs() {
 		cols = append(cols, cs)
 	}
 	a.window.Columns, a.window.Column = cols, a.col
-	a.settings.changed()
+	a.settings.Changed()
 }
 
 // restoreTabs opens the columns of the last session and their files, and

@@ -1,24 +1,25 @@
-package main
+// Package symbols finds the declarations of a text, in most languages,
+// which go to symbol lists.
+package symbols
 
 import (
 	"regexp"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
-
-	"mayoi/internal/highlight"
 )
 
-// symbol is a declaration of a document, as go to symbol lists it: the
+// Symbol is a declaration of a document, as go to symbol lists it: the
 // line it is on, its name, which quick open matches, and its kind.
-type symbol struct {
-	line   int
-	name   string
-	detail string // the rest of the declaration, shortened
-	kind   string
-	depth  int // how far it is indented, in columns
-	col    int // where the name starts on its line, in runes
+type Symbol struct {
+	Line   int
+	Name   string
+	Detail string // the rest of the declaration, shortened
+	Kind   string
+	Depth  int // how far it is indented, in columns
+	Col    int // where the name starts on its line, in runes
 }
 
 // declaration finds the lines that declare something, in most languages:
@@ -28,17 +29,15 @@ var declaration = regexp.MustCompile(`^(\s*)(?:(?:export|pub(?:\([^)]*\))?|publi
 // mdHeading finds a heading of Markdown.
 var mdHeading = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*#*\s*$`)
 
-// maxSymbolLines is the longest document whose symbols are listed.
-const maxSymbolLines = 200_000
+// maxLines is the longest document whose symbols are listed.
+const maxLines = 200_000
 
-// findSymbols lists the declarations of a document.
-func findSymbols(d *document) []symbol {
-	snap := d.buf.Snapshot()
-	if snap.LineCount() > maxSymbolLines {
+// Find lists the declarations of a text, or, in Markdown, its headings.
+func Find(snap ui.TextSnapshot, markdown bool) []Symbol {
+	if snap.LineCount() > maxLines {
 		return nil
 	}
-	markdown := d.hl != nil && strings.EqualFold(highlight.Name(d.hl.Lexer()), "markdown")
-	var out []symbol
+	var out []Symbol
 	fence := false
 	for i := range snap.LineCount() {
 		s, e := snap.LineRange(i)
@@ -51,14 +50,14 @@ func findSymbols(d *document) []symbol {
 				fence = !fence
 			}
 			if m := mdHeading.FindStringSubmatch(text); m != nil && !fence {
-				out = append(out, symbol{line: i, name: m[2], detail: m[1], kind: "heading", depth: 2 * (len(m[1]) - 1)})
+				out = append(out, Symbol{Line: i, Name: m[2], Detail: m[1], Kind: "heading", Depth: 2 * (len(m[1]) - 1)})
 			}
 			continue
 		}
 		if sym, ok := declare(text); ok {
-			sym.line = i
-			if at := strings.Index(text, sym.name); at >= 0 {
-				sym.col = utf8.RuneCountInString(text[:at])
+			sym.Line = i
+			if at := strings.Index(text, sym.Name); at >= 0 {
+				sym.Col = utf8.RuneCountInString(text[:at])
 			}
 			out = append(out, sym)
 		}
@@ -67,10 +66,10 @@ func findSymbols(d *document) []symbol {
 }
 
 // declare reads a line declaring something: its name and kind.
-func declare(text string) (symbol, bool) {
+func declare(text string) (Symbol, bool) {
 	m := declaration.FindStringSubmatch(text)
 	if m == nil {
-		return symbol{}, false
+		return Symbol{}, false
 	}
 	kw, rest := m[2], m[3]
 	// A method's receiver comes first in Go: func (a *app) name(…).
@@ -87,7 +86,7 @@ func declare(text string) (symbol, bool) {
 		name = rest[:end]
 	}
 	if name == "" || kw == "type" && rest != "" && rest[0] == '(' {
-		return symbol{}, false // an anonymous function, or a group of types
+		return Symbol{}, false // an anonymous function, or a group of types
 	}
 	// The rest of the declaration, as a function's parameters, and the
 	// type a method is of.
@@ -118,54 +117,23 @@ func declare(text string) (symbol, bool) {
 			kind = "interface"
 		}
 	}
-	return symbol{name: name, detail: detail, kind: kind, depth: columns(m[1])}, true
+	return Symbol{Name: name, Detail: detail, Kind: kind, Depth: columns(m[1])}, true
 }
 
-// symbolCache keeps the symbols of the version of a document go to
-// symbol listed last.
-type symbolCache struct {
-	doc     int
-	version uint64
-	symbols []symbol
-	names   []string
-}
+func isWordRune(r rune) bool { return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r) }
 
-// documentSymbols returns the symbols of the document shown.
-func (a *app) documentSymbols() ([]symbol, []string) {
-	d := a.activeEditor()
-	sc := &a.quick.syms
-	if d == nil {
-		return nil, nil
-	}
-	if sc.doc == d.id && sc.version == d.buf.Version() && sc.symbols != nil {
-		return sc.symbols, sc.names
-	}
-	sc.doc, sc.version = d.id, d.buf.Version()
-	sc.symbols = findSymbols(d.document)
-	if sc.symbols == nil {
-		sc.symbols = []symbol{}
-	}
-	sc.names = make([]string, len(sc.symbols))
-	for i, s := range sc.symbols {
-		sc.names[i] = s.name
-	}
-	return sc.symbols, sc.names
-}
+// tabWidth is the columns of a tab, as the editor shows it.
+const tabWidth = 4
 
-// symbolIcon is the mark of a kind of symbol, and its color.
-func (a *app) symbolIcon(kind string) (*ui.SVG, ui.Color) {
-	p := a.pal
-	switch kind {
-	case "function", "method":
-		return iconFunction, p.syntax[highlight.Function]
-	case "class":
-		return iconBox, p.syntax[highlight.Type]
-	case "interface":
-		return iconBraces, p.syntax[highlight.Type]
-	case "type", "enum":
-		return iconType, p.syntax[highlight.Type]
-	case "heading":
-		return iconHash, p.syntax[highlight.Heading]
+// columns is how wide s is, in columns, with its tabs.
+func columns(s string) int {
+	col := 0
+	for _, r := range s {
+		if r == '\t' {
+			col += tabWidth - col%tabWidth
+		} else {
+			col++
+		}
 	}
-	return iconHash, p.muted
+	return col
 }

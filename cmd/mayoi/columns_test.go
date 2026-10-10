@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
 	"strings"
@@ -250,13 +251,13 @@ func TestColumnsShareTheWidth(t *testing.T) {
 func TestRestoresColumns(t *testing.T) {
 	root := workspaceFixture(t)
 	file := func(name string) string { return filepath.Join(root, name) }
-	s := defaultSettings()
-	w := s.newWindow()
+	s := settings.Default()
+	w := s.NewWindow()
 	w.Folder = root
-	w.Columns = []columnState{
-		{Tabs: []tabState{{File: file("main.go")}, {File: file("README.md")}}, Active: 0, Weight: 2},
-		{Tabs: []tabState{{File: file("gone.go")}}, Active: 0, Weight: 1},
-		{Tabs: []tabState{{File: file("README.md")}, {File: file("go.mod")}}, Active: 1, Weight: 1},
+	w.Columns = []settings.Column{
+		{Tabs: []settings.Tab{{File: file("main.go")}, {File: file("README.md")}}, Active: 0, Weight: 2},
+		{Tabs: []settings.Tab{{File: file("gone.go")}}, Active: 0, Weight: 1},
+		{Tabs: []settings.Tab{{File: file("README.md")}, {File: file("go.mod")}}, Active: 1, Weight: 1},
 	}
 	w.Column = 2
 	a := newApp(&fakeHost{folder: root}, s, w)
@@ -279,12 +280,12 @@ func TestRestoresColumns(t *testing.T) {
 func TestFileGivenAtStartJoinsTheSession(t *testing.T) {
 	root := workspaceFixture(t)
 	file := func(name string) string { return filepath.Join(root, name) }
-	s := defaultSettings()
-	w := s.newWindow()
+	s := settings.Default()
+	w := s.NewWindow()
 	w.Folder = root
-	w.Columns = []columnState{
-		{Tabs: []tabState{{File: file("main.go")}}, Weight: 1},
-		{Tabs: []tabState{{File: file("go.mod")}}, Weight: 1},
+	w.Columns = []settings.Column{
+		{Tabs: []settings.Tab{{File: file("main.go")}}, Weight: 1},
+		{Tabs: []settings.Tab{{File: file("go.mod")}}, Weight: 1},
 	}
 	a := newApp(&fakeHost{folder: root}, s, w)
 	tt := ui.NewTester(a.view, 1200, 760)

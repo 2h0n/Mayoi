@@ -1,4 +1,6 @@
-package main
+// Package cli installs and uninstalls the mayoi shell command, which opens
+// folders and files in the app.
+package cli
 
 import (
 	"context"
@@ -15,21 +17,21 @@ import (
 // bundleID is the app's identifier, as mygo.json gives it.
 const bundleID = "dev.mayoi.editor"
 
-// cliMark is a line of the mayoi command, by which uninstalling knows it.
-const cliMark = "# Installed by Mayoi: File > Install 'mayoi' Command."
+// scriptMark is a line of the mayoi command, by which uninstalling knows it.
+const scriptMark = "# Installed by Mayoi: File > Install 'mayoi' Command."
 
-// cliScript is the mayoi command. It hands its folders and files to the
+// script is the mayoi command. It hands its folders and files to the
 // app by its identifier, so it keeps working when the app moves, else to
 // the app at app, where it was installed from; and returns at once: a
 // running Mayoi opens them, or one starts.
-func cliScript(app string) string {
+func script(app string) string {
 	fallback := ""
 	if app != "" {
 		fallback = " 2>/dev/null || open -a " + shellQuote(app) + ` "$@"`
 	}
 	return `#!/bin/sh
 # mayoi [folder or file]... opens them in Mayoi.
-` + cliMark + `
+` + scriptMark + `
 for p in "$@"; do
 	case $p in
 	/*) ;;
@@ -42,10 +44,10 @@ open -b ` + bundleID + ` "$@"` + fallback + `
 `
 }
 
-// cliDirs are where the command goes: ~/.local/bin when the shell looks
+// Dirs are where the command goes: ~/.local/bin when the shell looks
 // there, which needs no password, else /usr/local/bin, which is always on
 // the path.
-func cliDirs(home string, path []string) []string {
+func Dirs(home string, path []string) []string {
 	local := filepath.Join(home, ".local", "bin")
 	if slices.Contains(path, local) {
 		return []string{local, "/usr/local/bin"}
@@ -53,24 +55,24 @@ func cliDirs(home string, path []string) []string {
 	return []string{"/usr/local/bin"}
 }
 
-// errCanceled is the user declining to give the password.
-var errCanceled = errors.New("canceled")
+// ErrCanceled is the user declining to give the password.
+var ErrCanceled = errors.New("canceled")
 
-// installCLI writes the mayoi command of the app at app into the first
+// Install writes the mayoi command of the app at app into the first
 // of dirs that takes it, as an administrator for the last, and returns
 // where it went.
-func installCLI(dirs []string, app string) (string, error) {
+func Install(dirs []string, app string) (string, error) {
 	var err error
 	for i, dir := range dirs {
 		p := filepath.Join(dir, "mayoi")
-		if data, rerr := os.ReadFile(p); rerr == nil && !strings.Contains(string(data), cliMark) {
+		if data, rerr := os.ReadFile(p); rerr == nil && !strings.Contains(string(data), scriptMark) {
 			return "", fmt.Errorf("%s is another program's", p)
 		}
-		if err = writeCLI(dir, app); err == nil {
+		if err = write(dir, app); err == nil {
 			return p, nil
 		}
 		if i == len(dirs)-1 && errors.Is(err, os.ErrPermission) {
-			if err = writeCLIAsAdmin(dir, app); err == nil {
+			if err = writeAsAdmin(dir, app); err == nil {
 				return p, nil
 			}
 		}
@@ -78,25 +80,25 @@ func installCLI(dirs []string, app string) (string, error) {
 	return "", err
 }
 
-func writeCLI(dir, app string) error {
+func write(dir, app string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	p := filepath.Join(dir, "mayoi")
 	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, []byte(cliScript(app)), 0o755); err != nil {
+	if err := os.WriteFile(tmp, []byte(script(app)), 0o755); err != nil {
 		return err
 	}
 	return os.Rename(tmp, p)
 }
 
-func writeCLIAsAdmin(dir, app string) error {
+func writeAsAdmin(dir, app string) error {
 	f, err := os.CreateTemp("", "mayoi-*")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(f.Name())
-	_, err = f.WriteString(cliScript(app))
+	_, err = f.WriteString(script(app))
 	if cerr := f.Close(); err == nil {
 		err = cerr
 	}
@@ -108,14 +110,14 @@ func writeCLIAsAdmin(dir, app string) error {
 		shellQuote(dir), shellQuote(f.Name()), shellQuote(p), shellQuote(p)))
 }
 
-// uninstallCLI removes the mayoi command from dirs, where it is Mayoi's,
+// Uninstall removes the mayoi command from dirs, where it is Mayoi's,
 // and returns where it was.
-func uninstallCLI(dirs []string) ([]string, error) {
+func Uninstall(dirs []string) ([]string, error) {
 	var removed []string
 	for _, dir := range dirs {
 		p := filepath.Join(dir, "mayoi")
 		data, err := os.ReadFile(p)
-		if err != nil || !strings.Contains(string(data), cliMark) {
+		if err != nil || !strings.Contains(string(data), scriptMark) {
 			continue
 		}
 		err = os.Remove(p)
@@ -137,34 +139,18 @@ func runAsAdmin(cmd string) error {
 	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
 	if err != nil {
 		if strings.Contains(string(out), "(-128)") {
-			return errCanceled
+			return ErrCanceled
 		}
 		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
 	}
 	return nil
 }
 
-// appBundle is the .app the running executable is in, "" when it is in
-// none.
-func appBundle() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return ""
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
-		return ""
-	}
-	if app, _, ok := strings.Cut(exe, ".app/Contents/MacOS/"); ok {
-		return app + ".app"
-	}
-	return ""
-}
-
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
-// shellPath is where the user's shell looks for commands, which an app
+// ShellPath is where the user's shell looks for commands, which an app
 // opened from the Finder does not inherit: the login shell says.
-func shellPath() []string {
+func ShellPath() []string {
 	path := filepath.SplitList(os.Getenv("PATH"))
 	sh := os.Getenv("SHELL")
 	if sh == "" {

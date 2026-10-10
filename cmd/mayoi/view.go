@@ -178,7 +178,7 @@ func (a *app) splitter(c *ui.Context, at edge, drag func(d float32)) {
 		} else {
 			drag(dx)
 		}
-		a.settings.changed()
+		a.settings.Changed()
 	}
 }
 
@@ -659,7 +659,7 @@ func abs(n int) int {
 // iconArt is the app icon's art, which tools/icongen places on the
 // macOS icon grid.
 //
-//go:embed resources/icon-art.png
+//go:embed icon-art.png
 var iconArt []byte
 
 // iconFrame is the width of the art's own pixel tile border, which the
@@ -794,7 +794,7 @@ func (a *app) keycaps(c *ui.Context, keys string) {
 
 func (a *app) toggleSidebar() {
 	a.settings.SidebarOpen = !a.settings.SidebarOpen
-	a.settings.changed()
+	a.settings.Changed()
 }
 
 // togglePanel shows or hides the terminal panel, starting a terminal the
@@ -815,7 +815,7 @@ func (a *app) togglePanel() {
 	} else {
 		a.focusColumn()
 	}
-	a.settings.changed()
+	a.settings.Changed()
 }
 
 func shortenHome(p string) string {
@@ -824,3 +824,5 @@ func shortenHome(p string) string {
 	}
 	return p
 }
+
+func clamp(v, lo, hi float32) float32 { return max(lo, min(v, hi)) }

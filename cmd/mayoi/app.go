@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/highlight"
+	"mayoi/internal/settings"
 	"mayoi/internal/workspace"
 )
 
@@ -46,9 +47,9 @@ type host interface {
 // app is the state of a window of Mayoi.
 type app struct {
 	host     host
-	settings *settings
+	settings *settings.Settings
 	// window is what the settings keep of this window.
-	window *windowState
+	window *settings.Window
 
 	pal      *palette
 	font     codeFont
@@ -131,7 +132,7 @@ const (
 	paneTerminal // the panel
 )
 
-func newApp(h host, s *settings, w *windowState) *app {
+func newApp(h host, s *settings.Settings, w *settings.Window) *app {
 	a := &app{host: h, settings: s, window: w, fileRow: -1}
 	a.files.List.Selected = &a.fileRow
 	a.cols = []*column{a.newColumn()}
@@ -209,14 +210,14 @@ func (a *app) openFolder(dir string) {
 	a.ignored, a.ignoredStale = nil, true
 	a.branch = gitBranch(dir)
 	a.window.Folder = dir
-	a.settings.addRecent(dir)
+	a.settings.AddRecent(dir)
 	for _, d := range a.docs {
 		a.tree.Watch(d.path)
 	}
 	for _, v := range a.imageViewers() {
 		a.tree.Watch(v.path)
 	}
-	a.settings.changed()
+	a.settings.Changed()
 }
 
 // folder is the window's folder, also before the window starts and
@@ -250,7 +251,7 @@ func (a *app) closeFolder() {
 		}
 		a.root, a.tree, a.index, a.branch = "", nil, nil, ""
 		a.window.Folder = ""
-		a.settings.changed()
+		a.settings.Changed()
 	})
 }
 
@@ -363,6 +364,14 @@ func (a *app) diskChanged(changed, removed []string) {
 	}
 	a.branch = gitBranch(a.root)
 	a.gitChanged()
+}
+
+// gitChanged has the documents read their bases again, as when a commit
+// may have been made.
+func (a *app) gitChanged() {
+	for _, d := range a.docs {
+		d.git.HeadMoved()
+	}
 }
 
 // imageViewers returns the viewers of the image files open in tabs.

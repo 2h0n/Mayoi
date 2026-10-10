@@ -1,8 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image/png"
+	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
 	"slices"
@@ -85,8 +87,8 @@ type harness struct {
 
 func newHarness(t testing.TB, dark bool) *harness {
 	root := workspaceFixture(t)
-	s := defaultSettings()
-	w := s.newWindow()
+	s := settings.Default()
+	w := s.NewWindow()
 	w.Folder = root
 	h := &fakeHost{folder: root}
 	a := newApp(h, s, w)
@@ -382,21 +384,6 @@ func TestPanelWithTerminal(t *testing.T) {
 	a.closeTerminals()
 }
 
-func TestSettingsRoundTrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "s.json")
-	s := loadSettings(path)
-	s.SidebarWidth = 300
-	w := s.newWindow()
-	w.Folder, w.Columns = "/tmp/x", []columnState{{Tabs: []tabState{{File: "/tmp/x/a.go"}}}}
-	s.newWindow().Folder = "/tmp/y"
-	s.flush()
-	got := loadSettings(path)
-	if got.SidebarWidth != 300 || len(got.Windows) != 2 || got.Windows[0].Folder != "/tmp/y" || got.Windows[0].ID != 1 ||
-		got.Windows[1].Folder != "/tmp/x" || len(got.Windows[1].Columns) != 1 {
-		t.Errorf("loaded %+v", got)
-	}
-}
-
 func TestLargeFileStaysQuick(t *testing.T) {
 	hs := newHarness(t, true)
 	a, tt := hs.a, hs.tt
@@ -477,12 +464,12 @@ func TestSplittersResize(t *testing.T) {
 
 func TestRestoresTheActiveTab(t *testing.T) {
 	root := workspaceFixture(t)
-	s := defaultSettings()
-	s.Folder = root
 	// The tabs as a version without columns kept them.
 	files := []string{filepath.Join(root, "main.go"), filepath.Join(root, "README.md"), filepath.Join(root, "go.mod")}
-	s.OpenFiles, s.ActiveFile = files, files[1]
-	s.migrate()
+	data, _ := json.Marshal(map[string]any{"folder": root, "openFiles": files, "activeFile": files[1]})
+	path := filepath.Join(t.TempDir(), "s.json")
+	os.WriteFile(path, data, 0o644)
+	s := settings.Load(path)
 	a := newApp(&fakeHost{folder: root}, s, s.Windows[0])
 	tt := ui.NewTester(a.view, 1200, 760)
 	tt.Frame()

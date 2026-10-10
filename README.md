@@ -33,8 +33,8 @@ Mayoi also builds for Linux and Windows.
 ## Getting started
 
 ```sh
-go run . ~/some/project    # open a folder or a file
-go tool mygo build         # build build/darwin-arm64/Mayoi.app and a .dmg
+go run ./cmd/mayoi ~/some/project    # open a folder or a file
+go tool mygo build                   # build build/darwin-arm64/Mayoi.app and a .dmg
 ```
 
 To open folders from a shell, choose **File → Install 'mayoi' Command**, then run `mayoi .` or `mayoi <file>`.
@@ -42,12 +42,12 @@ To open folders from a shell, choose **File → Install 'mayoi' Command**, then 
 ## Development
 
 ```sh
-go tool mygo dev                        # run with live reload
-go test ./...                           # headless UI tests
-go test -short ./...                    # skip the tests that start a shell
-go test -short -run XXX -bench Frame    # benchmark an editor frame
-SHOTS=docs go test -run TestShotReadme  # redraw the README screenshots
-go run ./tools/icongen                  # redraw resources/icon.png
+go tool mygo dev                                            # run with live reload
+go test ./...                                               # headless UI tests
+go test -short ./...                                        # skip the tests that start a shell
+go test -short -run XXX -bench Frame ./cmd/mayoi            # benchmark an editor frame
+SHOTS=$PWD/docs go test -run TestShotReadme ./cmd/mayoi     # redraw the README screenshots
+go run ./tools/icongen                                      # redraw resources/icon.png
 ```
 
 ## Releasing

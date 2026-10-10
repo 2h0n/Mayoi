@@ -229,8 +229,8 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		lineH, charW, size, family := f.lineH, f.charW, f.size, f.family
 		matches := a.visibleMatches(d, first, last)
 		deco := a.decorate(d, snap, first, last)
-		a.refreshGit(d.document)
-		marks := d.git.marks
+		d.git.Refresh(d.path, d.buf.Snapshot(), a.post)
+		marks := d.git.Lines
 		gitRuns := d.gitRuns()
 		guideW := f.indentWidth(d.indent)
 		rows := a.overviewRows(d, snap, view.H)

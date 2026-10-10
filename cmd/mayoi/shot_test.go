@@ -1,6 +1,7 @@
 package main
 
 import (
+	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
 	"strings"
@@ -153,11 +154,15 @@ func TestShotReadme(t *testing.T) {
 			os.MkdirAll(filepath.Join(root, name), 0o755)
 		}
 		for _, name := range []string{"README.md", "app.go", "columns.go", "editor.go", "go.mod", "main.go", "view.go", "wrap.go"} {
-			src, _ := os.ReadFile(name)
+			from := name
+			if !strings.HasSuffix(name, ".go") {
+				from = filepath.Join("..", "..", name) // the repository's own
+			}
+			src, _ := os.ReadFile(from)
 			os.WriteFile(filepath.Join(root, name), src, 0o644)
 		}
-		s := defaultSettings()
-		w := s.newWindow()
+		s := settings.Default()
+		w := s.NewWindow()
 		w.Folder = root
 		a := newApp(&fakeHost{folder: root}, s, w)
 		tt := ui.NewTester(a.view, 1200, 760)

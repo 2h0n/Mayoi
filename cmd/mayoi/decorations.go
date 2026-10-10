@@ -290,15 +290,15 @@ type gitRun struct {
 // gitRuns returns the runs of the lines changed since the last commit.
 func (d *editor) gitRuns() []gitRun {
 	ov, g := &d.overview, &d.git
-	if ov.gitVersion == g.version && ov.gitLines == len(g.marks) && ov.git != nil {
+	if ov.gitVersion == g.Version && ov.gitLines == len(g.Lines) && ov.git != nil {
 		return ov.git
 	}
-	ov.gitVersion, ov.gitLines, ov.git = g.version, len(g.marks), ov.git[:0]
-	n := float32(max(len(g.marks), 1))
-	for i := 0; i < len(g.marks); {
-		k := g.marks[i]
+	ov.gitVersion, ov.gitLines, ov.git = g.Version, len(g.Lines), ov.git[:0]
+	n := float32(max(len(g.Lines), 1))
+	for i := 0; i < len(g.Lines); {
+		k := g.Lines[i]
 		j := i + 1
-		for j < len(g.marks) && g.marks[j] == k && k != linediff.Deleted && k != linediff.DeletedBelow {
+		for j < len(g.Lines) && g.Lines[j] == k && k != linediff.Deleted && k != linediff.DeletedBelow {
 			j++
 		}
 		if k != linediff.Same {

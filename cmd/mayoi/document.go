@@ -10,6 +10,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/gitmarks"
 	"mayoi/internal/highlight"
 )
 
@@ -34,7 +35,7 @@ type document struct {
 	hl        *highlight.Highlighter
 	indent    indentStyle
 	hist      history
-	git       gitMarks
+	git       gitmarks.Marks
 
 	// widest is the longest line in columns seen, which sizes the text
 	// area's width; widestVersion is the version it was last measured at

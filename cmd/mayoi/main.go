@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"mayoi/internal/cli"
+	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,7 +29,7 @@ type desktop struct {
 
 // mayoi is the app's windows, the focused one last first.
 type mayoi struct {
-	s    *settings
+	s    *settings.Settings
 	wins []*desktop
 	// pending are the folders and files the app was asked to open before
 	// it was ready.
@@ -100,9 +102,9 @@ func (h *desktop) newWindow(dir string) {
 func (h *desktop) installCLI() {
 	go func() {
 		home, _ := os.UserHomeDir()
-		p, err := installCLI(cliDirs(home, shellPath()), appBundle())
+		p, err := cli.Install(cli.Dirs(home, cli.ShellPath()), appBundle())
 		switch {
-		case errors.Is(err, errCanceled):
+		case errors.Is(err, cli.ErrCanceled):
 		case err != nil:
 			h.tell(mygo.MessageWarning, "The 'mayoi' command could not be installed.", err.Error())
 		default:
@@ -115,9 +117,9 @@ func (h *desktop) installCLI() {
 func (h *desktop) uninstallCLI() {
 	go func() {
 		home, _ := os.UserHomeDir()
-		removed, err := uninstallCLI([]string{filepath.Join(home, ".local", "bin"), "/usr/local/bin"})
+		removed, err := cli.Uninstall([]string{filepath.Join(home, ".local", "bin"), "/usr/local/bin"})
 		switch {
-		case errors.Is(err, errCanceled):
+		case errors.Is(err, cli.ErrCanceled):
 		case err != nil:
 			h.tell(mygo.MessageWarning, "The 'mayoi' command could not be uninstalled.", err.Error())
 		case len(removed) == 0:
@@ -195,9 +197,9 @@ func main() {
 			mygo.App.Quit()
 		})
 	})
-	mygo.App.OnQuit(func() { m.s.flush() })
+	mygo.App.OnQuit(func() { m.s.Flush() })
 	mygo.App.WhenReady(func() {
-		m.s = loadSettings(settingsPath())
+		m.s = settings.Load(settingsPath())
 		mygo.Theme.SetSource(mygo.ThemeSource(m.s.Appearance))
 		wd, _ := os.Getwd()
 		m.ready = true
@@ -259,9 +261,9 @@ func (m *mayoi) launch(paths []string) {
 	} else {
 		// A folder of the last session opens as it was left. The other
 		// windows of the session are let go.
-		var keep []*windowState
+		var keep []*settings.Window
 		for _, w := range m.s.Windows {
-			if slices.Contains(folders, filepath.Clean(w.Folder)) && !slices.ContainsFunc(keep, func(k *windowState) bool { return k.Folder == w.Folder }) {
+			if slices.Contains(folders, filepath.Clean(w.Folder)) && !slices.ContainsFunc(keep, func(k *settings.Window) bool { return k.Folder == w.Folder }) {
 				keep = append(keep, w)
 			}
 		}
@@ -271,7 +273,7 @@ func (m *mayoi) launch(paths []string) {
 		}
 	}
 	if len(m.wins) == 0 {
-		m.openWindow(m.s.newWindow())
+		m.openWindow(m.s.NewWindow())
 	}
 	for _, p := range files {
 		m.openFile(p)
@@ -334,7 +336,7 @@ func (m *mayoi) openFolder(dir string, reuse bool) {
 			return
 		}
 	}
-	w := m.s.newWindow()
+	w := m.s.NewWindow()
 	w.Folder = dir
 	m.openWindow(w)
 }
@@ -353,7 +355,7 @@ func (m *mayoi) openFile(path string) {
 		win = m.wins[0]
 	}
 	if win == nil {
-		win = m.openWindow(m.s.newWindow())
+		win = m.openWindow(m.s.NewWindow())
 	}
 	a := win.a
 	win.do(func() { a.openFile(path, true) })
@@ -371,7 +373,7 @@ func (m *mayoi) showing(dir string) *desktop {
 }
 
 // of returns the window whose state is st.
-func (m *mayoi) of(st *windowState) *desktop {
+func (m *mayoi) of(st *settings.Window) *desktop {
 	for _, w := range m.wins {
 		if w.a.window == st {
 			return w
@@ -420,7 +422,7 @@ func (m *mayoi) settle(wins []*desktop, done func()) {
 }
 
 // openWindow opens a window for st, which restores what st has of it.
-func (m *mayoi) openWindow(st *windowState) *desktop {
+func (m *mayoi) openWindow(st *settings.Window) *desktop {
 	h := &desktop{m: m}
 	a := newApp(h, m.s, st)
 	h.a = a
@@ -445,7 +447,7 @@ func (m *mayoi) openWindow(st *windowState) *desktop {
 	win := mygo.NewWindow(opts)
 	h.win = win
 	m.wins = slices.Insert(m.wins, 0, h)
-	m.s.focused(st)
+	m.s.Focused(st)
 
 	// Closing the window saves the files that save themselves, and with
 	// other unsaved changes asks about each first.
@@ -473,7 +475,7 @@ func (m *mayoi) openWindow(st *windowState) *desktop {
 		if i := slices.Index(m.wins, h); i > 0 {
 			m.wins = slices.Insert(slices.Delete(m.wins, i, i+1), 0, h)
 		}
-		m.s.focused(st)
+		m.s.Focused(st)
 		a.post(a.gitChanged)
 	})
 	win.OnBlur(func() { a.post(a.autoSaveAll) })
@@ -483,10 +485,10 @@ func (m *mayoi) openWindow(st *windowState) *desktop {
 		a.closeTerminals()
 		m.wins = slices.DeleteFunc(m.wins, func(w *desktop) bool { return w == h })
 		if !m.quitting && len(m.wins) > 0 {
-			m.s.forget(st)
+			m.s.Forget(st)
 		}
 		if len(m.wins) == 0 {
-			m.s.flush()
+			m.s.Flush()
 		}
 	})
 	return h
@@ -499,4 +501,20 @@ func (a *app) anyDirty() bool {
 		}
 	}
 	return false
+}
+
+// appBundle is the .app the running executable is in, "" when it is in
+// none.
+func appBundle() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+		return ""
+	}
+	if app, _, ok := strings.Cut(exe, ".app/Contents/MacOS/"); ok {
+		return app + ".app"
+	}
+	return ""
 }

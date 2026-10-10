@@ -1,10 +1,6 @@
-package main
+package symbols
 
-import (
-	"testing"
-
-	"github.com/egoist/mygo/ui"
-)
+import "testing"
 
 func TestDeclare(t *testing.T) {
 	for _, tc := range []struct {
@@ -20,7 +16,7 @@ func TestDeclare(t *testing.T) {
 		{"interface Props {", "Props", "interface", ""},
 	} {
 		sym, ok := declare(tc.line)
-		if !ok || sym.name != tc.name || sym.kind != tc.kind || sym.detail != tc.detail {
+		if !ok || sym.Name != tc.name || sym.Kind != tc.kind || sym.Detail != tc.detail {
 			t.Errorf("%q: %+v %v", tc.line, sym, ok)
 		}
 	}
@@ -28,18 +24,5 @@ func TestDeclare(t *testing.T) {
 		if sym, ok := declare(line); ok {
 			t.Errorf("%q declares %+v", line, sym)
 		}
-	}
-}
-
-func TestGoToSymbol(t *testing.T) {
-	hs, d := editHarness(t, "a.go", "package a\n\nfunc first() {}\n\ntype second struct{}\n\nfunc (s second) third() {}\n")
-	hs.a.openQuick("@thi")
-	hs.settle()
-	if !hs.tt.HasText("third") {
-		t.Fatalf("symbols: %q", hs.tt.Texts())
-	}
-	hs.key(0, ui.KeyEnter)
-	if d.sel != [2]int{66, 71} { // "third" on the line at 50
-		t.Fatalf("selection %v", d.sel)
 	}
 }

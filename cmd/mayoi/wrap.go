@@ -9,7 +9,7 @@ import (
 // wraps reports whether an editor wraps its lines: as its tab chose, or
 // else as the settings say.
 func (a *app) wraps(d *editor) bool {
-	if d.wrap != nil && d.wrapGen == a.settings.wrapGen {
+	if d.wrap != nil && d.wrapGen == a.settings.WrapGen {
 		return *d.wrap
 	}
 	return a.settings.WordWrap
@@ -20,8 +20,8 @@ func (a *app) wraps(d *editor) bool {
 func (a *app) toggleWordWrap() {
 	s := a.settings
 	s.WordWrap = !s.WordWrap
-	s.wrapGen++
-	s.changed()
+	s.WrapGen++
+	s.Changed()
 	a.invalidate()
 }
 
@@ -33,7 +33,7 @@ func (a *app) toggleTabWrap() {
 		return
 	}
 	w := !a.wraps(d)
-	d.wrap, d.wrapGen = &w, a.settings.wrapGen
+	d.wrap, d.wrapGen = &w, a.settings.WrapGen
 	a.invalidate()
 }
 

@@ -32,23 +32,23 @@ func TestGitMarksFollowEdits(t *testing.T) {
 	hs.settle()
 	d := hs.a.activeEditor()
 	want := []linediff.Kind{0, linediff.Modified, 0, linediff.Added, 0, 0}
-	if !slices.Equal(d.git.marks, want) {
-		t.Fatalf("marks %v, want %v (loaded %v, base %q)", d.git.marks, want, d.git.loaded, d.git.base)
+	if !slices.Equal(d.git.Lines, want) {
+		t.Fatalf("marks %v, want %v", d.git.Lines, want)
 	}
 	// Taking the line out again marks it no more.
 	d.edit([2]int{0, 0}, textEdit{6, 10, ""})
 	hs.settle()
 	want = []linediff.Kind{0, linediff.Modified, 0, 0, 0}
-	if !slices.Equal(d.git.marks, want) {
-		t.Fatalf("after the edit: marks %v, want %v", d.git.marks, want)
+	if !slices.Equal(d.git.Lines, want) {
+		t.Fatalf("after the edit: marks %v, want %v", d.git.Lines, want)
 	}
 	// After a commit, nothing is changed.
 	hs.a.run("file.save")
 	git("commit", "-q", "-am", "y")
 	hs.a.gitChanged()
 	hs.settle()
-	if slices.ContainsFunc(d.git.marks, func(k linediff.Kind) bool { return k != 0 }) {
-		t.Fatalf("after the commit: marks %v", d.git.marks)
+	if slices.ContainsFunc(d.git.Lines, func(k linediff.Kind) bool { return k != 0 }) {
+		t.Fatalf("after the commit: marks %v", d.git.Lines)
 	}
 }
 
@@ -89,7 +89,7 @@ func TestTypingInLargeTrackedFile(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 	hs.settle()
 	changed := 0
-	for _, k := range d.git.marks {
+	for _, k := range d.git.Lines {
 		if k != linediff.Same {
 			changed++
 		}

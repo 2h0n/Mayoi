@@ -89,7 +89,7 @@ func (a *app) autoSaveAll() {
 
 func (a *app) toggleAutoSave() {
 	a.settings.AutoSave = !a.settings.AutoSave
-	a.settings.changed()
+	a.settings.Changed()
 	if a.settings.AutoSave {
 		a.autoSaveAll()
 	}

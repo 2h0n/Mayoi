@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
 	"slices"
@@ -93,7 +94,7 @@ func (a *app) newTerminalIn(dir string) {
 	}
 	a.panelTerm = s
 	a.window.PanelOpen, a.window.TerminalOpen = true, true
-	a.settings.changed()
+	a.settings.Changed()
 	a.focusTerminal()
 }
 
@@ -147,7 +148,7 @@ func (a *app) leavePanel(s *session) {
 	}
 	if len(rest) == 0 {
 		a.window.PanelOpen, a.window.TerminalOpen = false, false
-		a.settings.changed()
+		a.settings.Changed()
 	}
 }
 
@@ -224,7 +225,7 @@ func (a *app) closeTerminals() {
 // hidePanel hides the panel, and gives the keyboard back to the column.
 func (a *app) hidePanel() {
 	a.window.PanelOpen = false
-	a.settings.changed()
+	a.settings.Changed()
 	a.focusColumn()
 }
 
@@ -331,6 +332,6 @@ func (a *app) terminalView(c *ui.Context, s *session) {
 	})
 }
 
-func termFont(s *settings) terminal.Font {
+func termFont(s *settings.Settings) terminal.Font {
 	return terminal.Font{Family: s.FontFamily, Size: max(s.FontSize-0.5, 9)}
 }
