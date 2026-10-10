@@ -295,6 +295,9 @@ func (a *app) visibleMatches(d *editor, first, last int) []matchRect {
 // textWidth measures a run of a line as the editor lays it out.
 func (a *app) textWidth(s string) float32 { return a.font.width(s) }
 
+// findCountW is the width of find's count of matches.
+const findCountW = 74
+
 // findView is the find widget, over the top right of the editor.
 func (a *app) findView(c *ui.Context, d *editor) {
 	f := &a.find
@@ -376,7 +379,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			if count == "No results" || f.err != "" {
 				col = p.danger
 			}
-			ui.Text(c, count).FontSize(11.5).TextColor(col).Width(74).SingleLine().TextAlign(ui.Center)
+			ui.Text(c, count).FontSize(11.5).TextColor(col).Width(findCountW).SingleLine().TextAlign(ui.Center)
 			if a.iconButton(c, iconArrowUp, "Previous Match (⇧⏎)", false).Disabled(len(f.matches) == 0).Clicked() {
 				a.step(d, -1)
 			}
@@ -408,7 +411,9 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			if a.iconButton(c, iconReplaceAll, "Replace All", false).Disabled(len(f.matches) == 0).Clicked() {
 				a.replaceAll(d)
 			}
-			ui.Box(c).Width(56)
+			// Under the count and the buttons after it, so that the fields
+			// end alike: what is left of them past these two buttons.
+			ui.Box(c).Width(findCountW + 3*26 + 4*4 - (2*26 + 3*4))
 		})
 	})
 	if box.OverlayShortcut(0, ui.KeyEscape) || box.Shortcut(0, ui.KeyEscape) {

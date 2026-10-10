@@ -588,6 +588,17 @@ func (a *app) statusBar(c *ui.Context) {
 			a.viewerStatus(c, v, item, text)
 			return
 		}
+		if t := a.activeTab(); t != nil && t.term != nil {
+			// A terminal: where its shell is, and its size in cells.
+			term := t.term.term
+			if dir := term.Dir(); dir != "" {
+				item("cwd", shortenHome(dir), "", iconTerminal, nil)
+			}
+			if cols, rows := term.Size(); cols > 0 {
+				item("size", fmt.Sprintf("%d × %d", cols, rows), "", nil, nil)
+			}
+			return
+		}
 		d := a.activeEditor()
 		if d == nil {
 			return
@@ -607,7 +618,7 @@ func (a *app) statusBar(c *ui.Context) {
 			pos += fmt.Sprintf(" (%d selected)", n)
 		}
 		item("pos", pos, "Go to Line (⌃G)", nil, func() { a.openQuick(":") })
-		item("lines", fmt.Sprintf("%d lines", snap.LineCount()), "", nil, nil)
+		item("lines", plural(snap.LineCount(), "line"), "", nil, nil)
 		menuItem("indent", d.indent.String(), "Indentation", func(m *ui.Menu) {
 			if m.Item("Indent Using Tabs").Checked(d.indent.tabs).Chosen() {
 				d.indent.tabs = true
@@ -645,8 +656,16 @@ func (a *app) statusBar(c *ui.Context) {
 				}
 			}
 		})
-		item("lang", highlight.Name(d.hl.Lexer()), "", nil, nil)
+		item("lang", highlight.DisplayName(d.hl.Lexer()), "", nil, nil)
 	})
+}
+
+// plural counts n things, as "1 line" or "2 lines".
+func plural(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 func abs(n int) int {

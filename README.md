@@ -115,6 +115,7 @@ These figures come from the tests, run on an M-series Mac:
 
 - A 100,000-line file opens in about 20 ms.
 - Scrolling and typing cost under 2 ms per frame, or about 3 ms with find open.
+- Highlighting again after a keystroke in a 6,000-line file takes under 1 ms.
 - Quick open searches 100,000 paths in about 1.5 ms.
 
 ## License

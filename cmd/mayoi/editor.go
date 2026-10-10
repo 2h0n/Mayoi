@@ -202,13 +202,16 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		// The lines in view.
 		first, last := a.linesInView(g, d.vscroll.Y, view.H)
 		contentW := view.W
-		if !wrap {
+		if m := &d.measured; !wrap && (m.version != snap.Version() || m.first != first || m.last != last) {
+			m.version, m.first, m.last = snap.Version(), first, last
 			for i := first; i <= last; i++ {
 				s, e := snap.LineRange(i)
 				if e-s > d.widest {
 					d.widest = max(d.widest, columns(snap.Slice(s, e)))
 				}
 			}
+		}
+		if !wrap {
 			contentW = max(view.W, textX+float32(d.widest)*f.charW+textPadR)
 		}
 		if contentW > 0 {

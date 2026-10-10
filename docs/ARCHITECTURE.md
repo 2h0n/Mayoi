@@ -73,8 +73,16 @@ Myers' diff in the background after each edit. Comparing a few edits in a 100,00
 ## Internal packages
 
 **`internal/highlight`.** Chroma lexing runs on a background goroutine. It lexes the whole file up to 6,000 lines, and
-a window around the view beyond that. A line whose text has changed shows plain until the next pass, so stale colors
-never land on the wrong text.
+a window around the view beyond that. A file just opened has the lines around the view lexed first.
+
+- **After an edit,** only the lines around it are lexed again. Lexing starts a little above the edit, at a line outside
+  any string or comment over lines, and is kept only if the lines before the edit come out as they did. Below the edit
+  it stops once a few lines come out as they did. A keystroke in a 6,000-line Go file costs about 0.7 ms rather than
+  170 ms.
+- **Once typing pauses,** the whole range is lexed again and any line that came out otherwise is put right, for the
+  lexers whose state the tokens around a line do not tell.
+- **Until a pass is done,** the lines an edit moved keep their colors, and so does a line edited by one insertion or
+  deletion. A line changed otherwise shows plain, so stale colors never land on the wrong text.
 
 **`internal/workspace`.** Directories are read as they are expanded and watched with fsnotify, with bursts of changes
 batched together. This package also holds the file index and the fuzzy matcher for quick open.

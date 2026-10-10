@@ -72,9 +72,15 @@ type editor struct {
 	win        *lineWindow
 	winVersion uint64
 	colors     colorCache
-	selShape   selectionShape
-	stuck      stickyCache
-	overview   overview
+	// measured is the text and the lines in view whose widths the editor
+	// last took into widest.
+	measured struct {
+		version     uint64
+		first, last int
+	}
+	selShape selectionShape
+	stuck    stickyCache
+	overview overview
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways

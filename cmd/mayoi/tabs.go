@@ -26,6 +26,9 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 		}
 	}
 	ui.Row(c).Height(tabStripH).Background(p.chrome).AlignItems(ui.Center).Children(func() {
+		// The strip's edge along the bottom, which the tab shown breaks to
+		// join the text below it.
+		ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(1).Background(p.border)
 		strip := ui.ScrollHorizontal(c.Key("tabs")).Grow(1).Height(tabStripH).ScrollbarInsets(0, 0, 0, 0)
 		// Past the last tab: there.
 		drop(strip, nil)
@@ -63,6 +66,9 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 					}
 					tab.ContextMenu(func(m *ui.Menu) { a.tabMenu(m, col, t, &closing) })
 					tab.Children(func() {
+						if !active {
+							ui.Box(c).Absolute().Left(0).Right(0).Bottom(0).Height(1).Background(p.border)
+						}
 						switch {
 						case over:
 							// Where the tab dragged goes: before this one.
