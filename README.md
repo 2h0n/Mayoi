@@ -30,7 +30,7 @@ go test -short -run XXX -bench Frame   # the cost of a frame of the editor
 go run ./tools/icongen         # redraw resources/icon.png
 ```
 
-The app needs Go 1.27+ and macOS 13+, because of the terminal library. It builds against a fork of MyGo, [sorrycc/mygo](https://github.com/sorrycc/mygo) on the `text-geometry` branch, which adds `TrackLines`; `go.mod` replaces MyGo with it. It also builds for Linux and Windows.
+The app needs Go 1.27+ and macOS 13+, because of the terminal library. It also builds for Linux and Windows.
 
 ## Keys
 

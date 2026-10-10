@@ -6,7 +6,7 @@ tool github.com/egoist/mygo/cmd/mygo
 
 require (
 	github.com/alecthomas/chroma/v2 v2.27.0
-	github.com/egoist/mygo v0.3.4
+	github.com/egoist/mygo v0.3.7
 	github.com/fsnotify/fsnotify v1.10.1
 	golang.org/x/image v0.46.0
 )
@@ -17,5 +17,3 @@ require (
 	github.com/go-text/typesetting v0.3.5 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 )
-
-replace github.com/egoist/mygo => github.com/sorrycc/mygo v0.3.5-0.20261009122137-cba69107de24
