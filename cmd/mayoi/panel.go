@@ -101,12 +101,18 @@ func (a *app) newTerminalIn(dir string) {
 // newTerminalTab starts a terminal in dir in a new tab of a column, after
 // the one shown, and reports whether it did.
 func (a *app) newTerminalTab(col *column, dir string, focus bool) bool {
+	return a.newTerminalTabAt(col, col.active+1, dir, focus)
+}
+
+// newTerminalTabAt starts a terminal in dir in a tab at place at of a
+// column.
+func (a *app) newTerminalTabAt(col *column, at int, dir string, focus bool) bool {
 	s := a.startTerminal(dir)
 	if s == nil {
 		return false
 	}
 	s.tab = &colTab{term: s}
-	at := col.active + 1
+	at = min(max(at, 0), len(col.tabs))
 	a.addTab(col, at, s.tab)
 	a.activate(col, at, focus)
 	return true

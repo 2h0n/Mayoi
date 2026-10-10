@@ -33,6 +33,7 @@ func (a *app) commands() []command {
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
 		{"file.autoSave", "Auto Save", "", a.toggleAutoSave},
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
+		{"file.reopenClosed", "Reopen Closed Tab", "Shift+CmdOrCtrl+T", a.reopenClosed},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
 		{"file.installCLI", "Install 'mayoi' Command", "", func() { a.host.installCLI() }},
 		{"file.uninstallCLI", "Uninstall 'mayoi' Command", "", func() { a.host.uninstallCLI() }},
@@ -194,7 +195,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	file := []*mygo.MenuItem{
 		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"), mygo.Separator(),
 		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), mygo.Separator(),
-		item("file.close"), item("file.closeFolder"),
+		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"),
 	}
 	if cli {
 		file = append(file, mygo.Separator(), item("file.installCLI"), item("file.uninstallCLI"))

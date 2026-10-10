@@ -10,6 +10,10 @@ from it.
 Tabs, line numbers, a highlighted caret line, and Chroma syntax highlighting. Files changed on disk reload unless you
 have unsaved edits.
 
+⇧⌘T reopens the last tab you closed, in its column and place, with its caret and scroll position. Press it again for
+the one before. Files and terminals both come back, a terminal as a new shell in the folder it started in. Opening or
+closing a folder forgets the tabs closed.
+
 ### Word wrap
 
 Long lines scroll sideways by default. **View → Word Wrap** wraps them at the edge of the editor. ⌥Z toggles wrapping

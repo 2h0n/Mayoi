@@ -93,6 +93,8 @@ type app struct {
 	nextTab  int
 	nextCol  int
 	untitled int
+	// closed are the tabs closed, the last last, which ⇧⌘T opens again.
+	closed []closedTab
 	// shownDoc is the document the column with the keyboard showed last
 	// frame, which saves itself once it shows another.
 	shownDoc *document
@@ -199,6 +201,9 @@ func (a *app) openFolder(dir string) {
 	if a.tree != nil {
 		a.tree.Close()
 	}
+	if a.root != dir {
+		a.closed = nil
+	}
 	a.root = dir
 	a.tree = workspace.NewTree(dir, a.post)
 	a.tree.OnChange = a.diskChanged
@@ -250,6 +255,7 @@ func (a *app) closeFolder() {
 			a.tree.Close()
 		}
 		a.root, a.tree, a.index, a.branch = "", nil, nil, ""
+		a.closed = nil
 		a.window.Folder = ""
 		a.settings.Changed()
 	})

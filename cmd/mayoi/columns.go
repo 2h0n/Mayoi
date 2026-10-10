@@ -176,8 +176,14 @@ func (a *app) docIndex(path string) int {
 // shows in both, which share its text.
 func (a *app) openFile(path string, focus bool) {
 	col := a.column()
+	a.openFileIn(col, col.active+1, path, focus)
+}
+
+// openFileIn shows a file in a tab of a column, opening one at place at
+// unless the column has one.
+func (a *app) openFileIn(col *column, at int, path string, focus bool) {
 	if isImage(path) {
-		a.openImage(col, path, focus)
+		a.openImage(col, at, path, focus)
 		return
 	}
 	var doc *document
@@ -204,15 +210,14 @@ func (a *app) openFile(path string, focus bool) {
 			a.tree.Watch(path)
 		}
 	}
-	// A new tab goes after the one shown.
-	at := col.active + 1
+	at = min(max(at, 0), len(col.tabs))
 	a.addTab(col, at, &colTab{ed: newEditor(doc)})
 	a.activate(col, at, focus)
 }
 
-// openImage shows an image file in a tab of a column, opening one unless
-// the column has one.
-func (a *app) openImage(col *column, path string, focus bool) {
+// openImage shows an image file in a tab of a column, opening one at
+// place at unless the column has one.
+func (a *app) openImage(col *column, at int, path string, focus bool) {
 	if at := col.showingImage(path); at >= 0 {
 		a.activate(col, at, focus)
 		return
@@ -226,7 +231,7 @@ func (a *app) openImage(col *column, path string, focus bool) {
 	if a.tree != nil {
 		a.tree.Watch(path)
 	}
-	at := col.active + 1
+	at = min(max(at, 0), len(col.tabs))
 	a.addTab(col, at, &colTab{view: v})
 	a.activate(col, at, focus)
 }
@@ -321,12 +326,14 @@ func (a *app) closeTab(t *colTab, then func()) {
 		return
 	}
 	if t.term != nil {
+		a.rememberClosed(t)
 		a.removeTerminal(t.term)
 		done()
 		return
 	}
 	remove := func() {
 		if col, _ := a.locate(t); col != nil {
+			a.rememberClosed(t)
 			a.dropTab(t)
 			a.focusColumn()
 			a.rememberTabs()

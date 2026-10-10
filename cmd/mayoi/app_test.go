@@ -482,3 +482,102 @@ func TestRestoresTheActiveTab(t *testing.T) {
 		t.Fatalf("tabs out of order")
 	}
 }
+
+func TestReopenClosedTab(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	os.WriteFile(hs.path("README.md"), []byte(strings.Repeat("a line of text\n", 300)), 0o644)
+	for _, f := range []string{"main.go", "README.md", "go.mod"} {
+		a.openFile(hs.path(f), true)
+	}
+	hs.settle()
+	a.activate(a.column(), 1, true)
+	a.activeEditor().selectRange(3000, 3000, true)
+	hs.settle()
+	d := a.activeEditor()
+	y, caret := d.vscroll.Y, d.caret
+	if y == 0 || caret != 3000 {
+		t.Fatalf("scrolled to %v, caret %d before closing", y, caret)
+	}
+	a.closeActive()
+	hs.settle()
+	if n := len(a.column().tabs); n != 2 {
+		t.Fatalf("%d tabs after closing", n)
+	}
+	a.run("file.reopenClosed")
+	hs.settle()
+	tabs := a.column().tabs
+	if len(tabs) != 3 || tabs[1].path() != hs.path("README.md") || a.column().active != 1 {
+		t.Fatalf("reopened at %d of %d tabs", a.column().active, len(tabs))
+	}
+	if d := a.activeEditor(); d.vscroll.Y != y || d.caret != caret {
+		t.Errorf("reopened scrolled to %v, caret %d; want %v, %d", d.vscroll.Y, d.caret, y, caret)
+	}
+
+	// Close All, then each comes back, the last closed first.
+	a.run("file.reopenClosed") // nothing left: nothing happens
+	a.closeTabs(slices.Clone(a.column().tabs), nil)
+	hs.settle()
+	if n := len(a.editorTabs()); n != 0 {
+		t.Fatalf("%d tabs after Close All", n)
+	}
+	// A file gone from the disk is passed over.
+	os.Remove(hs.path("go.mod"))
+	a.run("file.reopenClosed")
+	a.run("file.reopenClosed")
+	a.run("file.reopenClosed")
+	hs.settle()
+	var got []string
+	for _, t := range a.column().tabs {
+		got = append(got, filepath.Base(t.path()))
+	}
+	if strings.Join(got, " ") != "main.go README.md" {
+		t.Errorf("tabs %v after reopening", got)
+	}
+
+	// Another folder forgets them.
+	a.closeActive()
+	a.openFolder(t.TempDir())
+	a.run("file.reopenClosed")
+	if len(a.closed) != 0 || len(a.column().tabs) != 1 {
+		t.Errorf("closed tabs kept across folders: %d", len(a.closed))
+	}
+}
+
+func TestReopenClosedTabInItsColumn(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	a.openFile(hs.path("main.go"), true)
+	a.splitRight()
+	a.openFile(hs.path("README.md"), true)
+	hs.settle()
+	right := a.column()
+	a.closeActive()
+	a.activate(a.cols[0], 0, true)
+	a.run("file.reopenClosed")
+	hs.settle()
+	if a.column() != right || right.tab().path() != hs.path("README.md") || len(right.tabs) != 2 {
+		t.Errorf("reopened in column %d, not the right one", a.col)
+	}
+}
+
+func TestReopenClosedTerminal(t *testing.T) {
+	if testing.Short() {
+		t.Skip("starts a shell")
+	}
+	hs := newHarness(t, true)
+	a := hs.a
+	a.openFile(hs.path("main.go"), true)
+	a.run("view.terminalTab")
+	hs.settle()
+	a.activate(a.column(), 0, true)
+	a.closeTab(a.column().tabs[1], nil)
+	hs.settle()
+	a.run("file.reopenClosed")
+	hs.settle()
+	tabs := a.column().tabs
+	if len(tabs) != 2 || tabs[1].term == nil || tabs[1].term.dir != hs.root {
+		t.Errorf("terminal not reopened: %d tabs", len(tabs))
+	}
+	a.closeTerminals()
+}
