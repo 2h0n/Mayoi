@@ -2,8 +2,10 @@ package main
 
 import (
 	"path/filepath"
+	"runtime"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -165,7 +167,9 @@ func (a *app) zoom(by float32) {
 
 // menu is the menu bar, which the windows share: its items run the
 // command of the window they are chosen in, by run. cli adds the items
-// that install the mayoi command.
+// that install the mayoi command; builds that can update themselves get
+// "Check for Updates…", in the app menu on macOS and the Help menu
+// elsewhere.
 func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	byID := map[string]command{}
 	for _, cmd := range a.commands() {
@@ -195,8 +199,24 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	if cli {
 		file = append(file, mygo.Separator(), item("file.installCLI"), item("file.uninstallCLI"))
 	}
-	return mygo.NewMenu([]*mygo.MenuItem{
-		{Role: mygo.RoleAppMenu},
+	// The app menu of macOS, as RoleAppMenu makes it, with room for
+	// "Check for Updates…" after About.
+	appMenu := &mygo.MenuItem{Role: mygo.RoleAppMenu}
+	var help []*mygo.MenuItem
+	if mygo.Updater.Enabled() {
+		if runtime.GOOS == "darwin" {
+			appMenu = &mygo.MenuItem{Label: mygo.App.Name(), Submenu: []*mygo.MenuItem{
+				{Role: mygo.RoleAbout}, updater.MenuItem(), mygo.Separator(),
+				{Role: mygo.RoleServices}, mygo.Separator(),
+				{Role: mygo.RoleHide}, {Role: mygo.RoleHideOthers}, {Role: mygo.RoleUnhide}, mygo.Separator(),
+				{Role: mygo.RoleQuit},
+			}}
+		} else {
+			help = append(help, updater.MenuItem())
+		}
+	}
+	menus := []*mygo.MenuItem{
+		appMenu,
 		{Label: "File", Submenu: file},
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			item("edit.undo"), item("edit.redo"), mygo.Separator(),
@@ -226,7 +246,11 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("go.nextTab"), item("go.prevTab"),
 		}},
 		{Role: mygo.RoleWindowMenu},
-	})
+	}
+	if len(help) > 0 {
+		menus = append(menus, &mygo.MenuItem{Label: "Help", Submenu: help})
+	}
+	return mygo.NewMenu(menus)
 }
 
 // shortcuts are the keys the view takes itself.

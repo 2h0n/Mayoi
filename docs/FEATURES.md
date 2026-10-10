@@ -113,3 +113,11 @@ The command returns immediately, and starts Mayoi if it isn't running.
 Mayoi follows the system's light or dark mode, or the mode chosen in **View → Appearance**. It remembers the sidebar and
 panel sizes, and every window with its folder, frame, columns and tabs. Started without a folder, Mayoi reopens the
 windows that were open when it quit. Closing the last window quits the app.
+
+## Updates
+
+Release builds check GitHub Releases for a new version once a day, 10 seconds after launch when a check is due, and
+**Mayoi → Check for Updates…** (**Help → Check for Updates…** on Linux and Windows) checks right away. A window shows the
+release notes and offers to install the update, skip that version or remind you later. Updates download only what
+changed when they can, are checked against Mayoi's signing key, and apply when Mayoi relaunches. Development builds, and
+copies Mayoi can't write to, never check.
