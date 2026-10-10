@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.3.0
 
 - **View → Vim Mode** edits with vim's keys: normal, insert and visual
   modes, motions, operators and text objects with counts, `.` to repeat,
