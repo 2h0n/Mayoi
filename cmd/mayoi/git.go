@@ -23,10 +23,17 @@ type gitState struct {
 
 	status   *git.Status
 	branches []string // the local branches, read with the status
+	remotes  []string // the remotes, read with the status
+	// remotesStale has the next read of the status read the remotes too.
+	remotesStale bool
 	// entries are the files that differ, by path; dirs the folders above
 	// them, with the letter of the one that matters most.
 	entries map[string]git.Entry
 	dirs    map[string]byte
+	// groups are the files of status in each group of the source control
+	// view, worked out for the status groupsOf.
+	groups   [groupCount][]git.Entry
+	groupsOf *git.Status
 	// stale has the next frame read the status again, unless running;
 	// read is when it was read last.
 	stale, running bool
@@ -37,13 +44,29 @@ type gitState struct {
 	meta, checked time.Time
 
 	// busy names the command running in the background, as "Pushing…",
-	// which the status bar shows; "" while none.
-	busy string
+	// which the status bar shows; "" while none. pending counts the
+	// commands running, named or not.
+	busy    string
+	pending int
 	// message is the commit message being written, and amend set while
 	// it is to amend the last commit.
 	message string
 	amend   bool
+
+	// history is the last commits of HEAD, newest first, and unpushed
+	// those its upstream lacks, read for the state historyOf names;
+	// historyN is how many to read, historyGen counts the reads.
+	history        []git.Commit
+	unpushed       map[string]bool
+	historyOf      string
+	historyN       int
+	historyGen     int
+	loadingHistory bool
 }
+
+// historyPage is how many commits the history reads at first, and more
+// each time more are asked for.
+const historyPage = 50
 
 // statusEvery is how often the status is read again on its own, for the
 // files changed in folders the tree does not watch.
@@ -65,7 +88,7 @@ func (a *app) lookUpRepo() {
 			}
 			g.looking, g.looked = false, true
 			if err == nil {
-				g.repo, g.stale = r, true
+				g.repo, g.stale, g.remotesStale = r, true, true
 			}
 		})
 	}()
@@ -88,14 +111,24 @@ func (a *app) refreshGit() {
 			g.meta = t
 		}
 	}
+	a.refreshHistory()
 	if g.running || !g.stale && time.Since(g.read) < statusEvery {
 		return
 	}
 	g.running, g.stale = true, false
 	r := g.repo
+	// The remotes change seldom: they are read again with the status after
+	// a command, or as HEAD moves, not every few seconds.
+	readRemotes := g.remotesStale
+	g.remotesStale = false
 	go func() {
 		st, err := r.Status()
 		branches, _ := r.Branches()
+		var remotes []string
+		var remotesErr error
+		if readRemotes {
+			remotes, remotesErr = r.Remotes()
+		}
 		a.post(func() {
 			g.running, g.read = false, time.Now()
 			if g.repo != r {
@@ -106,6 +139,57 @@ func (a *app) refreshGit() {
 			}
 			a.setStatus(st)
 			g.branches = branches
+			if readRemotes && remotesErr == nil {
+				g.remotes = remotes
+			}
+		})
+	}()
+}
+
+// historyKey names the state the history is read for: where HEAD and its
+// upstream are, and how many commits are asked for.
+func (a *app) historyKey() string {
+	g := &a.git
+	st := g.status
+	if st == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s|%s|%d|%d|%d|%d", st.Head, st.Upstream, st.Ahead, st.Behind, max(g.historyN, historyPage), len(g.remotes))
+}
+
+// refreshHistory reads the last commits again in the background when HEAD
+// or its upstream moved, or more are asked for.
+func (a *app) refreshHistory() {
+	g := &a.git
+	st := g.status
+	if g.repo == nil || st == nil || g.loadingHistory {
+		return
+	}
+	n := max(g.historyN, historyPage)
+	key := a.historyKey()
+	if key == g.historyOf {
+		return
+	}
+	g.loadingHistory = true
+	// Without a remote nothing is pushed or not: no commit is marked.
+	r, remotes := g.repo, len(g.remotes) > 0
+	go func() {
+		cs, err := r.Log(n)
+		var unpushed map[string]bool
+		if remotes {
+			unpushed = r.Unpushed(n)
+		}
+		a.post(func() {
+			g.loadingHistory = false
+			if g.repo != r {
+				return
+			}
+			g.historyOf = key
+			if err != nil {
+				return
+			}
+			g.history, g.unpushed = cs, unpushed
+			g.historyGen++
 		})
 	}()
 }
@@ -125,9 +209,15 @@ func gitMeta(r *git.Repo) time.Time {
 	return t
 }
 
-// setStatus takes a status read, and the folders above its files.
+// setStatus takes a status read, and the folders above its files. A
+// status that says what the last did is dropped, so that what is worked
+// out from it, from the rows of source control to those of the diff, is
+// kept.
 func (a *app) setStatus(st *git.Status) {
 	g := &a.git
+	if g.status.Equal(st) {
+		return
+	}
 	g.status = st
 	g.entries = make(map[string]git.Entry, len(st.Entries))
 	g.dirs = map[string]byte{}
@@ -171,8 +261,8 @@ func (a *app) branch() string {
 		return ""
 	case st.Branch != "":
 		return st.Branch
-	case len(st.Head) >= 7:
-		return st.Head[:7]
+	case st.Head != "":
+		return git.ShortHash(st.Head)
 	}
 	return ""
 }
@@ -184,7 +274,7 @@ func (a *app) gitChanged() {
 		d.git.HeadMoved()
 	}
 	a.diffsChanged()
-	a.git.stale = true
+	a.git.stale, a.git.remotesStale = true, true
 }
 
 // gitDo runs a command on the work tree in the background, naming it
@@ -202,9 +292,11 @@ func (a *app) gitDo(busy string, fn func(r *git.Repo) error, then func()) {
 		}
 		g.busy = busy
 	}
+	g.pending++
 	go func() {
 		err := fn(r)
 		a.post(func() {
+			g.pending--
 			if busy != "" {
 				g.busy = ""
 			}
@@ -241,7 +333,23 @@ func (a *app) fetch() {
 // pull brings in the upstream's commits, when the branch has none of its
 // own that it lacks.
 func (a *app) pull() {
-	a.gitDo("Pulling…", func(r *git.Repo) error { return r.Pull() }, nil)
+	pulled := 0
+	a.gitDo("Pulling…", func(r *git.Repo) error {
+		before := r.Head()
+		if err := r.Pull(); err != nil {
+			return err
+		}
+		if before != "" {
+			pulled = r.Count(before, "HEAD")
+		}
+		return nil
+	}, func() {
+		if pulled > 0 {
+			a.tell(note{message: "Pulled " + plural(pulled, "commit")})
+		} else {
+			a.tell(note{message: "Already up to date"})
+		}
+	})
 }
 
 // push pushes the branch to its upstream, or to a remote, which becomes
@@ -253,7 +361,13 @@ func (a *app) push() {
 		return
 	}
 	branch, upstream := st.Branch, st.Upstream != ""
-	a.gitDo("Pushing…", func(r *git.Repo) error { return r.Push(branch, upstream) }, nil)
+	a.gitDo("Pushing…", func(r *git.Repo) error { return r.Push(branch, upstream) }, func() {
+		if upstream {
+			a.tell(note{message: "Pushed " + branch + " to " + st.Upstream})
+		} else {
+			a.tell(note{message: "Published " + branch})
+		}
+	})
 }
 
 // switchBranch checks out a branch, or makes it first when create is set,
@@ -292,6 +406,10 @@ func (a *app) askNewBranch() {
 func (a *app) branchMenu(m *ui.Menu) {
 	g := &a.git
 	cur := a.branch()
+	if m.Item("Switch Branch…").Disabled(g.busy != "").Chosen() {
+		a.post(a.openBranchPicker)
+	}
+	m.Separator()
 	for _, b := range g.branches {
 		if m.Item(b).Checked(b == cur).Disabled(g.busy != "").Chosen() && b != cur {
 			a.post(func() { a.switchBranch(b, false) })

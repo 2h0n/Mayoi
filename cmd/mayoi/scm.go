@@ -1,10 +1,13 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
@@ -19,10 +22,11 @@ const (
 	groupStaged
 	groupChanges
 	groupUntracked
+	groupCommits // the last commits of HEAD
 	groupCount
 )
 
-var groupNames = [groupCount]string{"Merge Changes", "Staged Changes", "Changes", "Untracked"}
+var groupNames = [groupCount]string{"Merge Changes", "Staged Changes", "Changes", "Untracked", "Commits"}
 
 // scmRow is a row of the source control view: a group's header, or a
 // file of it.
@@ -31,7 +35,21 @@ type scmRow struct {
 	header bool
 	count  int // the files of a header's group
 	e      git.Entry
+	key    string // the list's key of the row
+	// commit is the commit of a row of the history, its place in it at;
+	// more is set for the row that reads more of it.
+	commit *git.Commit
+	at     int
+	more   bool
+	// dir is the folder of a folder's row in the tree, and name what it
+	// shows of it; depth is how deep a row of the tree is.
+	dir   string
+	name  string
+	depth int
 }
+
+// file reports whether a row is a file's.
+func (r *scmRow) file() bool { return !r.header && r.commit == nil && !r.more && r.dir == "" }
 
 // scmState is the source control view's: its list, the row chosen, and
 // the groups closed.
@@ -40,12 +58,33 @@ type scmState struct {
 	row       int
 	collapsed [groupCount]bool
 	rows      []scmRow // as the last frame built them
+	// closedDirs are the folders of the tree closed, by their rows' keys;
+	// dirsGen counts their changes.
+	closedDirs map[string]bool
+	dirsGen    int
+	// rowsOf is the status, the groups and folders closed, the read of
+	// the history and the layout the rows were made for.
+	rowsOf        *git.Status
+	rowsCollapsed [groupCount]bool
+	rowsHistory   int
+	rowsDirs      int
+	rowsTree      bool
 }
 
-// groupEntries returns the files of each group, by path.
+// groupEntries returns the files of each group, by path. They are worked
+// out once for each status read, as the view asks for them every frame.
 func (a *app) groupEntries() [groupCount][]git.Entry {
+	g := &a.git
+	if g.groupsOf != g.status || g.status == nil {
+		g.groups, g.groupsOf = groupStatus(g.status), g.status
+	}
+	return g.groups
+}
+
+// groupStatus returns the files of a status in each group, by path, each
+// group's slice clipped, so that appending to it copies.
+func groupStatus(st *git.Status) [groupCount][]git.Entry {
 	var out [groupCount][]git.Entry
-	st := a.git.status
 	if st == nil {
 		return out
 	}
@@ -64,30 +103,143 @@ func (a *app) groupEntries() [groupCount][]git.Entry {
 			}
 		}
 	}
-	for _, es := range out {
+	for i, es := range out {
 		slices.SortFunc(es, func(x, y git.Entry) int { return strings.Compare(x.Path, y.Path) })
+		out[i] = slices.Clip(es)
 	}
 	return out
 }
 
 // scmRows returns the rows of the view: the groups that have files, and
-// the files of those open.
+// the files of those open, then the last commits. They are made again
+// only when the status, the groups closed or the history change.
 func (a *app) scmRows() []scmRow {
+	s := &a.scm
+	g := &a.git
+	tree := a.settings.ScmTree
+	if s.rows != nil && s.rowsOf == g.status && s.rowsCollapsed == s.collapsed && s.rowsHistory == g.historyGen &&
+		s.rowsDirs == s.dirsGen && s.rowsTree == tree {
+		return s.rows
+	}
 	var rows []scmRow
 	groups := a.groupEntries()
 	for g, es := range groups {
 		if len(es) == 0 {
 			continue
 		}
-		rows = append(rows, scmRow{group: scmGroup(g), header: true, count: len(es)})
-		if a.scm.collapsed[g] {
+		rows = append(rows, scmRow{group: scmGroup(g), header: true, count: len(es), key: fmt.Sprintf("group:%d", g)})
+		if s.collapsed[g] {
+			continue
+		}
+		if tree && a.git.repo != nil {
+			rows = treeRows(rows, scmGroup(g), es, a.git.repo.Root, s.closedDirs)
 			continue
 		}
 		for _, e := range es {
-			rows = append(rows, scmRow{group: scmGroup(g), e: e})
+			rows = append(rows, scmRow{group: scmGroup(g), e: e, key: fmt.Sprintf("%d:%s", g, e.Path)})
 		}
 	}
+	if h := g.history; len(h) > 0 {
+		rows = append(rows, scmRow{group: groupCommits, header: true, count: len(h), key: "group:commits"})
+		if !s.collapsed[groupCommits] {
+			for i := range h {
+				rows = append(rows, scmRow{group: groupCommits, commit: &h[i], at: i, key: "commit:" + h[i].Hash})
+			}
+			if len(h) >= max(g.historyN, historyPage) {
+				rows = append(rows, scmRow{group: groupCommits, more: true, key: "commits:more"})
+			}
+		}
+	}
+	s.rows, s.rowsOf, s.rowsCollapsed, s.rowsHistory = rows, g.status, s.collapsed, g.historyGen
+	s.rowsDirs, s.rowsTree = s.dirsGen, tree
+	if s.rows == nil {
+		s.rows = []scmRow{}
+	}
+	return s.rows
+}
+
+// scmDir is a folder of the tree of a group's changes: its folders and
+// its files.
+type scmDir struct {
+	name, path string
+	dirs       []*scmDir
+	files      []git.Entry
+}
+
+// treeRows adds the rows of a group's files, es by path, to rows, in a
+// tree of their folders under root: a folder's folders first, then its
+// files, and a folder with a single folder in it and no files shown as
+// one, as "internal/git". The folders closed, by their rows' keys, show
+// without what is in them.
+func treeRows(rows []scmRow, g scmGroup, es []git.Entry, root string, closed map[string]bool) []scmRow {
+	top := &scmDir{path: root}
+	at := map[string]*scmDir{root: top}
+	var dirOf func(path string) *scmDir
+	dirOf = func(path string) *scmDir {
+		if d, ok := at[path]; ok {
+			return d
+		}
+		parent := dirOf(filepath.Dir(path))
+		d := &scmDir{name: filepath.Base(path), path: path}
+		parent.dirs = append(parent.dirs, d)
+		at[path] = d
+		return d
+	}
+	for _, e := range es {
+		dir := filepath.Dir(e.Path)
+		if dir != root && !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			dir = root // outside the work tree: shown at its top
+		}
+		d := dirOf(dir)
+		d.files = append(d.files, e)
+	}
+	var add func(d *scmDir, depth int)
+	add = func(d *scmDir, depth int) {
+		slices.SortFunc(d.dirs, func(x, y *scmDir) int { return strings.Compare(x.name, y.name) })
+		for _, sub := range d.dirs {
+			name := sub.name
+			for len(sub.dirs) == 1 && len(sub.files) == 0 {
+				sub = sub.dirs[0]
+				name += "/" + sub.name
+			}
+			key := fmt.Sprintf("%d:dir:%s", g, sub.path)
+			rows = append(rows, scmRow{group: g, dir: sub.path, name: name, depth: depth, key: key})
+			if !closed[key] {
+				add(sub, depth+1)
+			}
+		}
+		for _, e := range d.files {
+			rows = append(rows, scmRow{group: g, e: e, depth: depth, key: fmt.Sprintf("%d:%s", g, e.Path)})
+		}
+	}
+	add(top, 0)
 	return rows
+}
+
+// toggleDir opens a folder of the tree, or closes it.
+func (a *app) toggleDir(r scmRow) {
+	s := &a.scm
+	if s.closedDirs == nil {
+		s.closedDirs = map[string]bool{}
+	}
+	if s.closedDirs[r.key] {
+		delete(s.closedDirs, r.key)
+	} else {
+		s.closedDirs[r.key] = true
+	}
+	s.dirsGen++
+}
+
+// dirEntries returns the files of a group in a folder, or in the folders
+// in it.
+func (a *app) dirEntries(g scmGroup, dir string) []git.Entry {
+	var out []git.Entry
+	for _, e := range a.groupEntries()[g] {
+		if strings.HasPrefix(e.Path, dir+string(filepath.Separator)) {
+			out = append(out, e)
+		}
+	}
+	return out
 }
 
 // changeCount is how many files differ from HEAD, or Git does not track.
@@ -98,33 +250,29 @@ func (a *app) changeCount() int {
 	return len(a.git.status.Entries)
 }
 
-// scmView is the sidebar's source control view: the commit message, and
-// the files changed, staged and not.
+// scmView is the sidebar's source control view: the branch, the commit
+// message, and the files changed, staged and not.
 func (a *app) scmView(c *ui.Context) {
 	p := a.pal
 	g := &a.git
+	a.scmActivity(c)
 	if g.repo == nil {
-		ui.Column(c).Padding(12, 16).Gap(12).Children(func() {
-			if !g.looked {
-				return
-			}
-			ui.Text(c, "The folder is not in a Git repository.").FontSize(12.5).TextColor(p.muted)
-			if ui.PrimaryButton(c, "Initialize Repository").FillWidth().Clicked() {
-				a.initRepo()
-			}
-		})
+		if g.looked {
+			a.scmNoRepo(c)
+		}
 		return
 	}
 	a.scmBranchRow(c)
-	ui.Column(c).Padding(2, 12, 8, 12).Gap(6).Children(func() {
+	ui.Column(c).Padding(2, 12, 10, 12).Gap(8).Children(func() {
 		if g.amend {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "Amending the last commit").FontSize(11.5).TextColor(p.muted).Grow(1).SingleLine()
-				b := ui.ButtonBase(c).Padding(1, 4).Radius(4).Label("Stop Amending")
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Padding(4, 4, 4, 8).Radius(5).Background(p.accent.Alpha(0.12)).Children(func() {
+				ui.Icon(c, iconPencil).FontSize(12).TextColor(p.accent)
+				ui.Text(c, "Amending last commit").FontSize(11.5).TextColor(p.text).Grow(1).SingleLine().Shrink(1)
+				b := ui.ButtonBase(c.Key("stop-amending")).Padding(1, 6).Radius(4).Label("Stop Amending")
 				if b.Hovered() {
 					b.Background(p.hover)
 				}
-				b.Children(func() { ui.Text(c, "Cancel").FontSize(11.5).TextColor(p.accent) })
+				b.Children(func() { ui.Text(c, "Cancel").FontSize(11.5).FontWeight(500).TextColor(p.accent) })
 				if b.Clicked() {
 					g.amend, g.message = false, ""
 				}
@@ -136,40 +284,19 @@ func (a *app) scmView(c *ui.Context) {
 			hint = fmt.Sprintf("Message (⌘⏎ to commit on %s)", branch)
 		}
 		box := ui.TextArea(c.Key("commit-message"), &g.message).Placeholder(hint).FontSize(12.5).
-			MinHeight(56).MaxHeight(160).Label("Commit Message")
+			MinHeight(60).MaxHeight(160).Label("Commit Message")
 		if box.Shortcut(ui.Cmd, ui.KeyEnter) {
 			a.commit(false)
 		}
-		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			label := "Commit"
-			if g.amend {
-				label = "Amend"
-			}
-			if ui.PrimaryButton(c, label).Grow(1).Disabled(g.busy != "").Clicked() {
-				a.commit(false)
-			}
-			more := ui.ButtonBase(c.Key("commit-more")).Size(28, 28).Radius(6).Justify(ui.Center).AlignItems(ui.Center).
-				Border(1, p.border).Label("More Actions").Tooltip("More Actions")
-			if more.Hovered() {
-				more.Background(p.hover)
-			}
-			more.Children(func() { ui.Icon(c, iconMore).FontSize(15).TextColor(p.muted) })
-			more.Menu(a.scmMenu)
-		})
-		if g.busy != "" {
-			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Spinner(c).Size(12, 12)
-				ui.Text(c, g.busy).FontSize(11.5).TextColor(p.muted)
-			})
-		}
+		a.subjectLength(c)
+		a.commitButton(c)
 	})
 	rows := a.scmRows()
 	s := &a.scm
-	s.rows = rows
+	if g.status != nil && len(g.status.Entries) == 0 {
+		a.scmClean(c)
+	}
 	if len(rows) == 0 {
-		if g.status != nil {
-			ui.Text(c, "No changes.").FontSize(12.5).TextColor(p.faint).Padding(8, 16)
-		}
 		return
 	}
 	s.list.Selected = &s.row
@@ -178,14 +305,18 @@ func (a *app) scmView(c *ui.Context) {
 		if i >= len(rows) {
 			return i
 		}
-		if r := rows[i]; r.header {
-			return fmt.Sprintf("group:%d", r.group)
-		}
-		return fmt.Sprintf("%d:%s", rows[i].group, rows[i].e.Path)
+		return rows[i].key
 	}
 	s.list.Label = func(i int) string {
-		if i >= len(rows) || rows[i].header {
+		switch r := rows[i]; {
+		case r.header:
 			return ""
+		case r.dir != "":
+			return r.name
+		case r.commit != nil:
+			return r.commit.Subject
+		case r.more:
+			return "Show More Commits"
 		}
 		return filepath.Base(rows[i].e.Path)
 	}
@@ -195,9 +326,16 @@ func (a *app) scmView(c *ui.Context) {
 	c.SetTheme(&quiet)
 	var action func()
 	out := ui.List(c.Key("scm"), &s.list, len(rows), func(i int) {
-		if r := rows[i]; r.header {
+		switch r := rows[i]; {
+		case r.header:
 			a.scmHeader(c, r, &action)
-		} else {
+		case r.commit != nil:
+			a.scmCommit(c, r, i+1 >= len(rows) || rows[i+1].commit == nil, &action)
+		case r.more:
+			a.scmMore(c, &action)
+		case r.dir != "":
+			a.scmFolder(c, r, &action)
+		default:
 			a.scmFile(c, r, &action)
 		}
 	}).Grow(1).Padding(0, 6, 8, 6)
@@ -206,10 +344,20 @@ func (a *app) scmView(c *ui.Context) {
 		action()
 	}
 	chosen := func() (scmRow, bool) {
-		if s.row >= 0 && s.row < len(rows) && !rows[s.row].header {
+		if s.row >= 0 && s.row < len(rows) && rows[s.row].file() {
 			return rows[s.row], true
 		}
 		return scmRow{}, false
+	}
+	if s.row >= 0 && s.row < len(rows) && out.Submitted() {
+		switch r := rows[s.row]; {
+		case r.dir != "":
+			a.toggleDir(r)
+		case r.commit != nil:
+			a.showCommit(*r.commit, true)
+		case r.more:
+			g.historyN = max(g.historyN, historyPage) + historyPage
+		}
 	}
 	if r, ok := chosen(); ok && out.Submitted() {
 		a.openChange(r, true)
@@ -217,6 +365,220 @@ func (a *app) scmView(c *ui.Context) {
 	if r, ok := chosen(); ok && out.Shortcut(0, ui.KeySpace) {
 		a.toggleStaged(r)
 	}
+}
+
+// scmActivity is a thin bar under the view's title, which moves while a
+// Git command runs in the background, and is empty room while none does.
+func (a *app) scmActivity(c *ui.Context) {
+	g := &a.git
+	if g.busy == "" && g.pending == 0 {
+		ui.Box(c.Key("scm-activity")).Height(2)
+		return
+	}
+	ui.Progress(c.Key("scm-activity"), -1).Height(2).Radius(0).Label("Running Git")
+}
+
+// subjectLimit is how long the first line of a commit message should be,
+// as Git's tools show it: past it, the view says how long it is.
+const (
+	subjectHint  = 50
+	subjectLimit = 72
+)
+
+// subjectLength says how long the first line of the message is once it
+// grows past what a summary should be, in a warning's color past what
+// Git's tools show.
+func (a *app) subjectLength(c *ui.Context) {
+	p := a.pal
+	subject, _, _ := strings.Cut(a.git.message, "\n")
+	n := utf8.RuneCountInString(strings.TrimRight(subject, " \t\r"))
+	if n <= subjectHint {
+		return
+	}
+	col, note := p.faint, "Summary"
+	if n > subjectLimit {
+		col, note = p.modified, "Summary is long"
+	}
+	ui.Row(c).Margin(-4, 2, 0, 2).Children(func() {
+		ui.Text(c, note).FontSize(11).TextColor(col).Grow(1).SingleLine()
+		ui.Text(c, fmt.Sprintf("%d/%d", n, subjectLimit)).FontSize(11).Font(a.font.family).TextColor(col)
+	})
+}
+
+// commitButton is the button that commits, which says what it commits,
+// joined to one with a menu of the other ways to commit.
+func (a *app) commitButton(c *ui.Context) {
+	g := &a.git
+	t := c.Theme()
+	groups := a.groupEntries()
+	staged := len(groups[groupStaged])
+	others := len(groups[groupChanges]) + len(groups[groupUntracked])
+	label := "Commit"
+	switch {
+	case g.amend:
+		label = "Amend Commit"
+	case staged == 0 && others > 0:
+		label = "Commit All"
+	}
+	tip := "Commit the staged changes (⌘⏎)"
+	switch {
+	case g.amend:
+		tip = "Amend the last commit with the staged changes (⌘⏎)"
+	case staged == 0 && others > 0:
+		tip = "Stage every change and commit it (⌘⏎)"
+	}
+	committing := g.busy == "Committing…"
+	idle := g.busy == "" && (g.amend || staged+others > 0)
+	// In the accent color while it commits, or can; gray while there is
+	// nothing to commit or another command runs, its menu still there.
+	bg, hover, pressed, fg := t.Accent, t.AccentHover, t.AccentPressed, t.AccentText
+	if !idle && !committing {
+		p := a.pal
+		bg, fg = p.text.Alpha(0.06).Over(p.chrome), p.faint
+		hover, pressed = p.text.Alpha(0.1).Over(p.chrome), p.text.Alpha(0.13).Over(p.chrome)
+	}
+	ui.Row(c.Key("commit")).Height(28).Children(func() {
+		main := ui.ButtonBase(c.Key("commit-main")).Grow(1).Height(28).Radius(6, 0, 0, 6).Justify(ui.Center).AlignItems(ui.Center).Gap(6).
+			Background(bg).Label(label).Tooltip(tip).Disabled(!idle)
+		switch {
+		case !idle:
+		case main.Pressed():
+			main.Background(pressed)
+		case main.Hovered():
+			main.Background(hover)
+		}
+		main.Children(func() {
+			if committing {
+				ui.Spinner(c).Size(12, 12)
+				ui.Text(c, "Committing…").FontSize(12.5).FontWeight(600).TextColor(fg).SingleLine()
+				return
+			}
+			ui.Icon(c, iconCheck).FontSize(14).TextColor(fg)
+			ui.Text(c, label).FontSize(12.5).FontWeight(600).TextColor(fg).SingleLine()
+		})
+		if main.Clicked() && idle {
+			a.commit(false)
+		}
+		ui.Box(c).Width(1).Height(28).Background(fg.Alpha(0.28).Over(bg))
+		more := ui.ButtonBase(c.Key("commit-more")).Width(28).Height(28).Radius(0, 6, 6, 0).Justify(ui.Center).AlignItems(ui.Center).
+			Background(bg).Label("More Commit Actions").Tooltip("More Commit Actions")
+		switch {
+		case more.Pressed():
+			more.Background(pressed)
+		case more.Hovered():
+			more.Background(hover)
+		}
+		more.Children(func() { ui.Icon(c, iconChevronDown).FontSize(14).TextColor(fg) })
+		more.Menu(a.commitMenu)
+	})
+}
+
+// commitMenu is the menu of the ways to commit.
+func (a *app) commitMenu(m *ui.Menu) {
+	g := &a.git
+	st := g.status
+	busy := g.busy != ""
+	none := st == nil || len(st.Entries) == 0 && !g.amend
+	if m.Item("Commit").Shortcut(ui.Cmd, ui.KeyEnter).Disabled(busy || none).Chosen() {
+		a.post(func() { a.commit(false) })
+	}
+	if m.Item("Commit & Push").Disabled(busy || none).Chosen() {
+		a.post(func() { a.commit(true) })
+	}
+	m.Separator()
+	if m.Item("Amend Last Commit").Checked(g.amend).Disabled(busy || st == nil || st.Head == "").Chosen() {
+		a.post(func() {
+			if g.amend {
+				g.amend, g.message = false, ""
+				return
+			}
+			a.startAmend()
+		})
+	}
+	if m.Item("Undo Last Commit").Disabled(busy || st == nil || st.Head == "").Chosen() {
+		a.post(a.undoCommit)
+	}
+}
+
+// scmNoRepo is the view of a folder outside a work tree: what that means,
+// and a button to make it one.
+func (a *app) scmNoRepo(c *ui.Context) {
+	p := a.pal
+	ui.Column(c).Padding(28, 20, 16, 20).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconBranch).FontSize(20).TextColor(p.muted)
+		})
+		ui.Text(c, "No Git Repository").FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, "The folder is not in a Git repository. Make it one to track and commit its changes.").
+			FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
+		ui.Box(c).Height(4)
+		if ui.PrimaryButton(c, "Initialize Repository").FillWidth().Clicked() {
+			a.initRepo()
+		}
+	})
+}
+
+// scmClean is the view of a work tree with no changes: that it is clean,
+// and how its branch stands with its upstream, with buttons to bring them
+// level.
+func (a *app) scmClean(c *ui.Context) {
+	p := a.pal
+	g := &a.git
+	st := g.status
+	ui.Column(c).Padding(24, 20, 16, 20).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(44, 44).Radius(22).Background(p.added.Alpha(0.13)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconCheck).FontSize(20).TextColor(p.added)
+		})
+		ui.Text(c, "No Changes").FontSize(13).FontWeight(600).TextColor(p.text).Margin(6, 0, 0, 0)
+		note := "The working tree is clean."
+		switch {
+		case st.Branch == "":
+		case st.Upstream == "" && len(g.remotes) == 0:
+			note = fmt.Sprintf("%s is clean.", st.Branch)
+		case st.Upstream == "":
+			note = fmt.Sprintf("%s is clean, and not yet published.", st.Branch)
+		case st.Ahead > 0 && st.Behind > 0:
+			note = fmt.Sprintf("%s is clean, %s ahead of %s and %s behind.", st.Branch,
+				plural(st.Ahead, "commit"), st.Upstream, plural(st.Behind, "commit"))
+		case st.Ahead > 0:
+			note = fmt.Sprintf("%s is clean, %s ahead of %s.", st.Branch, plural(st.Ahead, "commit"), st.Upstream)
+		case st.Behind > 0:
+			note = fmt.Sprintf("%s is clean, %s behind %s.", st.Branch, plural(st.Behind, "commit"), st.Upstream)
+		default:
+			note = fmt.Sprintf("%s is clean and up to date with %s.", st.Branch, st.Upstream)
+		}
+		ui.Text(c, note).FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
+		busy := g.busy != ""
+		button := func(icon *ui.SVG, label string, primary bool, fn func()) {
+			ui.Box(c).Height(4)
+			var b ui.Element
+			if primary {
+				b = ui.PrimaryButton(c.Key(label), "")
+			} else {
+				b = ui.Button(c.Key(label), "")
+			}
+			b.FillWidth().Justify(ui.Center).Disabled(busy).Label(label).Children(func() {
+				ui.Icon(c, icon).FontSize(14)
+				ui.Text(c, label).SingleLine()
+			})
+			if b.Clicked() {
+				fn()
+			}
+		}
+		switch {
+		case st.Branch == "":
+		case st.Upstream == "" && len(g.remotes) > 0:
+			button(iconPush, "Publish Branch", true, a.push)
+		case st.Upstream == "":
+		case st.Behind > 0:
+			button(iconPull, fmt.Sprintf("Pull %s", plural(st.Behind, "Commit")), true, a.pull)
+			if st.Ahead > 0 {
+				button(iconPush, fmt.Sprintf("Push %s", plural(st.Ahead, "Commit")), false, a.push)
+			}
+		case st.Ahead > 0:
+			button(iconPush, fmt.Sprintf("Push %s", plural(st.Ahead, "Commit")), true, a.push)
+		}
+	})
 }
 
 // scmHeader is the row heading a group: a click opens or closes it.
@@ -271,7 +633,12 @@ func (a *app) scmHeader(c *ui.Context, r scmRow, action *func()) {
 func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 	p := a.pal
 	e := r.e
-	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, 14)
+	indent := float32(14)
+	tree := a.settings.ScmTree
+	if tree {
+		indent = treeIndent(r.depth) + 16
+	}
+	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, indent)
 	hovered := row.Hovered()
 	clicked := row.Clicked()
 	row.ContextMenu(func(m *ui.Menu) { a.scmFileMenu(m, r, action) })
@@ -287,7 +654,7 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 		if letter == 'D' {
 			label.Strikethrough()
 		}
-		if dir := filepath.Dir(a.git.repo.Rel(e.Path)); dir != "." {
+		if dir := filepath.Dir(a.git.repo.Rel(e.Path)); dir != "." && !tree {
 			ui.Text(c, dir).FontSize(11.5).TextColor(p.faint).SingleLine().Shrink(1)
 		}
 		ui.Spacer(c)
@@ -314,6 +681,166 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 	})
 	if clicked && *action == nil {
 		*action = func() { a.openChange(r, false) }
+	}
+}
+
+// scmCommit is the row of a commit of the history: a dot on the line of
+// the history, filled for a commit not pushed yet, its subject, and how
+// long ago it was made. A click shows its changes.
+func (a *app) scmCommit(c *ui.Context, r scmRow, last bool, action *func()) {
+	p := a.pal
+	cm := r.commit
+	g := &a.git
+	unpushed := g.unpushed[cm.Hash]
+	tip := fmt.Sprintf("%s\n%s · %s · %s", cm.Subject, cm.Author, ago(cm.Time, time.Now()), cm.Short())
+	if unpushed {
+		tip += " · not pushed"
+	}
+	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 4, 0, 6).Tooltip(tip)
+	clicked := row.Clicked()
+	row.ContextMenu(func(m *ui.Menu) {
+		if m.Item("Open Changes").Chosen() {
+			*action = func() { a.showCommit(*cm, true) }
+		}
+		m.Separator()
+		if m.Item("Copy Commit Hash").Chosen() {
+			a.services.WriteClipboard(cm.Hash)
+		}
+		if m.Item("Copy Commit Message").Chosen() {
+			msg := cm.Subject
+			if cm.Body != "" {
+				msg += "\n\n" + cm.Body
+			}
+			a.services.WriteClipboard(msg)
+		}
+		if r.at == 0 {
+			m.Separator()
+			if m.Item("Undo Last Commit").Disabled(g.busy != "").Chosen() {
+				*action = a.undoCommit
+			}
+		}
+	})
+	first := r.at == 0
+	row.Children(func() {
+		ui.Box(c).Size(12, 22).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
+			cx, cy := b.X+b.W/2, b.Y+b.H/2
+			top, bottom := b.Y, b.Y+b.H
+			if first {
+				top = cy
+			}
+			if last {
+				bottom = cy
+			}
+			pt.Fill(ui.Rect{X: cx - 0.75, Y: top, W: 1.5, H: bottom - top}, p.border.Mix(p.muted, 0.35), 0)
+			dot := ui.Rect{X: cx - 4, Y: cy - 4, W: 8, H: 8}
+			switch {
+			case unpushed:
+				pt.Fill(dot, p.accent, 4)
+			default:
+				pt.Fill(dot, p.chrome, 4)
+				pt.Stroke(dot, p.muted, 4, 1.5)
+			}
+		})
+		col := p.text
+		if !unpushed && !first {
+			col = mix(p.text, p.muted, 0.35)
+		}
+		ui.Text(c, cm.Subject).FontSize(12.5).TextColor(col).SingleLine().Shrink(1)
+		ui.Spacer(c)
+		if unpushed {
+			ui.Icon(c, iconArrowUp).FontSize(11).TextColor(p.accent).Shrink(0)
+		}
+		ui.Text(c, shortAgo(cm.Time, time.Now())).FontSize(11).TextColor(p.faint).Shrink(0).Padding(0, 2, 0, 0)
+	})
+	if clicked && *action == nil {
+		*action = func() { a.showCommit(*cm, false) }
+	}
+}
+
+// scmMore is the row after the commits of the history, which reads more.
+func (a *app) scmMore(c *ui.Context, action *func()) {
+	p := a.pal
+	row := ui.Row(c).Grow(1).Height(22).Padding(0, 0, 0, 24).AlignItems(ui.Center)
+	hovered, clicked := row.Hovered(), row.Clicked()
+	row.Children(func() {
+		col := p.muted
+		if hovered {
+			col = p.accent
+		}
+		ui.Text(c, "Show More Commits").FontSize(12).TextColor(col)
+	})
+	if clicked {
+		*action = func() { a.git.historyN = max(a.git.historyN, historyPage) + historyPage }
+	}
+}
+
+// shortAgo says how long before now t was, in a few letters.
+func shortAgo(t, now time.Time) string {
+	d := now.Sub(t)
+	switch {
+	case d < time.Minute:
+		return "now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d/time.Minute))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d/time.Hour))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d/(24*time.Hour)))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dw", int(d/(7*24*time.Hour)))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%dmo", int(d/(30*24*time.Hour)))
+	}
+	return fmt.Sprintf("%dy", int(d/(365*24*time.Hour)))
+}
+
+// treeIndent is how far in a row of the tree depth folders deep starts.
+func treeIndent(depth int) float32 { return 4 + float32(depth)*14 }
+
+// scmFolder is the row of a folder of the tree: a click opens or closes
+// it, and its buttons stage, unstage or discard every file in it.
+func (a *app) scmFolder(c *ui.Context, r scmRow, action *func()) {
+	p := a.pal
+	closed := a.scm.closedDirs[r.key]
+	row := ui.Row(c).Grow(1).Gap(4).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, treeIndent(r.depth))
+	hovered, clicked := row.Hovered(), row.Clicked()
+	row.Children(func() {
+		chevron, folder := iconChevronDown, iconFolderOpen
+		if closed {
+			chevron, folder = iconChevronRight, iconFolder
+		}
+		ui.Icon(c, chevron).FontSize(12).TextColor(p.muted)
+		ui.Icon(c, folder).FontSize(14).TextColor(p.accent).Margin(0, 2, 0, 0)
+		ui.Text(c, r.name).FontSize(13).TextColor(p.text).SingleLine().Shrink(1)
+		ui.Spacer(c)
+		if !hovered {
+			return
+		}
+		es := a.dirEntries(r.group, r.dir)
+		var paths []string
+		for _, e := range es {
+			paths = append(paths, entryPaths(e, r.group == groupStaged)...)
+		}
+		switch r.group {
+		case groupStaged:
+			if a.smallButton(c, iconMinus, "Unstage Folder") {
+				*action = func() { a.unstage(paths...) }
+			}
+		case groupChanges, groupUntracked:
+			if a.smallButton(c, iconUndo, "Discard Folder Changes…") {
+				*action = func() { a.discard(es...) }
+			}
+			if a.smallButton(c, iconPlus, "Stage Folder") {
+				*action = func() { a.stage(paths...) }
+			}
+		case groupMerge:
+			if a.smallButton(c, iconPlus, "Stage Folder") {
+				*action = func() { a.stage(paths...) }
+			}
+		}
+	})
+	if clicked && *action == nil {
+		*action = func() { a.toggleDir(r) }
 	}
 }
 
@@ -348,18 +875,35 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 	}
 }
 
+// scmTitleActions are the buttons beside the view's title: the menu of
+// the view's actions, and while the pointer is on the sidebar, one to read
+// the status again.
+func (a *app) scmTitleActions(c *ui.Context, hovered bool) {
+	g := &a.git
+	if g.repo == nil {
+		return
+	}
+	if hovered && a.iconButton(c, iconRefresh, "Refresh", false).Clicked() {
+		a.gitChanged()
+	}
+	a.iconButton(c, iconMore, "More Actions", false).Menu(a.scmMenu)
+}
+
 // scmMenu is the menu of the view's actions.
 func (a *app) scmMenu(m *ui.Menu) {
 	g := &a.git
 	st := g.status
-	if m.Item("Commit").Chosen() {
+	if m.Item("Commit").Disabled(g.busy != "").Chosen() {
 		a.post(func() { a.commit(false) })
 	}
-	if m.Item("Commit & Push").Chosen() {
+	if m.Item("Commit & Push").Disabled(g.busy != "").Chosen() {
 		a.post(func() { a.commit(true) })
 	}
 	if m.Item("Amend Last Commit").Disabled(st == nil || st.Head == "").Chosen() {
 		a.post(a.startAmend)
+	}
+	if m.Item("Undo Last Commit").Disabled(g.busy != "" || st == nil || st.Head == "").Chosen() {
+		a.post(a.undoCommit)
 	}
 	m.Separator()
 	groups := a.groupEntries()
@@ -387,6 +931,12 @@ func (a *app) scmMenu(m *ui.Menu) {
 		a.post(a.push)
 	}
 	m.Separator()
+	if m.Item("View as Tree").Checked(a.settings.ScmTree).Chosen() {
+		a.post(func() {
+			a.settings.ScmTree = !a.settings.ScmTree
+			a.settings.Changed()
+		})
+	}
 	if m.Item("Refresh").Chosen() {
 		a.post(a.gitChanged)
 	}
@@ -555,6 +1105,32 @@ func (a *app) startAmend() {
 	}()
 }
 
+// undoCommit takes back the last commit, keeping its changes staged and
+// its message in the box, to commit again.
+func (a *app) undoCommit() { a.undoCommitOf("") }
+
+// undoCommitOf takes back the last commit when it is hash, or whatever it
+// is for "": an Undo offered for a commit undoes it, not one made since.
+func (a *app) undoCommitOf(hash string) {
+	g := &a.git
+	if g.repo == nil || g.status == nil || g.status.Head == "" {
+		return
+	}
+	var msg string
+	a.gitDo("Undoing the last commit…", func(r *git.Repo) error {
+		if hash != "" && r.Head() != hash {
+			return errors.New("a commit has been made since, so this one is no longer the last to undo")
+		}
+		msg = r.LastMessage()
+		return r.UndoCommit()
+	}, func() {
+		g.amend = false
+		if strings.TrimSpace(g.message) == "" {
+			g.message = msg
+		}
+	})
+}
+
 // commit commits what is staged with the message written, then pushes
 // when push is set. With nothing staged it offers to stage every change
 // first. Changed files are saved before.
@@ -575,17 +1151,33 @@ func (a *app) commit(push bool) {
 	}
 	amend := g.amend
 	run := func(stageAll bool) {
+		var made string // the commit made
 		a.gitDo("Committing…", func(r *git.Repo) error {
 			if stageAll {
 				if err := r.Stage(r.Root); err != nil {
 					return err
 				}
 			}
-			return r.Commit(msg, amend)
+			if err := r.Commit(msg, amend); err != nil {
+				return err
+			}
+			made = r.Head()
+			return nil
 		}, func() {
 			g.message, g.amend = "", false
-			if push {
+			switch {
+			case push:
 				a.push()
+			case amend:
+				a.tell(note{message: "Amended the last commit"})
+			default:
+				subject, _, _ := strings.Cut(msg, "\n")
+				where := ""
+				if b := a.branch(); b != "" {
+					where = " to " + b
+				}
+				a.tell(note{message: fmt.Sprintf("Committed “%s”%s", ellipsize(subject, 48), where), label: "Undo",
+					action: func() { a.undoCommitOf(made) }})
 			}
 		})
 	}
@@ -601,6 +1193,14 @@ func (a *app) commit(push bool) {
 	default:
 		a.fail("There are no changes to commit.")
 	}
+}
+
+// ellipsize cuts s to n runes, with an ellipsis where it was cut.
+func ellipsize(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n-1]) + "…"
 }
 
 // initRepo makes the folder a Git repository.
@@ -645,39 +1245,97 @@ func (a *app) activePaths() []string {
 }
 
 // scmBranchRow is the row at the top of the source control view: the
-// branch, how far it is ahead and behind, and the buttons of the remotes
-// and to refresh.
+// branch, which a click switches, and the buttons of its remote, which
+// say how far it is ahead and behind.
 func (a *app) scmBranchRow(c *ui.Context) {
 	p := a.pal
-	ui.Row(c).Height(28).Padding(0, 8, 0, 14).Gap(2).AlignItems(ui.Center).Children(func() {
-		ui.Icon(c, iconBranch).FontSize(12).TextColor(p.muted)
-		ui.Text(c, a.branchLabel()).FontSize(12).TextColor(p.muted).SingleLine().Shrink(1).Grow(1).Padding(0, 0, 0, 4)
+	ui.Row(c).Height(30).Padding(0, 8, 0, 8).Gap(2).AlignItems(ui.Center).Children(func() {
+		branch := a.branch()
+		if branch == "" {
+			branch = "No Branch"
+		}
+		b := ui.ButtonBase(c.Key("scm-branch")).Height(24).Padding(0, 6).Gap(5).Radius(5).AlignItems(ui.Center).
+			Shrink(1).Label("Branch " + branch).Tooltip("Switch Branch…").Disabled(a.git.busy != "")
+		col := p.text
+		if b.Hovered() || b.Pressed() {
+			b.Background(p.hover)
+		}
+		b.Children(func() {
+			ui.Icon(c, iconBranch).FontSize(13).TextColor(p.muted)
+			ui.Text(c, branch).FontSize(12.5).FontWeight(500).TextColor(col).SingleLine().Shrink(1)
+			ui.Icon(c, iconChevronDown).FontSize(11).TextColor(p.faint)
+		})
+		if b.Clicked() {
+			a.openBranchPicker()
+		}
+		ui.Spacer(c)
 		a.scmActions(c)
 	})
 }
 
-// scmActions are the buttons of the remotes, which say how far the
-// branch is ahead and behind, and the one to refresh.
+// scmActions are the buttons of the branch's remote: fetching, and
+// pulling and pushing, which say how many commits they would bring, or
+// publishing a branch that has no upstream yet.
 func (a *app) scmActions(c *ui.Context) {
 	g := &a.git
 	st := g.status
-	pull, push := "Pull", "Push"
-	if st != nil && st.Behind > 0 {
-		pull = fmt.Sprintf("Pull (%d behind)", st.Behind)
+	busy := g.busy != ""
+	if len(g.remotes) == 0 {
+		return
 	}
-	if st != nil && st.Ahead > 0 {
-		push = fmt.Sprintf("Push (%d ahead)", st.Ahead)
-	}
-	if a.iconButton(c, iconFetch, "Fetch", false).Disabled(g.busy != "").Clicked() {
+	if a.syncButton(c, "fetch", iconFetch, "Fetch", 0).Disabled(busy).Clicked() {
 		a.fetch()
 	}
-	if a.iconButton(c, iconPull, pull, st != nil && st.Behind > 0).Disabled(g.busy != "").Clicked() {
+	if st != nil && st.Branch != "" && st.Upstream == "" {
+		if a.syncButton(c, "publish", iconPush, "Publish Branch", 0).Disabled(busy).Clicked() {
+			a.push()
+		}
+		return
+	}
+	behind, ahead := 0, 0
+	if st != nil {
+		behind, ahead = st.Behind, st.Ahead
+	}
+	pull, push := "Pull", "Push"
+	if behind > 0 {
+		pull = fmt.Sprintf("Pull %s", plural(behind, "commit"))
+	}
+	if ahead > 0 {
+		push = fmt.Sprintf("Push %s", plural(ahead, "commit"))
+	}
+	if a.syncButton(c, "pull", iconPull, pull, behind).Disabled(busy).Clicked() {
 		a.pull()
 	}
-	if a.iconButton(c, iconPush, push, st != nil && st.Ahead > 0).Disabled(g.busy != "").Clicked() {
+	if a.syncButton(c, "push", iconPush, push, ahead).Disabled(busy).Clicked() {
 		a.push()
 	}
-	if a.iconButton(c, iconRefresh, "Refresh", false).Clicked() {
-		a.gitChanged()
+}
+
+// syncButton is a button of the branch's remote, with the count of the
+// commits it would move beside its icon when there are any.
+func (a *app) syncButton(c *ui.Context, key string, icon *ui.SVG, label string, count int) ui.Element {
+	p := a.pal
+	b := ui.ButtonBase(c.Key("sync:"+key)).Height(24).MinWidth(26).Padding(0, 5).Gap(3).Radius(5).
+		Justify(ui.Center).AlignItems(ui.Center).Label(label).Tooltip(label)
+	col := p.muted
+	if count > 0 {
+		col = p.accent
+		b.Background(p.accent.Alpha(0.12))
 	}
+	if b.Hovered() || b.Pressed() {
+		b.Background(p.hover)
+		if count > 0 {
+			b.Background(p.accent.Alpha(0.2))
+		}
+		if count == 0 {
+			col = p.text
+		}
+	}
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(14).TextColor(col)
+		if count > 0 {
+			ui.Text(c, fmt.Sprint(count)).FontSize(11.5).FontWeight(600).TextColor(col)
+		}
+	})
+	return b
 }

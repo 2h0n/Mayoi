@@ -113,12 +113,14 @@ type app struct {
 	// dragging is set while a tab is dragged, as the frame before found.
 	dragging, dragNow bool
 
-	quick   quickOpen
-	find    findState
-	prompt  *prompt
-	confirm *confirm
+	quick    quickOpen
+	branches branchPicker // the box that switches branches
+	find     findState
+	prompt   *prompt
+	confirm  *confirm
 
 	errors  []string // to show as toasts
+	notes   []note   // what went well, to show as toasts
 	title   string
 	focus   pane
 	started bool
@@ -179,6 +181,16 @@ func (a *app) drain() {
 func (a *app) fail(format string, args ...any) {
 	a.errors = append(a.errors, fmt.Sprintf(format, args...))
 }
+
+// note is a toast of what a command did, with a button of label that runs
+// action, as Undo, when action is set.
+type note struct {
+	message, label string
+	action         func()
+}
+
+// tell shows a toast of what a command did.
+func (a *app) tell(n note) { a.notes = append(a.notes, n) }
 
 // start restores the window's last session: its folder and the files it
 // had open.

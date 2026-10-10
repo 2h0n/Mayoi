@@ -81,6 +81,8 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 						}
 						icon, tint := iconTerminal, p.muted
 						switch {
+						case t.diff != nil && t.diff.commit != nil:
+							icon, tint = iconCommit, p.accent
 						case t.diff != nil:
 							icon, tint = iconDiff, p.changed
 						case t.term == nil:

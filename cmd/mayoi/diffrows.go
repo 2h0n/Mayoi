@@ -19,6 +19,7 @@ const (
 	rowFile                   // the header of a file
 	rowNote                   // why the lines of a file do not show
 	rowSpace                  // the room between two files
+	rowCommit                 // the message of the commit a diff shows
 )
 
 // diffRow is a row of a diff as it shows, of file, one of the diff's.
@@ -43,6 +44,12 @@ type diffRow struct {
 // lineRow is the row of a line of each side.
 func lineRow(old, new, hunk, peer int) diffRow {
 	return diffRow{kind: rowLine, old: old, new: new, hunk: hunk, peer: peer, gap: -1, h: 1}
+}
+
+// between reports whether a row is one the keys pass over: the room
+// between files, or a header of more than one.
+func (r *diffRow) between() bool {
+	return r.kind == rowSpace || r.kind == rowSection || r.kind == rowCommit
 }
 
 // changed reports whether a row is a line changed.

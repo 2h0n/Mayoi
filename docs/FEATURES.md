@@ -71,14 +71,33 @@ off from **Git → Inline Blame**.
 The button beside **EXPLORER** at the top of the sidebar (⌃⇧G) switches it to the changes of the folder's Git work
 tree, with a count of them. Files are grouped as merge changes, staged changes, changes and untracked files.
 
+- The branch at the top opens **Switch Branch…**. Beside it, fetch, pull and push, which show how many commits
+  they would bring down or send up; a branch with no upstream gets **Publish Branch** instead.
 - Click a file to see its changes, Enter opens them too, and Space stages or unstages it.
 - The buttons on a row open the file, discard its changes, and stage or unstage it. A group's header does the same for
   all its files. Discarding asks first, and moves untracked files to the Trash.
-- Write a message and press ⌘↵ or **Commit**. With nothing staged, Mayoi offers to stage everything and commit it.
-  Changed files save first.
-- The **⋯** menu has **Commit & Push**, **Amend Last Commit** (which fills in the last message), stage, unstage and
-  discard all, and fetch, pull and push.
+- Write a message and press ⌘↵ or the commit button, which says what it will do: **Commit**, **Commit All** when nothing
+  is staged (Mayoi asks before staging everything), or **Amend Commit**. Changed files save first. Past 50 characters
+  the summary line shows its length, in a warning color past 72.
+- The arrow beside the commit button has **Commit & Push**, **Amend Last Commit** (which fills in the last message) and
+  **Undo Last Commit**, which takes the commit back but keeps its changes staged and its message in the box.
+- The **⋯** menu by the title has the commit commands, stage, unstage and discard all, fetch, pull and push, and
+  **View as Tree**, which lists each group's files under their folders. A folder with only one folder in it shows as
+  one row, as `internal/git`, and a folder's buttons stage, unstage or discard every file in it.
+- A thin bar under the title moves while a Git command runs. A toast says when a commit is made, with an **Undo**
+  button, and when a push or a pull is done.
+- A clean work tree says so, and offers to push or pull when the branch is ahead of its upstream or behind it.
 - A folder outside a repository gets an **Initialize Repository** button.
+
+### Commits
+
+Under the changes, **COMMITS** lists the last 50 commits of the branch, newest first, with how long ago each was made.
+A filled dot and an arrow mark the commits not pushed yet, and **Show More Commits** reads 50 more. Point at a commit to
+see its author and hash.
+
+Click a commit to see it in a tab of its own: its message, author, date and hash at the top, then each file it changed
+from its first parent, as the **Changes** tab shows them. Its menu copies the hash or the message, and the newest
+commit's menu can undo it.
 
 ### Diffs
 
@@ -88,13 +107,20 @@ added and removed. Click a file in source control and the tab scrolls to it; **O
 tab's menu or the **Git** menu does the same for a file. As you scroll, source control chooses the file you are
 reading. The diff follows a file as you type in it.
 
-Click a header to fold its file; a file with more than 2,000 changed lines starts folded. Point at a header, or choose
+Each header shows the file's icon, its path, a badge of its state (where a renamed file came from, too), and the lines
+added and removed, in numbers and in a bar of five blocks. Click a header to fold its file; a file with more than 2,000
+changed lines starts folded. Point at a header, or choose
 it, for buttons that open the file, stage or unstage it, and discard its changes. Files are read as they come near the
 view, so a long list of changes opens at once.
 
 Only three unchanged lines show around each change. The rest fold into a row that says how many lines it hides, and a
 click opens it. Each run of changes starts with an `@@` header naming the lines and the block it is in, as Git writes
 it. **Show Full Files** in the breadcrumbs shows every line.
+
+Point at a run of changes, or choose a line of it, and its header offers to stage those changes alone, to unstage them
+when they are staged, or to discard them. Mayoi reads the index and the file again first, so it acts on them as they
+are. Discarding edits an open file as a step of undo, and asks first for one that is not open. As you scroll through a
+file, its header stays at the top of the view with its buttons, and a click there folds the file.
 
 Removed and added lines show in one column, or side by side with the lines of a change across from each other. The
 layout button in the breadcrumbs chooses side by side, one column, or side by side when each side has room for 80
@@ -115,11 +141,17 @@ added and removed. With the diff focused, keys work as in a pager:
 | `z` | Open the folded lines chosen, or fold them again |
 | Enter | Open folded lines, fold a file, or open the file at a line |
 | `e` | Open the file at the chosen line |
+| `s` | Stage the changes of the chosen line or run, or unstage them |
 
 ### Branches and remotes
 
 The branch in the status bar shows how far it is ahead of its upstream (↑) and behind it (↓). Click it to switch
 branches, create one, or fetch, pull and push. Switching waits until open files are saved.
+
+**Switch Branch…**, from the branch at the top of source control, the status bar's menu or the **Git** menu, opens a box
+of the branches, local and of the remotes, the one checked out first and then the one committed to last. Each shows the
+subject of its last commit and how long ago it was made. Type to find one by name, or type a new name to create a branch
+from the one checked out. Choosing a remote's branch checks out a local branch that tracks it.
 
 Pull only fast-forwards. Push sets the upstream the first time. Git never prompts for a password inside Mayoi: it uses
 your SSH agent and credential helper, and if those fail, the error says to run the command once in the terminal.

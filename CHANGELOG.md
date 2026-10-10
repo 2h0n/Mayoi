@@ -3,6 +3,40 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Source control lists the last commits of the branch, with those not yet
+  pushed marked. Click one to see its message and its changes in a tab of
+  its own; its menu copies the hash or the message.
+- The commit button says what it will do (**Commit**, **Commit All**,
+  **Amend Commit**), and its menu has Commit & Push, Amend and the new
+  **Undo Last Commit**, which keeps the changes staged and the message.
+- **Switch Branch…** finds a branch by name among the local ones and the
+  remotes', the one committed to last first, with its last commit, and
+  creates a branch of the name typed. The branch at the top of source
+  control opens it, and the pull and push buttons beside it show how many
+  commits they would move. A branch with no upstream gets **Publish
+  Branch**.
+- **View as Tree**, in the **⋯** menu of source control, lists the changes
+  under their folders, which stage, unstage or discard all they hold.
+- A clean work tree says so, and offers to push or pull when the branch is
+  ahead or behind. A folder outside a repository explains itself.
+- The summary line of a commit message shows its length past 50
+  characters, in a warning color past 72.
+- A thin bar under the title moves while a Git command runs, and a toast
+  says when a commit, push or pull is done. The commit's toast has an
+  **Undo** button.
+- Stage, unstage or discard one change at a time from the Changes tab:
+  point at a run of changes for its buttons, or press `s` on a line.
+- A file's header stays at the top of the diff as you scroll through it.
+- Diff headers show the file's icon, a badge of its state, where a renamed
+  file came from, and a bar of the lines added and removed. Folded lines
+  read "Show N unchanged lines" and light up under the pointer.
+- Source control and the Changes tab stay quick with thousands of changed
+  files: an idle frame of 2,000 changes went from 0.39 ms to 0.22 ms and
+  allocates a tenth as much, and reading the status again when nothing
+  changed no longer lays the diff out again.
+
 ## 0.2.0
 
 - Source control: the sidebar lists the files changed, staged and not, to
@@ -23,7 +57,6 @@ needs a `## <version>` section here, or its build fails.
 - The branch in the status bar switches and creates branches, says how far
   it is ahead and behind, and fetches, pulls and pushes.
 - The caret's line shows who changed it last.
-
 - ⇧⌘T (**File → Reopen Closed Tab**) reopens the last tab closed, where it
   was and scrolled as it was. Terminals come back as a new shell.
 - Highlighting keeps up with typing: after a keystroke only the lines around

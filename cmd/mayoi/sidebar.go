@@ -29,6 +29,7 @@ func (a *app) sidebar(c *ui.Context) {
 			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Grow(1).
 				Padding(0, 0, 0, 6).SingleLine()
 			if scm {
+				a.scmTitleActions(c, hovered)
 				return
 			}
 			if a.root == "" || !hovered && !a.files.List.FocusWithin(c) {

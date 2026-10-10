@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 )
 
@@ -97,12 +98,21 @@ func (a *app) view(c *ui.Context) {
 		a.statusBar(c)
 	})
 	a.quickOpenView(c)
+	a.branchPickerView(c)
 	a.promptView(c)
 	a.confirmView(c)
 	for _, msg := range a.errors {
 		c.Toast(msg)
 	}
 	a.errors = a.errors[:0]
+	for _, n := range a.notes {
+		if n.action != nil {
+			c.ToastAction(n.message, n.label, n.action)
+		} else {
+			c.Toast(n.message)
+		}
+	}
+	a.notes = a.notes[:0]
 	a.tick()
 }
 
@@ -469,6 +479,8 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 			rel = path[len(a.root)+1:]
 		}
 		parts = strings.Split(filepath.ToSlash(rel), "/")
+	} else if t.diff != nil && t.diff.commit != nil {
+		parts = []string{"Commit " + git.ShortHash(t.diff.commit.hash), t.name()}
 	} else {
 		parts = []string{t.name()}
 	}
@@ -485,7 +497,10 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 			last := i == len(parts)-1
 			if last {
 				icon, col := fileIcon(p, part)
-				if t.diff != nil {
+				switch {
+				case t.diff != nil && t.diff.commit != nil:
+					icon, col = iconCommit, p.accent
+				case t.diff != nil:
 					icon, col = iconDiff, p.changed
 				}
 				ui.Icon(c, icon).FontSize(13).TextColor(col)

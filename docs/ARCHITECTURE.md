@@ -73,7 +73,9 @@ and keeps the root spelled as the folder it came from, so paths match the editor
 with `GIT_TERMINAL_PROMPT=0` and SSH in batch mode, so a login that needs a prompt fails instead of hanging.
 
 **`git.go`, `scm.go`.** The window keeps the status, read in the background when the tree sees a change, after a save
-or a Git command, when the window gets focus, and every 5 seconds. Every 1.5 seconds it also checks the times of the
+or a Git command, when the window gets focus, and every 5 seconds. A status that reads the same as the last is dropped,
+so what is worked out from it is kept: the groups of source control and their rows are made once for each status, and
+the diff lists its files again only for a new one. The last commits are read again when HEAD or its upstream moves. Every 1.5 seconds it also checks the times of the
 index, `HEAD` and `FETCH_HEAD`. A commit or checkout made in a terminal changes them, and then the documents compare
 their lines again. Commands from the source control view run in the background, and the status is read again after
 each.
@@ -99,6 +101,17 @@ and grows, the row chosen, or else the row at the top, keeps its place on screen
 open gap stays open as the file is typed in, and puts a header before each run of changes. A row may be several lines
 tall as its line wraps, so each row's top is kept, and the row at a point is found by binary search.
 `diffpaint.go` paints the rows in view.
+
+`diffhunks.go` stages, unstages and discards a run of changes from the diff as `hunks.go` stages one from the gutter:
+it reads the index and the file again, finds the changes again among theirs, and puts the result in with `git
+hash-object`. Discarding edits an open document, or else writes the file.
+
+A commit's tab is the same view in another mode. It lists the files the commit changed from its first parent with
+`git diff-tree`, reads each side with `git show`, and puts a card of the commit's message before them. Its files never
+change, so it reads nothing again as the work tree does.
+
+**`branchpicker.go`.** Switch Branch is a box like quick open's. It reads the branches, local and of the remotes, with
+`git for-each-ref` as it opens, the one committed to last first, and finds them with the same fuzzy matcher as files.
 
 **`blame.go`.** Once the caret rests on a line for 350 ms, `git blame --contents -` blames that line of the editor's
 text, unsaved edits included.

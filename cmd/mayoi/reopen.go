@@ -3,6 +3,8 @@ package main
 import (
 	"os"
 	"slices"
+
+	"mayoi/internal/git"
 )
 
 // maxClosed is how many closed tabs the window remembers.
@@ -23,11 +25,14 @@ type closedTab struct {
 	// set for every unchanged line shown.
 	diff, full bool
 	layout     diffLayout
-	sel        [2]int
-	caret      int
-	x, y       float32
-	wrap       *bool
-	wrapGen    int
+	// commit is the commit whose changes the tab showed, "" for those of
+	// the work tree.
+	commit  string
+	sel     [2]int
+	caret   int
+	x, y    float32
+	wrap    *bool
+	wrapGen int
 }
 
 // rememberClosed keeps a tab about to close, to open again. An untitled
@@ -49,6 +54,9 @@ func (a *app) rememberClosed(t *colTab) {
 	}
 	if v := t.diff; v != nil {
 		c.diff, c.layout, c.full = true, v.layout, v.full
+		if v.commit != nil {
+			c.commit = v.commit.hash
+		}
 		c.y, c.wrap, c.wrapGen = v.scroll.Y, v.wrap, v.wrapGen
 	}
 	if ed := t.ed; ed != nil {
@@ -72,12 +80,19 @@ func (a *app) reopenClosed() {
 		a.closed = a.closed[:len(a.closed)-1]
 		col, made := a.closedColumn(c)
 		if c.diff {
-			if other, i := a.changesTab(); other != nil {
+			other, i := a.changesTab()
+			if c.commit != "" {
+				other, i = a.commitTab(c.commit)
+			}
+			if other != nil {
 				a.dropColumn(col, made)
 				a.activate(other, i, true)
 				return
 			}
 			v := newDiffView(c.layout)
+			if c.commit != "" {
+				v = newCommitView(c.layout, c.commit, git.Commit{})
+			}
 			v.scroll.Y, v.full, v.wrap, v.wrapGen = c.y, c.full, c.wrap, c.wrapGen
 			at := min(max(c.at, 0), len(col.tabs))
 			a.addTab(col, at, &colTab{diff: v})

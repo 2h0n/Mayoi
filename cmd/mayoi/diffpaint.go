@@ -2,11 +2,16 @@ package main
 
 import (
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
 )
@@ -60,12 +65,33 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			ui.Text(c, msg).FontSize(13).TextColor(p.muted)
 		})
 	}
+	// clean says the work tree has nothing to show, as source control does.
+	clean := func() {
+		ui.Column(c).Fill().Background(p.editor).Center().Gap(6).Children(func() {
+			ui.Box(c).Size(52, 52).Radius(26).Background(p.added.Alpha(0.13)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, iconCheck).FontSize(24).TextColor(p.added)
+			})
+			ui.Text(c, "No Changes").FontSize(14).FontWeight(600).TextColor(p.text).Margin(8, 0, 0, 0)
+			ui.Text(c, "The working tree matches the last commit.").FontSize(12.5).TextColor(p.muted)
+		})
+	}
+	if cm := v.commit; cm != nil && len(v.files) == 0 {
+		switch {
+		case !cm.loaded:
+			ui.Box(c).Fill().Background(p.editor)
+		case cm.err != "":
+			message(cm.err)
+		default:
+			message("The commit changes no files.")
+		}
+		return
+	}
 	if len(v.files) == 0 {
 		switch {
 		case a.git.looked && a.git.repo == nil:
 			message("The folder is not in a Git repository.")
 		case a.git.status != nil:
-			message("No changes.")
+			clean()
 		default:
 			ui.Box(c).Fill().Background(p.editor)
 		}
@@ -131,7 +157,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			at = v.cursor
 		}
 		if at >= 0 {
-			if fl := v.files[rows[at].file]; fl != v.synced {
+			if fl := v.files[rows[at].file]; fl != v.synced && v.commit == nil {
 				v.synced = fl
 				a.post(func() { a.chooseScmFile(fl) })
 			}
@@ -161,35 +187,68 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			}
 		}
 	}
+	sticky, stickyY := v.stickyHeader(lineH)
 	focused := v.pane.FocusWithin(c)
 	ui.ScrollBoth(c.Key("diff")).TrackScroll(&v.scroll).Bind(&v.pane).Fill().Background(p.editor).
 		Focusable().FocusRing(false).Label("Diff of the Changes").
 		HandleInput(func(ev ui.InputEvent) bool { return a.diffInput(v, ev) }).Children(func() {
 		box := ui.Box(c).Width(contentW).Height(contentH)
 		// The buttons of the file's header under the pointer, or chosen.
+		onSticky := func(y float32) bool { return sticky >= 0 && y >= stickyY && y < stickyY+lineH }
 		hovered := -1
 		if box.Hovered() {
 			if _, y, ok := box.PointerPosition(); ok {
 				hovered = v.rowAt(y, lineH)
+				if onSticky(y) {
+					hovered = sticky
+				}
 			}
 		}
-		var buttons ui.Rect
+		var buttons, hunkButtons ui.Rect
 		box.Children(func() {
 			for _, i := range []int{hovered, v.cursor} {
-				if i < first || i > last || rows[i].kind != rowFile || buttons.W > 0 {
+				if i != sticky && (i < first || i > last) || i < 0 || rows[i].kind != rowFile || buttons.W > 0 {
 					continue
 				}
-				buttons = a.fileButtons(c, v, v.files[rows[i].file], v.scroll.X+view.W, editorPadY+float32(v.tops[i])*lineH)
+				y := editorPadY + float32(v.tops[i])*lineH
+				if i == sticky {
+					y = stickyY
+				}
+				buttons = a.fileButtons(c, v, v.files[rows[i].file], v.scroll.X+view.W, y)
+			}
+			// The buttons of the run of changes under the pointer, or chosen.
+			for _, i := range []int{hovered, v.cursor} {
+				h := v.hunkHead(i)
+				if h < first || h > last || hunkButtons.W > 0 {
+					continue
+				}
+				// Not under the header that sticks at the top.
+				if y := editorPadY + float32(v.tops[h])*lineH; sticky >= 0 && y < stickyY+lineH {
+					continue
+				}
+				hunkButtons = a.hunkButtons(c, v, h, v.scroll.X+view.W, contentW, editorPadY+float32(v.tops[h])*lineH)
 			}
 		})
 		// A click chooses a row, and opens a gap or folds a file; a double
 		// click opens the file at a line, unless its first click did that.
 		if clicked, double := box.Clicked(), box.DoubleClicked(); clicked || double {
-			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) {
+			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) {
 				i := v.rowAt(y, lineH)
+				stuck := onSticky(y)
+				if stuck {
+					i = sticky
+				}
 				a.post(func() {
 					v.pane.Focus()
 					if i >= len(v.rows) {
+						return
+					}
+					if stuck {
+						// The file folds under its header, which shows at the top.
+						v.setCursor(i)
+						v.acted = true
+						a.activateRow(v, i, false)
+						v.jumpRow(i, jumpTop)
 						return
 					}
 					if double {
@@ -232,24 +291,12 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				switch row.kind {
 				case rowSpace:
 					continue
+				case rowCommit:
+					a.paintCommitCard(pt, v.commit, full, len(v.files))
 				case rowFile:
-					a.paintFileHeader(pt, file, full, txt)
+					a.paintFileHeader(pt, file, full, i == hovered, txt)
 				case rowSection:
-					pt.Fill(full, p.chrome, 0)
-					label, sides := "CHANGES", "Index ↔ Working Tree"
-					if file.base == diffStaged {
-						label, sides = "STAGED CHANGES", "HEAD ↔ Index"
-					}
-					n := 0
-					for _, o := range v.files {
-						if o.base == file.base {
-							n++
-						}
-					}
-					at := vx + diffRailW + 8
-					at += txt(at, y, label, p.muted)
-					at += txt(at+charW, y, fmt.Sprint(n), p.faint) + 2*charW
-					txt(at+charW, y, sides, p.faint)
+					a.paintSection(pt, file.base, v.sections[btoi(file.base == diffStaged)], full)
 				case rowNote:
 					txt(vx+l.textX, y, row.label, p.faint)
 				case rowHunk:
@@ -263,9 +310,19 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					at += txt(at, y, head, p.faint)
 					txt(at, y, scope, p.muted)
 				case rowGap:
-					pt.Fill(full, p.text.Alpha(0.025), 0)
+					bg := p.text.Alpha(0.025)
+					if i == hovered {
+						bg = p.accent.Alpha(0.08)
+					}
+					pt.Fill(full, bg, 0)
 					rail(vx, y, h, neutral)
-					txt(vx+diffRailW+10, y, fmt.Sprintf("▸ %s", plural(row.n, "unchanged line")), p.muted)
+					col := p.muted
+					if i == hovered {
+						col = p.text
+					}
+					at := vx + diffRailW + 10
+					pt.Icon(iconUnfold, ui.Rect{X: at, Y: y + h/2 - 6, W: 12, H: 12}, col)
+					uiText(pt, at+18, y, h, "Show "+plural(row.n, "unchanged line"), headerFontSize, 400, col)
 				case rowLine:
 					if v.split {
 						for side := range 2 {
@@ -372,6 +429,20 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					pt.Fill(ui.Rect{X: vx, Y: y, W: diffRailW, H: h}, p.accent, 0)
 				}
 			}
+			// The header of the file at the top, over its lines.
+			if sticky >= 0 {
+				head := ui.Rect{X: vx, Y: r.Y + stickyY, W: view.W, H: lineH}
+				pt.Shadow(head, 0, 0, 2, 6, 0, p.shadow)
+				a.paintFileHeader(pt, v.files[rows[sticky].file], head, hovered == sticky, txt)
+				if v.cursor == sticky {
+					col := p.text.Alpha(0.05)
+					if focused {
+						col = p.text.Alpha(0.09)
+					}
+					pt.Fill(head, col, 0)
+					pt.Fill(ui.Rect{X: vx, Y: head.Y, W: diffRailW, H: lineH}, p.accent, 0)
+				}
+			}
 			// Along the right edge, the hunks of every file.
 			if total := v.tops[len(rows)]; total > 1 {
 				right := vx + view.W - 10
@@ -398,43 +469,259 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	})
 }
 
+// statusWord names a letter of Git's, as a file's header says it.
+func statusWord(letter byte) string {
+	switch letter {
+	case 'M':
+		return "Modified"
+	case 'A':
+		return "Added"
+	case 'D':
+		return "Deleted"
+	case 'R':
+		return "Renamed"
+	case 'C':
+		return "Conflict"
+	case 'T':
+		return "Type Changed"
+	case 'U':
+		return "Untracked"
+	}
+	return ""
+}
+
+// diffStatBlocks is how many blocks the bar of a file's header has, which
+// shows how its changes add and remove lines, as GitHub's does.
+const diffStatBlocks = 5
+
+// headerFontSize is the size of the text of the headers of a diff.
+const headerFontSize = 12
+
+// uiText paints s in the window's font at x, centered in a row y and h
+// tall, and returns its width.
+func uiText(pt *ui.Painter, x, y, h float32, s string, size float32, weight int, col ui.Color) float32 {
+	span := ui.Span{Text: s, Size: size, Weight: weight, Color: col}
+	w, th := pt.MeasureText(0, span)
+	pt.RichText(x, y+(h-th)/2, 0, span)
+	return w
+}
+
+// fileHeaderRight is how far from the right of a file's header its
+// counts start, as it paints them: the lines added and removed and the
+// bar of blocks after them.
+func (a *app) fileHeaderRight(f *diffFile) float32 {
+	if !f.loaded || f.binary {
+		return 18
+	}
+	add, del := f.counts()
+	return 18 + float32(len([]rune(fmt.Sprintf("+%d −%d", add, del))))*a.font.charW + 10 + diffStatBlocks*8
+}
+
 // paintFileHeader paints the header of a file in the diff of every file:
-// whether its lines show, its path and letter, and the lines its changes
-// add and remove.
-func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, txt func(x, y float32, s string, col ui.Color) float32) {
+// whether its lines show, its icon, path and state, and the lines its
+// changes add and remove, in numbers and in a bar.
+func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bool, txt func(x, y float32, s string, col ui.Color) float32) {
 	p := a.pal
-	pt.Fill(r, p.chrome, 0)
+	bg := p.chrome
+	if hovered {
+		bg = p.text.Alpha(0.035).Over(p.chrome)
+	}
+	pt.Fill(r, bg, 0)
 	pt.Fill(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: 1}, p.border, 0)
 	pt.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, p.border, 0)
-	chevron := "▾"
-	if f.folded {
-		chevron = "▸"
-	}
+	mid := r.Y + r.H/2
 	x := r.X + diffRailW + 8
-	txt(x, r.Y, chevron, p.muted)
-	x += 2 * a.font.charW
-	col := p.text
-	if f.letter != 0 {
-		col = gitColor(p, f.letter)
+	chevron := iconChevronDown
+	if f.folded {
+		chevron = iconChevronRight
 	}
+	pt.Icon(chevron, ui.Rect{X: x, Y: mid - 6, W: 12, H: 12}, p.muted)
+	x += 18
+	name := filepath.Base(f.path)
+	icon, iconCol := fileIcon(p, name)
+	pt.Icon(icon, ui.Rect{X: x, Y: mid - 7, W: 14, H: 14}, iconCol)
+	x += 20
 	rel := a.relOrPath(f.path)
+	dir := ""
 	if k := strings.LastIndexAny(rel, `/\`); k >= 0 {
-		x += txt(x, r.Y, rel[:k+1], p.muted)
-		rel = rel[k+1:]
+		dir, rel = rel[:k+1], rel[k+1:]
 	}
-	x += txt(x, r.Y, rel, col)
-	if f.letter != 0 {
-		txt(x+a.font.charW, r.Y, string(f.letter), col)
+	if (f.base == diffStaged || f.base == diffCommit) && f.entry.Orig != "" {
+		x += uiText(pt, x, r.Y, r.H, a.relOrPath(f.entry.Orig), headerFontSize, 400, p.muted) + 6
+		x += uiText(pt, x, r.Y, r.H, "→", headerFontSize, 400, p.faint) + 6
+	}
+	x += uiText(pt, x, r.Y, r.H, dir, headerFontSize, 400, p.muted)
+	nameCol := p.text
+	if f.letter == 'D' {
+		nameCol = p.muted
+	}
+	x += uiText(pt, x, r.Y, r.H, rel, headerFontSize, 600, nameCol)
+	if word := statusWord(f.letter); word != "" {
+		col := gitColor(p, f.letter)
+		span := ui.Span{Text: word, Size: 10.5, Weight: 600, Color: col}
+		w, th := pt.MeasureText(0, span)
+		pill := ui.Rect{X: x + 8, Y: mid - 8, W: w + 12, H: 16}
+		pt.Fill(pill, col.Alpha(0.14), 8)
+		pt.RichText(pill.X+6, mid-th/2, 0, span)
 	}
 	if !f.loaded || f.binary {
 		return
 	}
 	add, del := f.counts()
 	plus, minus := fmt.Sprintf("+%d", add), fmt.Sprintf(" −%d", del)
-	w := float32(len([]rune(plus+minus))) * a.font.charW
-	at := r.X + r.W - 18 - w
-	at += txt(at, r.Y, plus, p.added)
-	txt(at, r.Y, minus, p.removed)
+	at := r.X + r.W - a.fileHeaderRight(f)
+	addCol, delCol := p.added, p.removed
+	if add == 0 {
+		addCol = p.faint
+	}
+	if del == 0 {
+		delCol = p.faint
+	}
+	at += txt(at, r.Y, plus, addCol)
+	at += txt(at, r.Y, minus, delCol)
+	// The bar: blocks green for the lines added, red for those removed,
+	// in proportion, and gray for none.
+	at += 10
+	green, red := 0, 0
+	if total := add + del; total > 0 {
+		green = int(float32(add)/float32(total)*diffStatBlocks + 0.5)
+		red = diffStatBlocks - green
+		if add > 0 && green == 0 {
+			green, red = 1, red-1
+		}
+		if del > 0 && red == 0 {
+			green, red = green-1, 1
+		}
+	}
+	for i := range diffStatBlocks {
+		col := p.text.Alpha(0.12)
+		switch {
+		case i < green:
+			col = p.added
+		case i < green+red:
+			col = p.removed
+		}
+		pt.Fill(ui.Rect{X: at + float32(i)*8, Y: mid - 3.5, W: 7, H: 7}, col, 1.5)
+	}
+}
+
+// maxCardBody is how many lines of a commit's message after its subject
+// the card at the top of its diff shows.
+const maxCardBody = 12
+
+// cardBody returns the lines of a commit's message after its subject, as
+// many as its card shows.
+func cardBody(cm *commitDiff) []string {
+	if cm.info.Body == "" {
+		return nil
+	}
+	lines := strings.Split(cm.info.Body, "\n")
+	if len(lines) > maxCardBody {
+		lines = append(lines[:maxCardBody-1:maxCardBody-1], "…")
+	}
+	return lines
+}
+
+// commitCardLines is how many lines tall the card of a commit is: its
+// subject, who made it and when, and the rest of its message.
+func commitCardLines(cm *commitDiff) int {
+	if n := len(cardBody(cm)); n > 0 {
+		return 4 + n
+	}
+	return 3
+}
+
+// avatarColor is the color of the circle of an author's initials, the
+// same for each author.
+func avatarColor(p *palette, who string) ui.Color {
+	h := uint32(2166136261)
+	for i := 0; i < len(who); i++ {
+		h = (h ^ uint32(who[i])) * 16777619
+	}
+	cols := []ui.Color{p.accent, p.added, p.changed, p.modified, p.removed, p.syntax[highlight.Type]}
+	return cols[h%uint32(len(cols))]
+}
+
+// initials returns the first letters of the first two words of a name.
+func initials(name string) string {
+	var out []rune
+	for _, w := range strings.Fields(name) {
+		r, _ := utf8.DecodeRuneInString(w)
+		out = append(out, unicode.ToUpper(r))
+		if len(out) == 2 {
+			break
+		}
+	}
+	if len(out) == 0 {
+		return "?"
+	}
+	return string(out)
+}
+
+// paintCommitCard paints the card at the top of a commit's diff: its
+// subject, who made it and when, its hash, and the rest of its message.
+func (a *app) paintCommitCard(pt *ui.Painter, cm *commitDiff, r ui.Rect, files int) {
+	p := a.pal
+	lineH := a.font.lineH
+	pt.Fill(r, p.chrome, 0)
+	pt.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, p.border, 0)
+	x := r.X + diffRailW + 12
+	info := cm.info
+	pt.Clip(ui.Rect{X: x, Y: r.Y, W: r.W - x + r.X - 12, H: r.H}, 0, func() {
+		uiText(pt, x, r.Y+lineH*0.35, lineH, info.Subject, 15, 600, p.text)
+		// Who, when, which.
+		y := r.Y + lineH*1.45
+		mid := y + lineH/2
+		col := avatarColor(p, info.Email+info.Author)
+		pt.Fill(ui.Rect{X: x, Y: mid - 9, W: 18, H: 18}, col.Alpha(0.22), 9)
+		ini := ui.Span{Text: initials(info.Author), Size: 8.5, Weight: 700, Color: col}
+		iw, ih := pt.MeasureText(0, ini)
+		pt.RichText(x+9-iw/2, mid-ih/2, 0, ini)
+		at := x + 26
+		at += uiText(pt, at, y, lineH, info.Author, headerFontSize, 600, p.text)
+		when := ""
+		if !info.Time.IsZero() {
+			when = " committed " + ago(info.Time, time.Now()) + " · " + info.Time.Format("Jan 2, 2006 15:04")
+		}
+		at += uiText(pt, at, y, lineH, when, headerFontSize, 400, p.muted)
+		at += uiText(pt, at, y, lineH, "  ·  ", headerFontSize, 400, p.faint)
+		hash := ui.Span{Text: git.ShortHash(cm.hash), Font: a.font.family, Size: a.font.size - 1, Color: p.accent}
+		hw, hh := pt.MeasureText(0, hash)
+		pt.Fill(ui.Rect{X: at, Y: mid - 9, W: hw + 12, H: 18}, p.accent.Alpha(0.1), 5)
+		pt.RichText(at+6, mid-hh/2, 0, hash)
+		at += hw + 12
+		if len(info.Parents) > 1 {
+			at += uiText(pt, at, y, lineH, "  ·  merge of "+plural(len(info.Parents), "parent"), headerFontSize, 400, p.muted)
+		}
+		uiText(pt, at, y, lineH, "  ·  "+plural(files, "file")+" changed", headerFontSize, 400, p.muted)
+		for k, line := range cardBody(cm) {
+			uiText(pt, x, r.Y+lineH*(3+float32(k)), lineH, line, 12.5, 400, p.muted)
+		}
+	})
+}
+
+// paintSection paints the header of the changes staged, or of those not:
+// its name, how many files it has, and what it compares.
+func (a *app) paintSection(pt *ui.Painter, base diffBase, files int, r ui.Rect) {
+	p := a.pal
+	pt.Fill(r, p.editor, 0)
+	label := "CHANGES"
+	if base == diffStaged {
+		label = "STAGED CHANGES"
+	}
+	old, new := base.sides()
+	x := r.X + diffRailW + 8
+	span := ui.Span{Text: label, Size: 11, Weight: 600, Color: p.muted, LetterSpacing: 0.5}
+	w, th := pt.MeasureText(0, span)
+	pt.RichText(x, r.Y+(r.H-th)/2, 0, span)
+	x += w + 8
+	count := ui.Span{Text: fmt.Sprint(files), Size: 10.5, Weight: 600, Color: p.muted}
+	cw, ch := pt.MeasureText(0, count)
+	pill := ui.Rect{X: x, Y: r.Y + r.H/2 - 8, W: max(cw+10, 18), H: 16}
+	pt.Fill(pill, p.text.Alpha(0.07), 8)
+	pt.RichText(pill.X+(pill.W-cw)/2, r.Y+(r.H-ch)/2, 0, count)
+	x += pill.W + 10
+	uiText(pt, x, r.Y, r.H, old+" → "+new, 11.5, 400, p.faint)
 }
 
 // paintFiller paints the room across from lines the other side has.
@@ -571,16 +858,19 @@ func (a *app) fileButtons(c *ui.Context, v *diffView, f *diffFile, right, y floa
 	if f.letter != 'D' || f.base == diffStaged {
 		bs = append(bs, button{iconOpenFile, "Open File", func() { a.openFileAt(f.path, 0, true) }})
 	}
-	if f.base == diffStaged {
+	switch {
+	case f.base == diffCommit:
+	case f.base == diffStaged:
 		bs = append(bs, button{iconMinus, "Unstage Changes", func() { a.unstage(entryPaths(e, true)...) }})
-	} else {
+	default:
 		bs = append(bs, button{iconUndo, "Discard Changes…", func() { a.discard(e) }},
 			button{iconPlus, "Stage Changes", func() { a.stage(e.Path) }})
 	}
-	add, del := f.counts()
-	counts := float32(len([]rune(fmt.Sprintf("+%d −%d", add, del)))) * a.font.charW
+	if len(bs) == 0 {
+		return ui.Rect{}
+	}
 	w := float32(len(bs)) * 22
-	r := ui.Rect{X: right - 18 - counts - 12 - w, Y: y, W: w, H: a.font.lineH}
+	r := ui.Rect{X: right - a.fileHeaderRight(f) - 10 - w, Y: y, W: w, H: a.font.lineH}
 	ui.Row(c.Key("file-buttons")).Absolute().Left(r.X).Top(y + (a.font.lineH-20)/2).Gap(2).Children(func() {
 		for _, b := range bs {
 			if a.smallButton(c, b.icon, b.label) {

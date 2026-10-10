@@ -142,9 +142,15 @@ func (a *app) revertHunk(d *editor, h linediff.Hunk) {
 	if base == nil || h.A+h.ALen > len(base) {
 		return
 	}
+	replaceHunk(d, h, base[h.A:h.A+h.ALen])
+}
+
+// replaceHunk puts lines in place of the lines of an editor's text a hunk
+// changed, as a step of undo: the lines its other side had.
+func replaceHunk(d *editor, h linediff.Hunk, lines []string) {
 	snap := d.buf.Snapshot()
 	n := snap.LineCount()
-	old := strings.Join(base[h.A:h.A+h.ALen], "\n")
+	old := strings.Join(lines, "\n")
 	var e textEdit
 	switch {
 	case h.BLen > 0 && h.ALen > 0:
@@ -188,16 +194,7 @@ func (a *app) stageHunk(d *editor, h linediff.Hunk) {
 			return err
 		}
 		index := strings.Split(text, "\n")
-		var picked []linediff.Hunk
-		for _, x := range linediff.Hunks(index, work) {
-			over := x.B < h.B+h.BLen && h.B < x.B+x.BLen
-			if x.BLen == 0 || h.BLen == 0 {
-				over = x.B >= h.B && x.B <= h.B+h.BLen
-			}
-			if over {
-				picked = append(picked, x)
-			}
-		}
+		picked := overlapping(linediff.Hunks(index, work), []linediff.Hunk{h})
 		if len(picked) == 0 {
 			return nil // staged already
 		}
@@ -207,6 +204,35 @@ func (a *app) stageHunk(d *editor, h linediff.Hunk) {
 		}
 		return r.StageText(path, strings.Join(linediff.Apply(index, work, picked), sep))
 	}, nil)
+}
+
+// overlapping returns the hunks of hs whose lines of the new side meet
+// those of any of want: the same changes, found again among hunks of
+// texts read afresh.
+func overlapping(hs, want []linediff.Hunk) []linediff.Hunk {
+	var out []linediff.Hunk
+	for _, x := range hs {
+		for _, h := range want {
+			over := x.B < h.B+h.BLen && h.B < x.B+x.BLen
+			if x.BLen == 0 || h.BLen == 0 {
+				over = x.B >= h.B && x.B <= h.B+h.BLen
+			}
+			if over {
+				out = append(out, x)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// inverted returns the hunks of a against b as hunks of b against a.
+func inverted(hs []linediff.Hunk) []linediff.Hunk {
+	out := make([]linediff.Hunk, len(hs))
+	for i, h := range hs {
+		out[i] = linediff.Hunk{A: h.B, ALen: h.BLen, B: h.A, BLen: h.ALen}
+	}
+	return out
 }
 
 // hunkPeekView is the box under a hunk of an editor that shows the lines

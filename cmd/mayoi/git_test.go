@@ -48,11 +48,14 @@ func (hs *harness) settleGit() {
 	hs.a.gitChanged()
 	for range 200 {
 		hs.settle()
-		if g := &hs.a.git; g.looked && !g.running && !g.stale && g.busy == "" {
+		if g := &hs.a.git; g.looked && !g.running && !g.stale && g.busy == "" && g.pending == 0 &&
+			(g.repo == nil || g.historyOf == hs.a.historyKey()) {
 			return
 		}
 	}
-	hs.t.Fatal("git status never settled")
+	g := &hs.a.git
+	hs.t.Fatalf("git status never settled: looked %v running %v stale %v busy %q pending %d history %q want %q",
+		g.looked, g.running, g.stale, g.busy, g.pending, g.historyOf, hs.a.historyKey())
 }
 
 func TestExplorerShowsGitState(t *testing.T) {
@@ -432,7 +435,7 @@ func diffFileOf(v *diffView, path string, base diffBase) *diffFile {
 func kinds(v *diffView) string {
 	var s strings.Builder
 	for _, r := range v.rows {
-		s.WriteByte("LGHSFNs"[r.kind])
+		s.WriteByte("LGHSFNsC"[r.kind])
 	}
 	return s.String()
 }
@@ -799,5 +802,402 @@ func TestDiffOfEveryFile(t *testing.T) {
 	hs.settleGit()
 	if diffFileOf(v, hs.path("main.go"), diffStaged) == nil || diffFileOf(v, hs.path("main.go"), diffIndex) != nil {
 		t.Errorf("after staging: %v", names)
+	}
+}
+
+func TestCommitButtonAndUndo(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	a.run("view.scm")
+	hs.settleGit()
+	if !hs.tt.HasText("No Changes") {
+		t.Errorf("a clean work tree does not say so: %q", hs.tt.Texts())
+	}
+	// Nothing staged: the button commits all, once asked.
+	os.WriteFile(hs.path("main.go"), []byte("package main\n"), 0o644)
+	hs.settleGit()
+	if !hs.tt.HasText("Commit All") {
+		t.Fatalf("no Commit All: %q", hs.tt.Texts())
+	}
+	a.git.message = "trim main"
+	hs.settle()
+	if err := hs.tt.Click("Commit All"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if a.confirm == nil {
+		t.Fatal("no question")
+	}
+	a.confirm.run()
+	a.confirm = nil
+	hs.settleGit()
+	if log := git("log", "--format=%s", "-1"); strings.TrimSpace(log) != "trim main" {
+		t.Fatalf("log %q", log)
+	}
+	if !hs.tt.HasText("Committed “trim main” to main") {
+		t.Errorf("no word of the commit: %q", hs.tt.Texts())
+	}
+	// Undoing it, from the toast, keeps its changes staged, and its
+	// message to commit again.
+	if err := hs.tt.Click("Undo"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	if log := git("log", "--format=%s", "-1"); strings.TrimSpace(log) != "first" {
+		t.Errorf("after undoing, log %q", log)
+	}
+	if a.git.message != "trim main" {
+		t.Errorf("message %q", a.git.message)
+	}
+	if g := a.groupEntries(); len(g[groupStaged]) != 1 {
+		t.Errorf("groups %v", g)
+	}
+	if !hs.tt.HasText("Commit") || hs.tt.HasText("Commit All") {
+		t.Errorf("with changes staged, the button commits them: %q", hs.tt.Texts())
+	}
+	// An Undo offered for a commit does not undo one made since.
+	a.git.message = "again"
+	a.commit(false)
+	hs.settleGit()
+	first := strings.TrimSpace(git("rev-parse", "HEAD"))
+	os.WriteFile(hs.path("go.mod"), []byte("module y\n"), 0o644)
+	git("commit", "-qam", "later")
+	hs.settleGit()
+	later := strings.TrimSpace(git("rev-parse", "HEAD"))
+	a.undoCommitOf(first)
+	hs.settleGit()
+	if head := strings.TrimSpace(git("rev-parse", "HEAD")); head != later {
+		t.Errorf("undid the later commit")
+	}
+	if len(a.errors) == 0 && !hs.tt.HasText("a commit has been made since, so this one is no longer the last to undo") {
+		t.Errorf("no word of why not")
+	}
+}
+
+func TestSubjectLength(t *testing.T) {
+	hs := newHarness(t, true)
+	hs.gitRepo()
+	a := hs.a
+	a.run("view.scm")
+	hs.settleGit()
+	a.git.message = strings.Repeat("a", 50)
+	hs.settle()
+	if hs.tt.HasText("50/72") {
+		t.Errorf("a short summary is counted")
+	}
+	a.git.message = strings.Repeat("a", 80) + "\n\nbody"
+	hs.settle()
+	if !hs.tt.HasText("80/72") || !hs.tt.HasText("Summary is long") {
+		t.Errorf("a long summary is not counted: %q", hs.tt.Texts())
+	}
+}
+
+func TestHistoryAndCommitTabs(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	os.WriteFile(hs.path("main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644)
+	git("mv", "README.md", "README.markdown")
+	git("commit", "-qam", "Trim main\n\nAnd rename the README.")
+	a.run("view.scm")
+	hs.settleGit()
+	if len(a.git.history) != 2 {
+		t.Fatalf("history %+v", a.git.history)
+	}
+	for _, s := range []string{"COMMITS", "Trim main", "first"} {
+		if !hs.tt.HasText(s) {
+			t.Errorf("no %q: %q", s, hs.tt.Texts())
+		}
+	}
+	// A click on a commit shows its changes in a tab of its own.
+	if err := hs.tt.Click("Trim main"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	hs.settle()
+	tab := a.activeTab()
+	if tab == nil || tab.diff == nil || tab.diff.commit == nil {
+		t.Fatalf("tab %+v", tab)
+	}
+	v := tab.diff
+	if v.name() != "Trim main" || len(v.files) != 2 {
+		t.Fatalf("commit tab %q with %d files", v.name(), len(v.files))
+	}
+	main := diffFileOf(v, hs.path("main.go"), diffCommit)
+	if main == nil || !main.loaded || main.letter != 'M' || len(main.hunks) == 0 {
+		t.Fatalf("main.go %+v", main)
+	}
+	if f := diffFileOf(v, hs.path("README.markdown"), diffCommit); f == nil || f.letter != 'R' || f.entry.Orig != hs.path("README.md") {
+		t.Errorf("rename %+v", f)
+	}
+	if got := kinds(v); !strings.HasPrefix(got, "CF") {
+		t.Errorf("rows %s", got)
+	}
+	if body := cardBody(v.commit); len(body) != 1 || body[0] != "And rename the README." || commitCardLines(v.commit) != 5 {
+		t.Errorf("the message's body %q", body)
+	}
+	// It does not take the place of the changes of the work tree.
+	if col, _ := a.changesTab(); col != nil {
+		t.Errorf("a commit's tab is taken for the changes")
+	}
+	os.WriteFile(hs.path("go.mod"), []byte("module x\n"), 0o644)
+	hs.settleGit()
+	a.openChangesTab(false)
+	hs.settleGit()
+	if col, i := a.commitTab(a.git.history[0].Hash); col == nil || col.tabs[i] != tab {
+		t.Errorf("the commit's tab went")
+	}
+	// It is kept, and comes back.
+	a.rememberTabs()
+	kept := false
+	for _, ts := range a.window.Columns[0].Tabs {
+		kept = kept || ts.Diff == "commit:"+a.git.history[0].Hash
+	}
+	if !kept {
+		t.Errorf("tabs kept %+v", a.window.Columns)
+	}
+	col, i := a.commitTab(a.git.history[0].Hash)
+	a.activate(col, i, true)
+	a.closeActive()
+	hs.settle()
+	if col, _ := a.commitTab(a.git.history[0].Hash); col != nil {
+		t.Fatalf("not closed")
+	}
+	a.reopenClosed()
+	hs.settleGit()
+	hs.settle()
+	if tab := a.activeTab(); tab == nil || tab.diff == nil || tab.diff.commit == nil || len(tab.diff.files) != 2 || tab.diff.name() != "Trim main" {
+		t.Errorf("reopened %+v", tab)
+	}
+}
+
+func TestDiffStickyHeader(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	var b strings.Builder
+	for i := range 200 {
+		fmt.Fprintf(&b, "line %d\n", i)
+	}
+	os.WriteFile(hs.path("long.txt"), []byte(b.String()), 0o644)
+	git("add", ".")
+	git("commit", "-qm", "long")
+	a.run("view.wordWrap") // off: the rows are a line each
+	os.WriteFile(hs.path("long.txt"), []byte(strings.ReplaceAll(b.String(), "0\n", "zero\n")), 0o644)
+	os.WriteFile(hs.path("main.go"), []byte("package main\n"), 0o644)
+	hs.settleGit()
+	a.showChanges(diffTarget{path: hs.path("long.txt"), base: diffIndex}, true)
+	hs.settleGit()
+	v := a.activeTab().diff
+	file := diffFileOf(v, hs.path("long.txt"), diffIndex)
+	if file == nil || !file.loaded {
+		t.Fatalf("long.txt not read")
+	}
+	head := -1
+	for _, h := range v.heads {
+		if v.files[v.rows[h].file] == file {
+			head = h
+		}
+	}
+	lineH := a.font.lineH
+	// Scrolled into its lines, its header stays at the top.
+	v.scroll.Y = editorPadY + float32(v.tops[head]+10)*lineH
+	hs.settle()
+	if h, y := v.stickyHeader(lineH); h != head || y != v.scroll.Y {
+		t.Fatalf("sticky %d at %v, want %d at %v", h, y, head, v.scroll.Y)
+	}
+	hs.shot("diff-sticky")
+	// At its own header, none shows.
+	v.scroll.Y = editorPadY + float32(v.tops[head])*lineH
+	hs.settle()
+	if h, _ := v.stickyHeader(lineH); h != -1 {
+		t.Errorf("sticky %d over the header itself", h)
+	}
+	// A click on it folds the file, and shows its header.
+	v.scroll.Y = editorPadY + float32(v.tops[head]+10)*lineH
+	hs.settle()
+	x := a.settings.SidebarWidth + 200
+	y := titleBarH + tabStripH + crumbsH + lineH/2
+	hs.tt.ClickAt(x, y)
+	hs.settle()
+	if !file.folded {
+		t.Fatalf("not folded by its sticky header")
+	}
+	if top := editorPadY + float32(v.tops[head])*lineH; v.scroll.Y > top {
+		t.Errorf("the header is above the view: %v > %v", v.scroll.Y, top)
+	}
+}
+
+func TestDiffHunkActions(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	var b strings.Builder
+	for i := range 30 {
+		fmt.Fprintf(&b, "line %d\n", i)
+	}
+	orig := b.String()
+	os.WriteFile(hs.path("t.txt"), []byte(orig), 0o644)
+	git("add", ".")
+	git("commit", "-qm", "t")
+	changed := strings.Replace(strings.Replace(orig, "line 2\n", "line two\n", 1), "line 25\n", "line twenty-five\n", 1)
+	os.WriteFile(hs.path("t.txt"), []byte(changed), 0o644)
+	hs.settleGit()
+	a.showChanges(diffTarget{path: hs.path("t.txt"), base: diffIndex}, true)
+	hs.settleGit()
+	v := a.activeTab().diff
+	heads := func(base diffBase) []int {
+		var out []int
+		for i, r := range v.rows {
+			if r.kind == rowHunk && v.files[r.file].path == hs.path("t.txt") && v.files[r.file].base == base {
+				out = append(out, i)
+			}
+		}
+		return out
+	}
+	hh := heads(diffIndex)
+	if len(hh) != 2 {
+		t.Fatalf("runs %v: %s", hh, kinds(v))
+	}
+	// Staging the second run stages its change alone.
+	f, hks := v.hunksAt(hh[1])
+	if len(hks) != 1 || hks[0].B != 25 {
+		t.Fatalf("hunks %v", hks)
+	}
+	a.applyHunks(f, hks, hunkStage)
+	hs.settleGit()
+	if staged := git("diff", "--cached"); !strings.Contains(staged, "+line twenty-five") || strings.Contains(staged, "line two") {
+		t.Fatalf("staged %q", staged)
+	}
+	// Unstaging it from the staged changes.
+	hs.settle()
+	sh := heads(diffStaged)
+	if len(sh) != 1 {
+		t.Fatalf("staged runs %v: %s", sh, kinds(v))
+	}
+	f, hks = v.hunksAt(sh[0])
+	a.applyHunks(f, hks, hunkUnstage)
+	hs.settleGit()
+	if staged := git("diff", "--cached"); staged != "" {
+		t.Fatalf("still staged %q", staged)
+	}
+	// The s key stages the change of the chosen line.
+	hs.settle()
+	for i, r := range v.rows {
+		if r.changed() && r.new == 2 && v.files[r.file].base == diffIndex {
+			v.setCursor(i)
+		}
+	}
+	v.pane.Focus()
+	hs.settle()
+	hs.tt.Key(0, ui.KeyS)
+	hs.settleGit()
+	if staged := git("diff", "--cached"); !strings.Contains(staged, "+line two") || strings.Contains(staged, "twenty") {
+		t.Fatalf("s staged %q", staged)
+	}
+	git("reset", "-q")
+	hs.settleGit()
+	// Discarding the first run on disk asks, then puts its line back.
+	hs.settle()
+	hh = heads(diffIndex)
+	f, hks = v.hunksAt(hh[0])
+	a.applyHunks(f, hks, hunkDiscard)
+	if a.confirm == nil {
+		t.Fatal("no question")
+	}
+	a.confirm.run()
+	a.confirm = nil
+	hs.settleGit()
+	data, _ := os.ReadFile(hs.path("t.txt"))
+	if want := strings.Replace(orig, "line 25\n", "line twenty-five\n", 1); string(data) != want {
+		t.Fatalf("after discarding:\n%s", data)
+	}
+	// In an open file, discarding is a step of undo.
+	a.openFile(hs.path("t.txt"), false)
+	hs.settle()
+	col, i := a.changesTab()
+	a.activate(col, i, true)
+	time.Sleep(200 * time.Millisecond)
+	hs.settleGit()
+	hh = heads(diffIndex)
+	if len(hh) != 1 {
+		t.Fatalf("runs %v", hh)
+	}
+	f, hks = v.hunksAt(hh[0])
+	a.applyHunks(f, hks, hunkDiscard)
+	hs.settle()
+	d, _ := a.editorOf(a.diffDoc(f))
+	if d == nil || d.buf.String() != orig {
+		t.Fatalf("editor after discarding: %v", d != nil)
+	}
+	d.undo()
+	if !strings.Contains(d.buf.String(), "twenty-five") {
+		t.Errorf("undo: %q", d.buf.String())
+	}
+}
+
+func TestBranchPicker(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	git("branch", "topic")
+	a.run("view.scm")
+	hs.settleGit()
+	if err := hs.tt.Click("main"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	b := &a.branches
+	if !b.open || b.loading || len(b.branches) != 2 {
+		t.Fatalf("picker %+v", b)
+	}
+	// Typing finds a branch, and Enter switches to it.
+	hs.tt.Type("top")
+	hs.settle()
+	if cs := a.branchChoices(); len(cs) != 2 || b.branches[b.results[cs[0].at].Index].Name != "topic" || cs[1].create != "top" {
+		t.Fatalf("choices %+v", cs)
+	}
+	hs.tt.Key(0, ui.KeyEnter)
+	hs.settleGit()
+	if b.open || a.branch() != "topic" {
+		t.Fatalf("open %v on %q", b.open, a.branch())
+	}
+	// A name of none creates it.
+	a.openBranchPicker()
+	hs.settle()
+	hs.tt.Type("new-work")
+	hs.settle()
+	hs.tt.Key(0, ui.KeyEnter)
+	hs.settleGit()
+	if a.branch() != "new-work" {
+		t.Fatalf("on %q", a.branch())
+	}
+	if out := git("branch", "--list", "new-work"); !strings.Contains(out, "new-work") {
+		t.Errorf("branches %q", out)
+	}
+	// The name of a remote's branch switches to it, rather than making one.
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	git("init", "-q", "--bare", remote)
+	git("remote", "add", "origin", remote)
+	git("push", "-q", "origin", "main:feature")
+	git("fetch", "-q", "origin")
+	a.openBranchPicker()
+	hs.settle()
+	hs.tt.Type("feature")
+	hs.settle()
+	for _, ch := range a.branchChoices() {
+		if ch.create != "" {
+			t.Errorf("offers to create %q", ch.create)
+		}
+	}
+	a.closeBranchPicker()
+	// Escape closes it.
+	a.openBranchPicker()
+	hs.settle()
+	hs.tt.Key(0, ui.KeyEscape)
+	hs.settle()
+	if b.open {
+		t.Errorf("still open")
 	}
 }

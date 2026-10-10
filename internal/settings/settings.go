@@ -35,6 +35,9 @@ type Settings struct {
 	DiffLayout string `json:"diffLayout,omitempty"`
 	// DiffSplit is what an older version kept for DiffLayout "split".
 	DiffSplit bool `json:"diffSplit,omitempty"`
+	// ScmTree lists the changes in source control in a tree of their
+	// folders, rather than by path.
+	ScmTree bool `json:"scmTree,omitempty"`
 	// Blame shows who last changed the caret's line, and when, after it.
 	Blame   bool `json:"blame"`
 	WrapGen int  `json:"-"`
@@ -92,7 +95,7 @@ type Tab struct {
 	// "index" or "staged", what they are against. With no File, it is
 	// the changes of every file, against that. Layout is the diff's, as
 	// the settings' DiffLayout; Split is what an older version kept for
-	// "split".
+	// "split". "commit:" and a hash is the changes of that commit.
 	Diff   string `json:"diff,omitempty"`
 	Layout string `json:"layout,omitempty"`
 	Split  bool   `json:"split,omitempty"`

@@ -175,3 +175,181 @@ func TestPushPullFetch(t *testing.T) {
 		t.Fatalf("fetch from nowhere: %v", err)
 	}
 }
+
+func TestStatusEqual(t *testing.T) {
+	r, _ := repo(t)
+	write(t, r.Root, "a.txt", "changed\n")
+	st1, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	st2, _ := r.Status()
+	if st1 == st2 || !st1.Equal(st2) {
+		t.Errorf("two reads of one state differ: %+v %+v", st1, st2)
+	}
+	write(t, r.Root, "b.txt", "changed\n")
+	st3, _ := r.Status()
+	if st1.Equal(st3) {
+		t.Errorf("a change is not seen")
+	}
+	var none *Status
+	if none.Equal(st1) || !none.Equal(nil) {
+		t.Errorf("nil statuses")
+	}
+}
+
+func TestUndoCommit(t *testing.T) {
+	r, git := repo(t)
+	write(t, r.Root, "a.txt", "second\n")
+	git("commit", "-qam", "second")
+	if err := r.UndoCommit(); err != nil {
+		t.Fatal(err)
+	}
+	if msg := r.LastMessage(); msg != "first" {
+		t.Errorf("last message %q", msg)
+	}
+	st, _ := r.Status()
+	if len(st.Entries) != 1 || st.Entries[0].X != 'M' || st.Entries[0].Y != '.' {
+		t.Errorf("the change is not staged: %+v", st.Entries)
+	}
+	// The first commit has no parent: HEAD goes before it, and every file
+	// stays staged.
+	if err := r.UndoCommit(); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = r.Status()
+	if st.Head != "" || len(st.Entries) != 2 {
+		t.Errorf("after undoing the first commit: %+v", st)
+	}
+}
+
+func TestLogAndCommitFiles(t *testing.T) {
+	r, git := repo(t)
+	write(t, r.Root, "a.txt", "one\n2\nthree\n")
+	write(t, r.Root, "c.txt", "sea\n")
+	git("mv", "b.txt", "bb.txt")
+	git("add", ".")
+	git("commit", "-q", "-m", "second\n\nWith a body\nof two lines.")
+	cs, err := r.Log(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cs) != 2 || cs[0].Subject != "second" || cs[0].Body != "With a body\nof two lines." || cs[1].Subject != "first" {
+		t.Fatalf("log %+v", cs)
+	}
+	if cs[0].Author != "t" || len(cs[0].Parents) != 1 || cs[0].Parents[0] != cs[1].Hash || len(cs[1].Parents) != 0 {
+		t.Errorf("commit %+v", cs[0])
+	}
+	if cs[0].Time.IsZero() || len(cs[0].Short()) != 7 {
+		t.Errorf("time %v short %q", cs[0].Time, cs[0].Short())
+	}
+	fs, err := r.CommitFiles(cs[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []CommitFile{
+		{Path: r.Abs("a.txt"), Status: 'M'},
+		{Path: r.Abs("bb.txt"), Orig: r.Abs("b.txt"), Status: 'R'},
+		{Path: r.Abs("c.txt"), Status: 'A'},
+	}
+	if !slices.Equal(fs, want) {
+		t.Errorf("files %+v, want %+v", fs, want)
+	}
+	// The first commit adds its files.
+	fs, _ = r.CommitFiles(cs[1])
+	if len(fs) != 2 || fs[0].Status != 'A' {
+		t.Errorf("first commit %+v", fs)
+	}
+	info, err := r.CommitInfo(cs[0].Hash)
+	if err != nil || info.Hash != cs[0].Hash || info.Body != cs[0].Body {
+		t.Errorf("info %+v %v", info, err)
+	}
+	// Without an upstream, no remote has them.
+	if u := r.Unpushed(10); len(u) != 2 {
+		t.Errorf("unpushed without an upstream %v", u)
+	}
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	git("init", "-q", "--bare", remote)
+	git("remote", "add", "origin", remote)
+	git("push", "-q", "origin", cs[1].Hash+":refs/heads/main")
+	if u := r.Unpushed(10); len(u) != 1 || !u[cs[0].Hash] {
+		t.Errorf("unpushed of a branch not published %v", u)
+	}
+}
+
+func TestLogBeforeTheFirstCommit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	dir := t.TempDir()
+	if err := Init(dir); err != nil {
+		t.Fatal(err)
+	}
+	r, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cs, err := r.Log(10); err != nil || len(cs) != 0 {
+		t.Errorf("log %v %v", cs, err)
+	}
+}
+
+func TestBranchList(t *testing.T) {
+	r, git := repo(t)
+	remote := filepath.Join(t.TempDir(), "remote.git")
+	git("init", "-q", "--bare", remote)
+	git("remote", "add", "origin", remote)
+	git("push", "-q", "-u", "origin", "main")
+	git("switch", "-q", "-c", "topic")
+	write(t, r.Root, "a.txt", "topic\n")
+	git("commit", "-qam", "on topic")
+	bs, err := r.BranchList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, b := range bs {
+		names = append(names, b.Name)
+		if b.Time.IsZero() || b.Subject == "" {
+			t.Errorf("branch %+v", b)
+		}
+	}
+	slices.Sort(names)
+	if want := []string{"main", "origin/main", "topic"}; !slices.Equal(names, want) {
+		t.Errorf("branches %v, want %v", names, want)
+	}
+	for i, b := range bs {
+		if i > 0 && b.Time.After(bs[i-1].Time) {
+			t.Errorf("not by the last commit: %+v after %+v", b, bs[i-1])
+		}
+		if b.Name == "topic" && b.Subject != "on topic" {
+			t.Errorf("topic %+v", b)
+		}
+	}
+	for _, b := range bs {
+		if b.Remote != strings.HasPrefix(b.Name, "origin/") {
+			t.Errorf("remote %+v", b)
+		}
+	}
+}
+
+func TestUndoCommitInAShallowClone(t *testing.T) {
+	r, git := repo(t)
+	write(t, r.Root, "a.txt", "second\n")
+	git("commit", "-qam", "second")
+	dir := filepath.Join(t.TempDir(), "shallow")
+	if out, err := exec.Command("git", "clone", "-q", "--depth", "1", "file://"+r.Root, dir).CombinedOutput(); err != nil {
+		t.Fatalf("clone: %v %s", err, out)
+	}
+	s, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := s.Head()
+	if err := s.UndoCommit(); err == nil {
+		t.Errorf("undid a commit whose parent the clone lacks")
+	}
+	if s.Head() != head || head == "" {
+		t.Errorf("HEAD %q, was %q", s.Head(), head)
+	}
+}

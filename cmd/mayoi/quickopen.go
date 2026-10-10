@@ -115,7 +115,11 @@ func (a *app) quickOpenView(c *ui.Context) {
 					}
 				})
 				a.quickBody(c, isLine, line, col, choose)
-				a.quickFooter(c, isLine, "open")
+				tip := ""
+				if a.root != "" {
+					tip = "Type : for a line, @ for a symbol"
+				}
+				a.quickFooter(c, isLine, "open", tip)
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()
@@ -177,8 +181,8 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 	q.moved = false
 }
 
-// quickFooter shows the keys of quick open.
-func (a *app) quickFooter(c *ui.Context, isLine bool, open string) {
+// quickFooter shows the keys of quick open, and a tip at its end.
+func (a *app) quickFooter(c *ui.Context, isLine bool, open, tip string) {
 	p := a.pal
 	ui.Row(c).Height(30).Padding(0, 14).Gap(14).AlignItems(ui.Center).Background(p.hover).
 		BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
@@ -196,8 +200,8 @@ func (a *app) quickFooter(c *ui.Context, isLine bool, open string) {
 		}
 		hint("esc", "close")
 		ui.Spacer(c)
-		if !isLine && a.root != "" {
-			ui.Text(c, "Type : for a line, @ for a symbol").FontSize(11.5).TextColor(p.faint).SingleLine()
+		if !isLine && tip != "" {
+			ui.Text(c, tip).FontSize(11.5).TextColor(p.faint).SingleLine()
 		}
 	})
 }
@@ -372,7 +376,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 					})
 					q.moved = false
 				}
-				a.quickFooter(c, false, "go to")
+				a.quickFooter(c, false, "go to", "")
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()

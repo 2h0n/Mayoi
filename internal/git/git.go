@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -148,6 +149,20 @@ type Status struct {
 	Entries  []Entry
 }
 
+// Equal reports whether two statuses say the same.
+func (s *Status) Equal(o *Status) bool {
+	if s == nil || o == nil {
+		return s == o
+	}
+	return s.Branch == o.Branch && s.Head == o.Head && s.Upstream == o.Upstream && s.Ahead == o.Ahead &&
+		s.Behind == o.Behind && slices.Equal(s.Entries, o.Entries)
+}
+
+// statusFields is how many fields come before the path in a record of
+// git status --porcelain=v2: 8 of an ordinary file, 9 of a renamed one,
+// and 10 of a conflict.
+var statusFields = [256]int{'1': 8, '2': 9, 'u': 10}
+
 // Status reads the state of the work tree.
 func (r *Repo) Status() (*Status, error) {
 	out, err := r.run(nil, "status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all")
@@ -186,9 +201,7 @@ func parseStatus(r *Repo, out []byte) *Status {
 				}
 			}
 		case '1', '2', 'u':
-			// The fields before the path: 8 of an ordinary file, 9 of a
-			// renamed one, 10 of a conflict.
-			n := map[byte]int{'1': 8, '2': 9, 'u': 10}[rec[0]]
+			n := statusFields[rec[0]]
 			f := strings.SplitN(rec, " ", n+1)
 			if len(f) < n+1 || len(f[1]) != 2 {
 				continue
@@ -282,6 +295,57 @@ func (r *Repo) Commit(message string, amend bool) error {
 	return err
 }
 
+// UndoCommit takes back the last commit, keeping its changes in the index
+// and the work tree: HEAD goes to its parent, or before the first commit
+// when it has none. A commit whose parents a shallow clone lacks is not
+// taken back.
+func (r *Repo) UndoCommit() error {
+	out, err := r.run(nil, "log", "-1", "--format=%P", "HEAD", "--")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(out)) != "" {
+		_, err = r.run(nil, "reset", "--soft", "HEAD^")
+		return err
+	}
+	shallow, err := r.run(nil, "rev-parse", "--is-shallow-repository")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(string(shallow)) != "false" {
+		return errors.New("the last commit's parent is not in this shallow clone, so it cannot be undone")
+	}
+	_, err = r.run(nil, "update-ref", "-d", "HEAD")
+	return err
+}
+
+// Head returns the hash of the commit checked out, "" before the first.
+func (r *Repo) Head() string {
+	out, err := r.run(nil, "rev-parse", "--verify", "-q", "HEAD")
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// Count returns how many commits to has that from has not.
+func (r *Repo) Count(from, to string) int {
+	out, err := r.run(nil, "rev-list", "--count", from+".."+to)
+	if err != nil {
+		return 0
+	}
+	n, _ := strconv.Atoi(strings.TrimSpace(string(out)))
+	return n
+}
+
+// ShortHash returns the first 7 characters of a commit's hash.
+func ShortHash(h string) string {
+	if len(h) > 7 {
+		return h[:7]
+	}
+	return h
+}
+
 // LastMessage returns the message of the last commit, "" before the
 // first.
 func (r *Repo) LastMessage() string {
@@ -305,6 +369,58 @@ func (r *Repo) Branches() ([]string, error) {
 		}
 	}
 	return bs, nil
+}
+
+// Branch is a branch, local or of a remote, and its last commit.
+type Branch struct {
+	Name    string // as "main", or "origin/main" for a remote's
+	Remote  bool
+	Time    time.Time // when its last commit was made
+	Subject string    // the subject of its last commit
+}
+
+// BranchList returns the local branches and those of the remotes, the
+// one committed to last first.
+func (r *Repo) BranchList() ([]Branch, error) {
+	out, err := r.run(nil, "for-each-ref", "--sort=-committerdate",
+		"--format=%(refname)%1f%(committerdate:unix)%1f%(subject)", "refs/heads", "refs/remotes")
+	if err != nil {
+		return nil, err
+	}
+	var bs []Branch
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.SplitN(line, "\x1f", 3)
+		if len(f) < 3 {
+			continue
+		}
+		var b Branch
+		switch {
+		case strings.HasPrefix(f[0], "refs/heads/"):
+			b.Name = strings.TrimPrefix(f[0], "refs/heads/")
+		case strings.HasPrefix(f[0], "refs/remotes/"):
+			b.Name, b.Remote = strings.TrimPrefix(f[0], "refs/remotes/"), true
+			if strings.HasSuffix(b.Name, "/HEAD") {
+				continue
+			}
+		default:
+			continue
+		}
+		if s, err := strconv.ParseInt(f[1], 10, 64); err == nil {
+			b.Time = time.Unix(s, 0)
+		}
+		b.Subject = f[2]
+		bs = append(bs, b)
+	}
+	return bs, nil
+}
+
+// Remotes returns the names of the remotes.
+func (r *Repo) Remotes() ([]string, error) {
+	out, err := r.run(nil, "remote")
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(string(out)), nil
 }
 
 // Switch checks out a branch, making it first when create is set.
@@ -360,6 +476,136 @@ func parseBlame(out []byte) Blame {
 	return b
 }
 
+// Commit is a commit of the history.
+type Commit struct {
+	Hash    string
+	Parents []string
+	Author  string
+	Email   string
+	Time    time.Time
+	Subject string
+	Body    string // the message after the subject, trimmed
+}
+
+// Short returns the first 7 characters of the commit's hash.
+func (c Commit) Short() string { return ShortHash(c.Hash) }
+
+// commitFormat is how Log and CommitInfo have git print a commit: its
+// fields, separated by unit separators.
+const commitFormat = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b"
+
+func parseCommit(rec string) (Commit, bool) {
+	f := strings.SplitN(strings.TrimLeft(rec, "\n"), "\x1f", 7)
+	if len(f) < 7 || f[0] == "" {
+		return Commit{}, false
+	}
+	c := Commit{Hash: f[0], Parents: strings.Fields(f[1]), Author: f[2], Email: f[3], Subject: f[5],
+		Body: strings.TrimSpace(f[6])}
+	if s, err := strconv.ParseInt(f[4], 10, 64); err == nil {
+		c.Time = time.Unix(s, 0)
+	}
+	return c, true
+}
+
+// Log returns the last n commits of HEAD's history, newest first: none
+// before the first commit.
+func (r *Repo) Log(n int) ([]Commit, error) {
+	if _, err := r.run(nil, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
+		return nil, nil
+	}
+	out, err := r.run(nil, "log", "-z", "-n", strconv.Itoa(n), commitFormat, "HEAD", "--")
+	if err != nil {
+		return nil, err
+	}
+	var cs []Commit
+	for _, rec := range strings.Split(string(out), "\x00") {
+		if c, ok := parseCommit(rec); ok {
+			cs = append(cs, c)
+		}
+	}
+	return cs, nil
+}
+
+// Unpushed returns the commits, up to n of them, that HEAD has and its
+// upstream has not, by hash; without an upstream, or one gone, those no
+// branch of a remote has.
+func (r *Repo) Unpushed(n int) map[string]bool {
+	out, err := r.run(nil, "rev-list", "-n", strconv.Itoa(n), "@{upstream}..HEAD")
+	if err != nil {
+		out, err = r.run(nil, "rev-list", "-n", strconv.Itoa(n), "HEAD", "--not", "--remotes")
+	}
+	if err != nil {
+		return nil
+	}
+	m := map[string]bool{}
+	for _, h := range strings.Fields(string(out)) {
+		m[h] = true
+	}
+	return m
+}
+
+// CommitInfo returns the commit rev names.
+func (r *Repo) CommitInfo(rev string) (Commit, error) {
+	out, err := r.run(nil, "show", "-s", commitFormat, rev, "--")
+	if err != nil {
+		return Commit{}, err
+	}
+	c, ok := parseCommit(strings.TrimRight(string(out), "\n"))
+	if !ok {
+		return Commit{}, fmt.Errorf("no commit %s", rev)
+	}
+	return c, nil
+}
+
+// CommitFile is a file a commit changed from its first parent: Status is
+// 'A', 'M', 'D', 'R' or 'T', as git diff says it, and Orig where a file
+// renamed was, both absolute.
+type CommitFile struct {
+	Path, Orig string
+	Status     byte
+}
+
+// CommitFiles returns the files a commit changed from its first parent,
+// or that the first commit added, by path.
+func (r *Repo) CommitFiles(c Commit) ([]CommitFile, error) {
+	args := []string{"diff-tree", "-r", "-z", "-M", "--name-status", "--no-commit-id"}
+	if len(c.Parents) == 0 {
+		args = append(args, "--root", c.Hash)
+	} else {
+		args = append(args, c.Parents[0], c.Hash)
+	}
+	out, err := r.run(nil, args...)
+	if err != nil {
+		return nil, err
+	}
+	var fs []CommitFile
+	recs := strings.Split(string(out), "\x00")
+	for i := 0; i+1 < len(recs); i++ {
+		st := recs[i]
+		if st == "" {
+			continue
+		}
+		f := CommitFile{Status: st[0]}
+		switch st[0] {
+		case 'R', 'C':
+			if i+2 >= len(recs) {
+				return fs, nil
+			}
+			f.Orig, f.Path = r.Abs(recs[i+1]), r.Abs(recs[i+2])
+			if st[0] == 'C' {
+				f.Status, f.Orig = 'A', ""
+			}
+			i += 2
+		default:
+			f.Path = r.Abs(recs[i+1])
+			i++
+		}
+		fs = append(fs, f)
+	}
+	slices.SortFunc(fs, func(x, y CommitFile) int { return strings.Compare(x.Path, y.Path) })
+	return fs, nil
+}
+
 // Fetch fetches from the remotes.
 func (r *Repo) Fetch() error {
 	_, err := r.run(nil, "fetch", "--all", "--prune")
@@ -379,11 +625,10 @@ func (r *Repo) Push(branch string, hasUpstream bool) error {
 		_, err := r.run(nil, "push")
 		return err
 	}
-	out, err := r.run(nil, "remote")
+	remotes, err := r.Remotes()
 	if err != nil {
 		return err
 	}
-	remotes := strings.Fields(string(out))
 	if len(remotes) == 0 {
 		return errors.New("the repository has no remote to push to")
 	}

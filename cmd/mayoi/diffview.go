@@ -26,6 +26,7 @@ const (
 	diffHead   diffBase = iota // HEAD with the work tree
 	diffIndex                  // the index with the work tree: the changes not staged
 	diffStaged                 // HEAD with the index: the changes staged
+	diffCommit                 // a commit with its first parent
 )
 
 // sides names the two versions a diff compares.
@@ -151,6 +152,9 @@ type diffView struct {
 	files []*diffFile
 	// status is the status of the repository the files were listed from.
 	status *git.Status
+	// commit is the commit whose changes the tab shows, from its first
+	// parent; nil for the tab of the changes of the work tree.
+	commit *commitDiff
 
 	// rows are the rows of the files as they show, and tops where each
 	// starts, in lines, and after the last, the lines of all. starts are
@@ -158,8 +162,11 @@ type diffView struct {
 	rows          []diffRow
 	tops          []int
 	starts, heads []int
-	built         diffBuild
-	gen           int // counts the changes the rows are laid out again for
+	// sections counts the files of the changes not staged, and of those
+	// staged, as the rows were laid out.
+	sections [2]int
+	built    diffBuild
+	gen      int // counts the changes the rows are laid out again for
 	// near are the files read as they come near the view, from up to to.
 	near [2]int
 	// reveal is the file, or section, to scroll to once it is listed, nil
@@ -179,6 +186,21 @@ type diffView struct {
 	jump         int
 	jumpTo       jumpPlace
 	viewW, viewH float32
+
+	// summary is what the status bar says of the diff, worked out for the
+	// generation summaryGen, plus one.
+	summary    string
+	summaryGen int
+}
+
+// commitDiff is the commit a diff shows, and the files it changed, read
+// in the background.
+type commitDiff struct {
+	hash            string
+	info            git.Commit
+	files           []git.CommitFile
+	loading, loaded bool
+	err             string
 }
 
 // diffTarget is a file of a diff to scroll to: path, as compared against
@@ -215,7 +237,32 @@ func newDiffView(layout diffLayout) *diffView {
 	return &diffView{layout: layout, current: -1, cursor: -1, jump: -1, near: [2]int{0, diffNear}}
 }
 
-func (v *diffView) name() string { return "Changes" }
+// newCommitView makes the tab of a commit's changes, its message read
+// already in info when its hash is set.
+func newCommitView(layout diffLayout, hash string, info git.Commit) *diffView {
+	v := newDiffView(layout)
+	v.commit = &commitDiff{hash: hash, info: info}
+	return v
+}
+
+func (v *diffView) name() string {
+	if c := v.commit; c != nil {
+		if c.info.Subject != "" {
+			return c.info.Subject
+		}
+		return "Commit " + git.ShortHash(c.hash)
+	}
+	return "Changes"
+}
+
+// same reports whether two diffs show the same changes: both those of
+// the work tree, or of one commit.
+func (v *diffView) same(o *diffView) bool {
+	if v.commit == nil || o.commit == nil {
+		return v.commit == nil && o.commit == nil
+	}
+	return v.commit.hash == o.commit.hash
+}
 
 // stop lets go of the highlighters.
 func (v *diffView) stop() {
@@ -286,7 +333,7 @@ const foldedLines = 2000
 func (a *app) changesTab() (*column, int) {
 	for _, col := range a.cols {
 		for i, t := range col.tabs {
-			if t.diff != nil {
+			if t.diff != nil && t.diff.commit == nil {
 				return col, i
 			}
 		}
@@ -340,17 +387,44 @@ func (a *app) openDiffFile(v *diffView) {
 	}
 }
 
-// showingDiff returns the place of the tab of the changes in a column, -1
-// when it has none.
-func (col *column) showingDiff() int {
-	return slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.diff != nil })
+// showingDiff returns the place of a column's tab that shows the changes
+// v shows, -1 when it has none.
+func (col *column) showingDiff(v *diffView) int {
+	return slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.diff != nil && t.diff.same(v) })
+}
+
+// commitTab returns the tab of a commit's changes and its column, nil
+// when no column has one.
+func (a *app) commitTab(hash string) (*column, int) {
+	for _, col := range a.cols {
+		for i, t := range col.tabs {
+			if t.diff != nil && t.diff.commit != nil && t.diff.commit.hash == hash {
+				return col, i
+			}
+		}
+	}
+	return nil, -1
+}
+
+// showCommit shows the changes of a commit in a tab of its own, made after
+// the tab shown of the column that has the keyboard when there is none.
+func (a *app) showCommit(c git.Commit, focus bool) {
+	if col, i := a.commitTab(c.Hash); col != nil {
+		a.activate(col, i, focus)
+		return
+	}
+	col := a.column()
+	at := min(col.active+1, len(col.tabs))
+	a.addTab(col, at, &colTab{diff: newCommitView(parseDiffLayout(a.settings.DiffLayout), c.Hash, c)})
+	a.activate(col, at, focus)
+	a.rememberTabs()
 }
 
 // diffDoc returns the open document of a file of a diff, whose text is
 // the work tree's side, nil when it is not open or the file's changes
 // are those staged.
 func (a *app) diffDoc(f *diffFile) *document {
-	if f.base == diffStaged {
+	if f.base == diffStaged || f.base == diffCommit {
 		return nil
 	}
 	if i := a.docIndex(f.path); i >= 0 {
@@ -362,6 +436,10 @@ func (a *app) diffDoc(f *diffFile) *document {
 // listDiffFiles has a diff show the files the status lists now, staged
 // and not, keeping what it read of those it had.
 func (a *app) listDiffFiles(v *diffView) {
+	if v.commit != nil {
+		a.listCommitFiles(v)
+		return
+	}
 	st := a.git.status
 	if st == v.status {
 		return
@@ -384,33 +462,77 @@ func (a *app) listDiffFiles(v *diffView) {
 	}
 	slices.SortFunc(rest, func(x, y listed) int { return strings.Compare(x.e.Path, y.e.Path) })
 	es = append(es, rest...)
-	old := v.files
+	// The files listed before, by path and whether staged.
+	type fileKey struct {
+		path   string
+		staged bool
+	}
+	old := make(map[fileKey]*diffFile, len(v.files))
+	for _, f := range v.files {
+		old[fileKey{f.path, f.group == groupStaged}] = f
+	}
 	v.files = make([]*diffFile, 0, len(es))
 	for _, l := range es {
 		// The files' changes on disk show as they come.
 		if a.tree != nil {
 			a.tree.Watch(l.e.Path)
 		}
-		staged := l.group == groupStaged
-		i := slices.IndexFunc(old, func(f *diffFile) bool {
-			return f != nil && f.path == l.e.Path && (f.group == groupStaged) == staged
-		})
-		if i < 0 {
+		k := fileKey{l.e.Path, l.group == groupStaged}
+		f, ok := old[k]
+		if !ok {
 			v.files = append(v.files, newDiffFile(l.e, l.group))
 			continue
 		}
-		f := old[i]
-		old[i] = nil
+		delete(old, k)
 		f.group = l.group
 		f.setEntry(l.e)
 		v.files = append(v.files, f)
 	}
 	for _, f := range old {
-		if f != nil {
-			f.stop()
-		}
+		f.stop()
 	}
 	v.changed()
+}
+
+// listCommitFiles has the diff of a commit read the commit and list the
+// files it changed, once, in the background.
+func (a *app) listCommitFiles(v *diffView) {
+	cm := v.commit
+	r := a.git.repo
+	if cm.loaded || cm.loading || r == nil {
+		return
+	}
+	cm.loading = true
+	hash, info := cm.hash, cm.info
+	go func() {
+		var err error
+		if info.Hash == "" || len(info.Parents) == 0 && info.Subject == "" {
+			info, err = r.CommitInfo(hash)
+		}
+		var files []git.CommitFile
+		if err == nil {
+			files, err = r.CommitFiles(info)
+		}
+		a.post(func() {
+			cm.loading, cm.loaded = false, true
+			if err != nil {
+				cm.err = err.Error()
+				v.changed()
+				return
+			}
+			cm.info, cm.files = info, files
+			v.files = make([]*diffFile, 0, len(files))
+			for _, cf := range files {
+				f := &diffFile{path: cf.Path, base: diffCommit, group: groupCommits, letter: cf.Status, gitStale: true}
+				f.entry = git.Entry{Path: cf.Path, Orig: cf.Orig, X: cf.Status, Y: '.'}
+				v.files = append(v.files, f)
+			}
+			if a.tree != nil {
+				a.rememberTabs()
+			}
+			v.changed()
+		})
+	}()
 }
 
 // refreshDiff compares the sides of the files of a diff near its view
@@ -476,10 +598,20 @@ func (a *app) refreshDiffFile(v *diffView, f *diffFile) bool {
 		f.docVersion = snap.Version()
 	}
 	old, new := f.old, f.new
-	path, base := f.path, f.base
+	path, orig, base := f.path, f.entry.Orig, f.base
+	var hash, parent string
+	if cm := v.commit; cm != nil {
+		hash = cm.hash
+		if len(cm.info.Parents) > 0 {
+			parent = cm.info.Parents[0]
+		}
+	}
+	if orig == "" {
+		orig = path
+	}
 	go func() {
 		var err error
-		read := func(rev string) (string, bool) {
+		read := func(rev, path string) (string, bool) {
 			text, ok, e := r.Show(rev, path)
 			if e != nil && err == nil {
 				err = e
@@ -489,20 +621,27 @@ func (a *app) refreshDiffFile(v *diffView, f *diffFile) bool {
 		if readGit {
 			switch base {
 			case diffIndex:
-				old.text, old.ok = read("")
+				old.text, old.ok = read("", path)
+			case diffCommit:
+				old.text, old.ok = "", false
+				if parent != "" {
+					old.text, old.ok = read(parent, orig)
+				}
+				new.text, new.ok = read(hash, path)
 			default:
-				old.text, old.ok = read("HEAD")
+				old.text, old.ok = read("HEAD", path)
 			}
 			if base == diffStaged {
-				new.text, new.ok = read("")
+				new.text, new.ok = read("", path)
 			}
 		}
 		switch {
 		case doc != nil:
 			new.text, new.ok = snap.String(), true
-		case readDisk && base != diffStaged:
-			data, e := os.ReadFile(path)
-			new.text, new.ok = strings.ReplaceAll(string(data), "\r\n", "\n"), e == nil
+		case readDisk && base != diffStaged && base != diffCommit:
+			var e error
+			new.text, _, e = readWork(path)
+			new.ok = e == nil
 			if e != nil && !errors.Is(e, os.ErrNotExist) && err == nil {
 				err = e
 			}
@@ -648,12 +787,23 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	}
 	v.built = b
 	v.rows, v.starts, v.heads = v.rows[:0], v.starts[:0], v.heads[:0]
+	v.sections = [2]int{}
+	for _, f := range v.files {
+		v.sections[btoi(f.base == diffStaged)]++
+	}
 	plain := func(kind rowKind, file int, label string) {
 		v.rows = append(v.rows, diffRow{kind: kind, file: file, old: -1, new: -1, hunk: -1, peer: -1, gap: -1, h: 1, label: label})
 	}
 	reveal := -1
+	if cm := v.commit; cm != nil && len(v.files) > 0 {
+		v.rows = append(v.rows, diffRow{kind: rowCommit, old: -1, new: -1, hunk: -1, peer: -1, gap: -1, h: commitCardLines(cm)})
+	}
 	for i, f := range v.files {
-		if i == 0 || f.base != v.files[i-1].base {
+		if v.commit != nil {
+			if i > 0 {
+				plain(rowSpace, i, "")
+			}
+		} else if i == 0 || f.base != v.files[i-1].base {
 			if i > 0 {
 				plain(rowSpace, i, "")
 			}
@@ -700,7 +850,9 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		if r.changed() && (i == 0 || v.rows[i-1].hunk != r.hunk || v.rows[i-1].file != r.file || !v.rows[i-1].changed()) {
 			v.starts = append(v.starts, i)
 		}
-		r.h = 1
+		if r.kind != rowCommit {
+			r.h = 1
+		}
 		if b.wrap && r.kind == rowLine {
 			f := v.files[r.file]
 			if v.split {
@@ -751,6 +903,14 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	}
 }
 
+// btoi is 1 for true, and 0 for false.
+func btoi(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
 // diffAnchor is a row of a diff as it stays from one layout to the next:
 // its kind, its file, and its line, negative for one of the old side only.
 type diffAnchor struct {
@@ -778,10 +938,38 @@ func (v *diffView) focusRowAt(i int) int {
 	if i < 0 || i >= len(v.rows) {
 		return -1
 	}
-	for i+1 < len(v.rows) && (v.rows[i].kind == rowSpace || v.rows[i].kind == rowSection) {
+	for i+1 < len(v.rows) && v.rows[i].between() {
 		i++
 	}
 	return i
+}
+
+// stickyHeader returns the header of the file at the top of a diff's view
+// when it scrolled above it, and where it shows instead, in the content:
+// at the top of the view, or pushed up by the end of its file. It
+// returns -1 when no header shows so.
+func (v *diffView) stickyHeader(lineH float32) (int, float32) {
+	if len(v.rows) == 0 || len(v.tops) <= len(v.rows) {
+		return -1, 0
+	}
+	top := v.rowAt(v.scroll.Y, lineH)
+	r := v.rows[top]
+	if r.between() || r.file >= len(v.heads) {
+		return -1, 0
+	}
+	h := v.heads[r.file]
+	if editorPadY+float32(v.tops[h])*lineH >= v.scroll.Y {
+		return -1, 0
+	}
+	// The file ends before the room or the header that comes next.
+	end := len(v.rows)
+	if r.file+1 < len(v.heads) {
+		end = v.heads[r.file+1]
+		for end > h+1 && v.rows[end-1].between() {
+			end--
+		}
+	}
+	return h, min(v.scroll.Y, editorPadY+float32(v.tops[end])*lineH-lineH)
 }
 
 // line returns the line a row of the unified layout shows, and whether it
@@ -906,12 +1094,12 @@ func (v *diffView) moveCursor(step int) {
 	i := v.cursor
 	if i < 0 || i >= len(v.rows) {
 		i = v.focusRow()
-		if k := v.rows[i].kind; k != rowSpace && k != rowSection {
+		if !v.rows[i].between() {
 			step = 0
 		}
 	}
 	i = min(max(i+step, 0), len(v.rows)-1)
-	for v.rows[i].kind == rowSpace || v.rows[i].kind == rowSection {
+	for v.rows[i].between() {
 		next := i + step
 		if step == 0 {
 			next = i + 1
@@ -1048,6 +1236,8 @@ func (a *app) diffInput(v *diffView, ev ui.InputEvent) bool {
 		a.activateRow(v, v.focusRow(), true)
 	case ui.KeyE:
 		a.openDiffFile(v)
+	case ui.KeyS:
+		a.stageAtCursor(v)
 	default:
 		return false
 	}
@@ -1087,6 +1277,14 @@ func (a *app) openFileAt(path string, line int, focus bool) {
 // adds and removes, and in how many hunks and files, once every file is
 // read.
 func (v *diffView) diffStatus() string {
+	// Every change to what the files read calls changed.
+	if v.summaryGen != v.gen+1 {
+		v.summary, v.summaryGen = v.summarize(), v.gen+1
+	}
+	return v.summary
+}
+
+func (v *diffView) summarize() string {
 	hunks, add, del, files := 0, 0, 0, 0
 	all := true
 	for _, f := range v.files {
@@ -1223,7 +1421,7 @@ func (a *app) keepTopRow(v *diffView, change func()) {
 func (a *app) diffsChanged() {
 	for _, col := range a.cols {
 		for _, t := range col.tabs {
-			if t.diff != nil {
+			if t.diff != nil && t.diff.commit == nil {
 				for _, f := range t.diff.files {
 					f.gitStale = true
 				}
@@ -1236,7 +1434,7 @@ func (a *app) diffsChanged() {
 func (a *app) diffsOnDisk(changed []string) {
 	for _, col := range a.cols {
 		for _, t := range col.tabs {
-			if t.diff != nil {
+			if t.diff != nil && t.diff.commit == nil {
 				for _, f := range t.diff.files {
 					if slices.Contains(changed, f.path) {
 						f.diskStale = true

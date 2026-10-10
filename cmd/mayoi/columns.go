@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 	"mayoi/internal/settings"
 )
@@ -484,6 +486,9 @@ func (a *app) splitRight() {
 		return
 	case t.diff != nil:
 		v := newDiffView(t.diff.layout)
+		if cm := t.diff.commit; cm != nil {
+			v = newCommitView(t.diff.layout, cm.hash, cm.info)
+		}
 		v.scroll, v.full, v.wrap, v.wrapGen = t.diff.scroll, t.diff.full, t.diff.wrap, t.diff.wrapGen
 		a.addTab(nc, 0, &colTab{diff: v})
 		a.activate(nc, 0, true)
@@ -511,7 +516,7 @@ func (a *app) moveTab(t *colTab, to *column, at int) {
 		case t.ed != nil:
 			j = to.showing(t.ed.document)
 		case t.diff != nil:
-			j = to.showingDiff()
+			j = to.showingDiff(t.diff)
 		default:
 			j = to.showingImage(t.view.path)
 		}
@@ -567,6 +572,8 @@ func (a *app) rememberTabs() {
 			switch {
 			case t.term != nil:
 				cs.Tabs = append(cs.Tabs, settings.Tab{Terminal: true})
+			case t.diff != nil && t.diff.commit != nil:
+				cs.Tabs = append(cs.Tabs, settings.Tab{Diff: "commit:" + t.diff.commit.hash, Layout: t.diff.layout.key()})
 			case t.diff != nil:
 				cs.Tabs = append(cs.Tabs, settings.Tab{Diff: "all", Layout: t.diff.layout.key()})
 			case t.path() != "":
@@ -607,6 +614,12 @@ func (a *app) restoreTabs() {
 			case ts.Terminal:
 				if a.root != "" {
 					a.newTerminalTab(col, a.root, false)
+				}
+			case strings.HasPrefix(ts.Diff, "commit:"):
+				hash := strings.TrimPrefix(ts.Diff, "commit:")
+				if c, _ := a.commitTab(hash); c == nil && hash != "" {
+					a.addTab(col, len(col.tabs), &colTab{diff: newCommitView(parseDiffLayout(ts.Layout), hash, git.Commit{})})
+					a.activate(col, len(col.tabs)-1, false)
 				}
 			case ts.Diff != "":
 				// The tabs of the changes of a file an older version kept are
