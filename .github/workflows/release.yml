@@ -82,11 +82,33 @@ jobs:
             '.macos.signingIdentity = $identity | .macos.notarize = {keychainProfile: "notary", keychain: $keychain}' \
             mygo.json > "$RUNNER_TEMP/mygo.json"
           mv "$RUNNER_TEMP/mygo.json" mygo.json
-      - name: Build and upload
+      - name: Build
+        env:
+          GH_TOKEN: ${{ github.token }} # finds the published versions that delta updates start from
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform "${{ matrix.platform }}"
+      # Not mygo build -upload: it names the disk image and the installer
+      # without the architecture, so the two builds of a system would upload
+      # files of the same name. The update archives and manifests have it.
+      - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
-          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-        run: go tool mygo build -platform "${{ matrix.platform }}" -upload
+        run: |
+          shopt -s nullglob
+          version="$(jq -r .version mygo.json)"
+          for dir in build/*-*/; do
+            arch="$(basename "$dir")"; arch="${arch#*-}"
+            for f in "$dir"*.dmg; do mv "$f" "${dir}Mayoi-$version-$arch.dmg"; done
+            for f in "$dir"*" Setup "*.exe; do mv "$f" "${dir}Mayoi-Setup-$version-$arch.exe"; done
+          done
+          files=(build/*/*.dmg build/*/Mayoi-Setup-*.exe build/*/*.deb build/*/*.tar.gz build/*/*.delta)
+          scripts=(build/linux-*/install.sh)
+          [ ${#scripts[@]} -gt 0 ] && files+=("${scripts[0]}") # the same for every Linux target
+          manifests=(build/*/update-*.json)
+          test ${#manifests[@]} -gt 0 || { echo "::error::no update manifests: is MYGO_UPDATER_PRIVATE_KEY set?"; exit 1; }
+          # The manifests go last, so they never point at a file that isn't there.
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
+          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${manifests[@]}"
       - name: Remove the keychain
         if: always() && runner.os == 'macOS'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true
