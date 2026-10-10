@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.2.1
 
 - Source control lists the last commits of the branch, with those not yet
   pushed marked. Click one to see its message and its changes in a tab of
