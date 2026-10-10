@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -14,6 +14,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
 )
@@ -38,23 +39,28 @@ func (b diffBase) sides() (old, new string) {
 	return "HEAD", "Working Tree"
 }
 
-// key is how the settings name the base.
-func (b diffBase) key() string { return [...]string{"head", "index", "staged"}[b] }
+// diffLayout is how a diff shows its sides: side by side when it is wide
+// enough to, or always, or in one column.
+type diffLayout int
 
-func parseDiffBase(s string) (diffBase, bool) {
-	for b := diffHead; b <= diffStaged; b++ {
-		if b.key() == s {
-			return b, true
-		}
+const (
+	layoutAuto diffLayout = iota
+	layoutSplit
+	layoutInline
+)
+
+// key is how the settings name the layout.
+func (l diffLayout) key() string { return [...]string{"", "split", "inline"}[l] }
+
+func parseDiffLayout(s string) diffLayout {
+	switch s {
+	case "split":
+		return layoutSplit
+	case "inline":
+		return layoutInline
 	}
-	return 0, false
+	return layoutAuto
 }
-
-// diffRow is a row of a diff as it shows: a line of each side, -1 where a
-// side has none, and the hunk it is part of, -1 for lines unchanged. In
-// the unified layout a row has one side when it changed, and peer is the
-// line of the other side it was modified from, or into, -1 for none.
-type diffRow struct{ old, new, hunk, peer int }
 
 // diffSide is a version of the file a diff shows.
 type diffSide struct {
@@ -62,26 +68,28 @@ type diffSide struct {
 	ok    bool // the version has the file
 	lines []string
 	src   *lineSource
-	hl    *highlight.Highlighter
+	hl    *highlight.Highlighter // made as its lines first show
+	win   *lineWindow
 }
 
-// diffView shows the changes of a file between two versions, in a tab:
-// the lines removed and added interleaved, or side by side.
-type diffView struct {
-	path  string
-	base  diffBase
-	split bool
+// diffFile is a file of a diff: its two versions, compared against base
+// as the source control view lists it in group, and the changes between
+// them, read and compared in the background.
+type diffFile struct {
+	path   string
+	base   diffBase
+	group  scmGroup
+	entry  git.Entry
+	letter byte // its letter in the source control view
 
 	old, new diffSide
 	binary   bool
 	hunks    []linediff.Hunk
-	// unified and pairs are the rows of the two layouts, and their first
-	// rows of each hunk.
-	unified, pairs           []diffRow
-	unifiedHunks, pairsHunks []int
-	widest                   int // the longest line, in columns
-	loaded                   bool
-	err                      string
+	// unified and pairs are the rows of every line, in each layout.
+	unified, pairs []diffRow
+	widest         int // the longest line, in columns
+	loaded         bool
+	err            string
 
 	// gitStale has the sides Git keeps read again, diskStale the work
 	// tree's file; docVersion is the version of the open document's text
@@ -91,38 +99,143 @@ type diffView struct {
 	running, waiting    bool
 	started             time.Time
 
+	words map[[2]int][2][]linediff.Span
+	// open are the gaps of unchanged lines opened, by their keys, and
+	// folded is set for a file whose lines are hidden under its header.
+	open   map[int]bool
+	folded bool
+}
+
+func newDiffFile(e git.Entry, group scmGroup) *diffFile {
+	f := &diffFile{path: e.Path, group: group, gitStale: true, diskStale: true}
+	f.setEntry(e)
+	return f
+}
+
+// setEntry takes what the status says of the file now.
+func (f *diffFile) setEntry(e git.Entry) {
+	f.entry, f.letter, f.base = e, e.Letter(), diffIndex
+	if f.group == groupStaged {
+		f.letter, f.base = e.X, diffStaged
+	}
+}
+
+// side returns the old side, or the new.
+func (f *diffFile) side(newSide bool) *diffSide {
+	if newSide {
+		return &f.new
+	}
+	return &f.old
+}
+
+// counts returns how many lines the file's changes add and remove.
+func (f *diffFile) counts() (add, del int) {
+	for _, h := range f.hunks {
+		add, del = add+h.BLen, del+h.ALen
+	}
+	return add, del
+}
+
+// diffView shows every file changed, in a tab: the changes staged, from
+// HEAD to the index, then those not, from the index to the work tree, as
+// the source control view lists them. Each file shows under a header, its
+// lines removed and added interleaved, or side by side, and those
+// unchanged away from them folded.
+type diffView struct {
+	layout  diffLayout
+	split   bool // as the layout and the width chose last
+	full    bool // every unchanged line shows
+	wrap    *bool
+	wrapGen int
+
+	files []*diffFile
+	// status is the status of the repository the files were listed from.
+	status *git.Status
+
+	// rows are the rows of the files as they show, and tops where each
+	// starts, in lines, and after the last, the lines of all. starts are
+	// the first rows of each hunk, and heads the headers of each file.
+	rows          []diffRow
+	tops          []int
+	starts, heads []int
+	built         diffBuild
+	gen           int // counts the changes the rows are laid out again for
+	// near are the files read as they come near the view, from up to to.
+	near [2]int
+	// reveal is the file, or section, to scroll to once it is listed, nil
+	// for none; synced is the file the source control view was last
+	// told is at the top.
+	reveal *diffTarget
+	synced *diffFile
+
 	scroll ui.ScrollState
 	pane   ui.Handle
-	// current is the hunk gone to last; jump a row to scroll to in the
-	// next frame, -1 for none.
-	current, jump int
-	words         map[[2]int][2][]linediff.Span
-	viewW         float32
+	// current is the hunk gone to last, of starts, and cursor the row
+	// chosen, -1 for none. jump is a row to scroll to in the next frame,
+	// -1 for none, as jumpTo says.
+	current, cursor int
+	// acted is set when the last click opened a gap or folded a file.
+	acted        bool
+	jump         int
+	jumpTo       jumpPlace
+	viewW, viewH float32
 }
 
-func newDiffView(path string, base diffBase, split bool) *diffView {
-	return &diffView{path: path, base: base, split: split, gitStale: true, diskStale: true, current: -1, jump: -1}
+// diffTarget is a file of a diff to scroll to: path, as compared against
+// base, or against either for any; or with no path, the section of base.
+type diffTarget struct {
+	path string
+	base diffBase
+	any  bool
 }
 
-func (v *diffView) name() string {
-	old, new := v.base.sides()
-	return fmt.Sprintf("%s (%s ↔ %s)", filepath.Base(v.path), old, new)
+// matches reports whether a file is the target.
+func (t *diffTarget) matches(f *diffFile) bool {
+	return f.path == t.path && (t.any || f.base == t.base)
 }
 
-// rows returns the rows of the layout shown, and their first rows of each
-// hunk.
-func (v *diffView) rows() ([]diffRow, []int) {
-	if v.split {
-		return v.pairs, v.pairsHunks
-	}
-	return v.unified, v.unifiedHunks
+// diffBuild is what the rows of a diff were laid out for.
+type diffBuild struct {
+	gen               int
+	split, wrap, full bool
+	cols              [2]int
+	font              codeFont
 }
+
+// jumpPlace is where a row jumped to shows.
+type jumpPlace int
+
+const (
+	jumpThird  jumpPlace = iota // a third down the view, unless in view
+	jumpTop                     // at the top
+	jumpReveal                  // as little scrolled as shows it
+)
+
+func newDiffView(layout diffLayout) *diffView {
+	return &diffView{layout: layout, current: -1, cursor: -1, jump: -1, near: [2]int{0, diffNear}}
+}
+
+func (v *diffView) name() string { return "Changes" }
 
 // stop lets go of the highlighters.
 func (v *diffView) stop() {
-	v.old.hl.Close()
-	v.new.hl.Close()
+	for _, f := range v.files {
+		f.stop()
+	}
 }
+
+// stop lets go of a file's highlighters.
+func (f *diffFile) stop() {
+	for _, s := range []*diffSide{&f.old, &f.new} {
+		if s.hl != nil {
+			s.hl.Close()
+			s.hl = nil
+		}
+	}
+}
+
+// changed has the rows laid out again in the next frame.
+func (v *diffView) changed() { v.gen++ }
 
 // lineSource is lines of text as the highlighter reads them.
 type lineSource struct {
@@ -157,96 +270,213 @@ func (s *lineSource) Slice(start, end int) string { return s.text[start:end] }
 // is typed in.
 const diffViewPause = 150 * time.Millisecond
 
-// openDiff shows the changes of a file in a tab of the column that has the
-// keyboard, after the tab shown, or the tab that shows them already.
-func (a *app) openDiff(path string, base diffBase, focus bool) {
-	col := a.column()
-	if i := col.showingDiff(path, base); i >= 0 {
-		a.activate(col, i, focus)
-		return
+// diffReads is how many files a diff reads at once, and diffNear how many
+// files a diff reads before it knows which are in view.
+const (
+	diffReads = 4
+	diffNear  = 8
+)
+
+// foldedLines is how many lines a file's changes take, past which the
+// diff shows it folded.
+const foldedLines = 2000
+
+// changesTab returns the tab of the changes and its column, nil when no
+// column has one.
+func (a *app) changesTab() (*column, int) {
+	for _, col := range a.cols {
+		for i, t := range col.tabs {
+			if t.diff != nil {
+				return col, i
+			}
+		}
 	}
-	at := min(col.active+1, len(col.tabs))
-	a.addTab(col, at, &colTab{diff: newDiffView(path, base, a.settings.DiffSplit)})
-	if a.tree != nil {
-		a.tree.Watch(path)
-	}
-	a.activate(col, at, focus)
+	return nil, -1
 }
 
-// openChanges shows the changes of the file of the tab shown since the
-// last commit.
+// openChangesTab shows the tab of the changes, made after the tab shown
+// of the column that has the keyboard when there is none, and returns its
+// diff.
+func (a *app) openChangesTab(focus bool) *diffView {
+	if col, i := a.changesTab(); col != nil {
+		a.activate(col, i, focus)
+		return col.tabs[i].diff
+	}
+	col := a.column()
+	at := min(col.active+1, len(col.tabs))
+	v := newDiffView(parseDiffLayout(a.settings.DiffLayout))
+	a.addTab(col, at, &colTab{diff: v})
+	a.activate(col, at, focus)
+	return v
+}
+
+// showChanges shows the tab of the changes scrolled to a file, or with no
+// path, to the section of a base, once the file is listed.
+func (a *app) showChanges(target diffTarget, focus bool) {
+	v := a.openChangesTab(focus)
+	v.reveal = &target
+	v.changed()
+}
+
+// openChanges shows the changes of the file of the tab shown, or, from
+// the tab of the changes, the file at its chosen row.
 func (a *app) openChanges() {
 	t := a.activeTab()
 	switch {
-	case t == nil || t.path() == "":
+	case t == nil:
 	case t.diff != nil:
-		a.openFileAt(t.diff.path, a.diffTopLine(t.diff), true)
+		a.openDiffFile(t.diff)
+	case t.path() == "":
 	default:
-		a.openDiff(t.path(), diffHead, true)
+		a.showChanges(diffTarget{path: t.path(), any: true}, true)
 	}
 }
 
-// showingDiff returns the place of the tab of the column that shows the
-// changes of path against base, -1 when none does.
-func (col *column) showingDiff(path string, base diffBase) int {
-	for i, t := range col.tabs {
-		if t.diff != nil && t.diff.path == path && t.diff.base == base {
-			return i
-		}
+// openDiffFile opens the file of a diff's chosen row, or of the row at the
+// top of its view, at its line.
+func (a *app) openDiffFile(v *diffView) {
+	if path, line := v.lineAt(v.focusRow()); path != "" {
+		a.openFileAt(path, line, true)
 	}
-	return -1
 }
 
-// diffDoc returns the open document of the file a diff shows, whose text
-// is the work tree's side, nil when it is not open or the diff compares
-// the index.
-func (a *app) diffDoc(v *diffView) *document {
-	if v.base == diffStaged {
+// showingDiff returns the place of the tab of the changes in a column, -1
+// when it has none.
+func (col *column) showingDiff() int {
+	return slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.diff != nil })
+}
+
+// diffDoc returns the open document of a file of a diff, whose text is
+// the work tree's side, nil when it is not open or the file's changes
+// are those staged.
+func (a *app) diffDoc(f *diffFile) *document {
+	if f.base == diffStaged {
 		return nil
 	}
-	if i := a.docIndex(v.path); i >= 0 {
+	if i := a.docIndex(f.path); i >= 0 {
 		return a.docs[i]
 	}
 	return nil
 }
 
-// refreshDiff compares the sides of a diff again in the background when
-// one may have changed.
-func (a *app) refreshDiff(v *diffView) {
-	r := a.git.repo
-	if v.running || v.waiting {
+// listDiffFiles has a diff show the files the status lists now, staged
+// and not, keeping what it read of those it had.
+func (a *app) listDiffFiles(v *diffView) {
+	st := a.git.status
+	if st == v.status {
 		return
 	}
-	if r == nil {
-		if a.git.looked && !v.loaded {
-			v.loaded, v.err = true, "The file is not in a Git repository."
+	v.status = st
+	groups := a.groupEntries()
+	type listed struct {
+		e     git.Entry
+		group scmGroup
+	}
+	var es []listed
+	for _, e := range groups[groupStaged] {
+		es = append(es, listed{e, groupStaged})
+	}
+	var rest []listed
+	for _, g := range []scmGroup{groupChanges, groupUntracked} {
+		for _, e := range groups[g] {
+			rest = append(rest, listed{e, g})
 		}
-		return
 	}
-	doc := a.diffDoc(v)
+	slices.SortFunc(rest, func(x, y listed) int { return strings.Compare(x.e.Path, y.e.Path) })
+	es = append(es, rest...)
+	old := v.files
+	v.files = make([]*diffFile, 0, len(es))
+	for _, l := range es {
+		// The files' changes on disk show as they come.
+		if a.tree != nil {
+			a.tree.Watch(l.e.Path)
+		}
+		staged := l.group == groupStaged
+		i := slices.IndexFunc(old, func(f *diffFile) bool {
+			return f != nil && f.path == l.e.Path && (f.group == groupStaged) == staged
+		})
+		if i < 0 {
+			v.files = append(v.files, newDiffFile(l.e, l.group))
+			continue
+		}
+		f := old[i]
+		old[i] = nil
+		f.group = l.group
+		f.setEntry(l.e)
+		v.files = append(v.files, f)
+	}
+	for _, f := range old {
+		if f != nil {
+			f.stop()
+		}
+	}
+	v.changed()
+}
+
+// refreshDiff compares the sides of the files of a diff near its view
+// again in the background, where one may have changed: the others wait
+// until they come near it.
+func (a *app) refreshDiff(v *diffView) {
+	a.listDiffFiles(v)
+	reading := 0
+	for _, f := range v.files {
+		if f.running {
+			reading++
+		}
+	}
+	lo, hi := max(v.near[0], 0), min(v.near[1], len(v.files))
+	order := make([]*diffFile, 0, hi-lo+1)
+	if t := v.reveal; t != nil {
+		for _, f := range v.files {
+			if t.matches(f) {
+				order = append(order, f)
+				break
+			}
+		}
+	}
+	if lo < hi {
+		order = append(order, v.files[lo:hi]...)
+	}
+	for _, f := range order {
+		if reading >= diffReads {
+			break
+		}
+		if a.refreshDiffFile(v, f) {
+			reading++
+		}
+	}
+}
+
+// refreshDiffFile compares the sides of a file of a diff again in the
+// background when one may have changed, and reports whether it started.
+func (a *app) refreshDiffFile(v *diffView, f *diffFile) bool {
+	r := a.git.repo
+	if f.running || f.waiting || r == nil {
+		return false
+	}
+	doc := a.diffDoc(f)
 	var snap ui.TextSnapshot
 	edited := false
 	if doc != nil {
 		snap = doc.buf.Snapshot()
-		edited = snap.Version() != v.docVersion
+		edited = snap.Version() != f.docVersion
 	}
-	if v.loaded && !v.gitStale && !edited && !(v.diskStale && doc == nil) {
-		return
+	if f.loaded && !f.gitStale && !edited && !(f.diskStale && doc == nil) {
+		return false
 	}
-	if wait := diffViewPause - time.Since(v.started); v.loaded && !v.gitStale && wait > 0 {
-		v.waiting = true
-		time.AfterFunc(wait, func() { a.post(func() { v.waiting = false }) })
-		return
+	if wait := diffViewPause - time.Since(f.started); f.loaded && !f.gitStale && wait > 0 {
+		f.waiting = true
+		time.AfterFunc(wait, func() { a.post(func() { f.waiting = false }) })
+		return false
 	}
-	v.running, v.started = true, time.Now()
-	readGit, readDisk := v.gitStale || !v.loaded, doc == nil && (v.diskStale || !v.loaded)
-	v.gitStale, v.diskStale = false, false
+	f.running, f.started = true, time.Now()
+	readGit, readDisk := f.gitStale || !f.loaded, doc == nil && (f.diskStale || !f.loaded)
+	f.gitStale, f.diskStale = false, false
 	if doc != nil {
-		v.docVersion = snap.Version()
+		f.docVersion = snap.Version()
 	}
-	old, new := v.old, v.new
-	path, base := v.path, v.base
-	opening := !v.loaded
+	old, new := f.old, f.new
+	path, base := f.path, f.base
 	go func() {
 		var err error
 		read := func(rev string) (string, bool) {
@@ -283,49 +513,53 @@ func (a *app) refreshDiff(v *diffView) {
 		if !binary {
 			hunks = linediff.Hunks(oldLines, newLines)
 		}
-		unified, uh, pairs, ph := diffRows(oldLines, newLines, hunks)
+		unified, pairs := lineRows(oldLines, newLines, hunks)
 		widest := 0
 		for _, ls := range [][]string{oldLines, newLines} {
 			for _, l := range ls {
 				if len(l) > widest {
-					widest = max(widest, columns(l[:min(len(l), maxDiffLine)]))
+					widest = max(widest, columns(clipLine(l)))
 				}
 			}
 		}
 		a.post(func() {
-			v.running = false
+			f.running = false
 			if err != nil {
-				v.err = err.Error()
+				f.err = err.Error()
 			} else {
-				v.err = ""
+				f.err = ""
 			}
-			v.loaded, v.binary, v.hunks, v.widest = true, binary, hunks, widest
-			v.unified, v.unifiedHunks, v.pairs, v.pairsHunks = unified, uh, pairs, ph
-			v.words = nil
-			a.setDiffSide(v, &v.old, old, oldLines)
-			a.setDiffSide(v, &v.new, new, newLines)
-			if v.current >= len(hunks) {
-				v.current = -1
+			first := !f.loaded
+			f.loaded, f.binary, f.hunks, f.widest = true, binary, hunks, widest
+			f.unified, f.pairs = unified, pairs
+			f.words = nil
+			setDiffSide(&f.old, old, oldLines)
+			setDiffSide(&f.new, new, newLines)
+			if add, del := f.counts(); first && add+del > foldedLines {
+				f.folded = true
 			}
-			// A diff just opened shows its first change, unless it is in
-			// view already.
-			if opening && len(hunks) > 0 {
-				v.stepHunk(1)
-			}
+			v.changed()
 		})
 	}()
+	return true
 }
 
 // setDiffSide takes a side's new text, to highlight.
-func (a *app) setDiffSide(v *diffView, s *diffSide, read diffSide, lines []string) {
+func setDiffSide(s *diffSide, read diffSide, lines []string) {
 	s.ok = read.ok
 	if s.src != nil && s.text == read.text {
 		return
 	}
-	s.text, s.lines, s.src = read.text, lines, newLineSource(lines)
+	s.text, s.lines, s.src, s.win = read.text, lines, newLineSource(lines), nil
+}
+
+// highlighter returns the highlighter of a side of a file of a diff,
+// made as its lines first show.
+func (a *app) highlighter(f *diffFile, s *diffSide) *highlight.Highlighter {
 	if s.hl == nil {
-		s.hl = highlight.New(highlight.Lexer(v.path), a.invalidate)
+		s.hl = highlight.New(highlight.Lexer(f.path), a.invalidate)
 	}
+	return s.hl
 }
 
 // splitLines returns the lines of a version of a file, without the empty
@@ -337,362 +571,693 @@ func splitLines(text string, ok bool) []string {
 	return strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 }
 
-// diffRows lays out the lines of two sides and the hunks between them:
-// in one column, the lines of each hunk removed before those added, and
-// side by side, the lines of a hunk across from each other. It returns
-// each layout's rows and their first rows of each hunk.
-func diffRows(old, new []string, hunks []linediff.Hunk) (unified []diffRow, uh []int, pairs []diffRow, ph []int) {
-	unified = make([]diffRow, 0, max(len(old), len(new)))
-	pairs = make([]diffRow, 0, max(len(old), len(new)))
-	i, j := 0, 0
-	same := func(to int) {
-		for ; i < to; i, j = i+1, j+1 {
-			r := diffRow{i, j, -1, -1}
-			unified, pairs = append(unified, r), append(pairs, r)
-		}
-	}
-	for k, h := range hunks {
-		same(h.A)
-		uh, ph = append(uh, len(unified)), append(ph, len(pairs))
-		m := min(h.ALen, h.BLen)
-		for n := range h.ALen {
-			peer := -1
-			if n < m {
-				peer = h.B + n
-			}
-			unified = append(unified, diffRow{h.A + n, -1, k, peer})
-		}
-		for n := range h.BLen {
-			peer := -1
-			if n < m {
-				peer = h.A + n
-			}
-			unified = append(unified, diffRow{-1, h.B + n, k, peer})
-		}
-		for n := range max(h.ALen, h.BLen) {
-			r := diffRow{-1, -1, k, -1}
-			if n < h.ALen {
-				r.old = h.A + n
-			}
-			if n < h.BLen {
-				r.new = h.B + n
-			}
-			pairs = append(pairs, r)
-		}
-		i, j = h.A+h.ALen, h.B+h.BLen
-	}
-	same(len(old))
-	return unified, uh, pairs, ph
-}
-
 // maxDiffLine is how much of a line a diff shows, in bytes: the rest of
 // a longer one, as of a minified file, is cut.
 const maxDiffLine = 2000
 
-// diffGutter is the room of the line numbers of n lines in a diff.
-func (a *app) diffGutter(n int) float32 {
-	return float32(max(len(strconv.Itoa(n)), 3))*a.font.charW + 16
-}
-
-// diffLayout is where a diff's columns are, for its width.
-type diffLayout struct {
-	numW  float32 // the width of a column of line numbers
-	textX float32 // where the text starts, from the side's left
-	half  float32 // the width of a side, side by side
-	viewW float32
-}
-
-func (a *app) diffLayout(v *diffView, viewW float32) diffLayout {
-	numW := a.diffGutter(max(len(v.old.lines), len(v.new.lines)))
-	l := diffLayout{numW: numW, viewW: viewW}
-	if v.split {
-		l.half = float32(int(viewW / 2))
-		l.textX = numW + 22
-	} else {
-		l.textX = 2*numW + 22
+// wrapsDiff reports whether a diff wraps its lines: as its tab chose, or
+// else as the settings say.
+func (a *app) wrapsDiff(v *diffView) bool {
+	if v.wrap != nil && v.wrapGen == a.settings.WrapGen {
+		return *v.wrap
 	}
-	return l
+	return a.settings.WordWrap
 }
 
-// diffViewUI shows a diff: its rows painted in a pane that scrolls both
-// ways, keeping the line numbers in place.
-func (a *app) diffViewUI(c *ui.Context, v *diffView) {
-	p, f := a.pal, a.font
-	a.refreshDiff(v)
-	if !v.loaded {
-		ui.Box(c).Fill().Background(p.editor)
+// splitWidth is how many columns each side of a diff needs, at least, for
+// the auto layout to show them side by side.
+const splitWidth = 80
+
+// splits reports whether a diff shows its sides side by side, at a width.
+func (a *app) splits(v *diffView, viewW float32) bool {
+	switch v.layout {
+	case layoutSplit:
+		return true
+	case layoutInline:
+		return false
+	}
+	l := a.diffGeometry(v, true, viewW)
+	return float32(int(viewW/2))-l.textX >= splitWidth*a.font.charW
+}
+
+// layoutRows lays out the rows of a diff again when what they show, or
+// how, changed, keeping the row at the top of the view where it was, or
+// scrolling to the file to reveal once it is listed.
+func (a *app) layoutRows(v *diffView, l diffGeometry) {
+	b := diffBuild{gen: v.gen, split: v.split, wrap: a.wrapsDiff(v), full: v.full, font: a.font}
+	if b.wrap {
+		b.cols = l.cols
+	}
+	if b == v.built && v.tops != nil {
 		return
 	}
-	if v.binary || v.err != "" || !v.old.ok && !v.new.ok {
-		msg := "The file is binary."
+	lineH := a.font.lineH
+	anchor, offset := diffAnchor{}, float32(0)
+	// The row chosen holds its place while in view, or else the top row.
+	top := v.focusRowAt(v.topRow(lineH))
+	if c := v.cursor; c >= 0 && c < len(v.rows) && v.tops != nil {
+		if y := editorPadY + float32(v.tops[c])*lineH - v.scroll.Y; y >= 0 && y < v.viewH {
+			top = c
+		}
+	}
+	if v.jump < 0 && top >= 0 && v.tops != nil {
+		anchor = v.anchorOf(top)
+		offset = editorPadY + float32(v.tops[top])*lineH - v.scroll.Y
+	}
+	chosen := diffAnchor{}
+	if v.cursor >= 0 && v.cursor < len(v.rows) && v.tops != nil {
+		chosen = v.anchorOf(v.cursor)
+	}
+	// The file to reveal shows its lines.
+	var target *diffFile
+	t := v.reveal
+	if t != nil && v.status != nil {
+		v.reveal = nil
+		if t.path != "" {
+			for _, f := range v.files {
+				if t.matches(f) && (target == nil || f.base == diffIndex) {
+					target = f
+				}
+			}
+			if target == nil {
+				a.fail("%s has no changes.", filepath.Base(t.path))
+			} else {
+				target.folded = false
+			}
+		}
+	}
+	v.built = b
+	v.rows, v.starts, v.heads = v.rows[:0], v.starts[:0], v.heads[:0]
+	plain := func(kind rowKind, file int, label string) {
+		v.rows = append(v.rows, diffRow{kind: kind, file: file, old: -1, new: -1, hunk: -1, peer: -1, gap: -1, h: 1, label: label})
+	}
+	reveal := -1
+	for i, f := range v.files {
+		if i == 0 || f.base != v.files[i-1].base {
+			if i > 0 {
+				plain(rowSpace, i, "")
+			}
+			if t != nil && t.path == "" && t.base == f.base {
+				reveal = len(v.rows)
+			}
+			plain(rowSection, i, "")
+		} else {
+			plain(rowSpace, i, "")
+		}
+		if f == target {
+			reveal = len(v.rows)
+		}
+		v.heads = append(v.heads, len(v.rows))
+		plain(rowFile, i, "")
+		if f.folded {
+			continue
+		}
+		note := ""
 		switch {
-		case v.err != "":
-			msg = v.err
-		case !v.binary:
-			msg = "Neither version has the file."
+		case !f.loaded:
+			note = "Loading…"
+		case f.err != "":
+			note = f.err
+		case f.binary:
+			note = "The file is binary."
+		case !f.old.ok && !f.new.ok:
+			note = "Neither version has the file."
+		case len(f.hunks) == 0:
+			note = "No changes in the text."
 		}
-		ui.Column(c).Fill().Background(p.editor).Center().Children(func() {
-			ui.Text(c, msg).FontSize(13).TextColor(p.muted)
-		})
+		if note != "" {
+			plain(rowNote, i, note)
+			continue
+		}
+		all := f.unified
+		if v.split {
+			all = f.pairs
+		}
+		v.rows = foldRows(v.rows, f, i, all, v.full)
+	}
+	for i := range v.rows {
+		r := &v.rows[i]
+		if r.changed() && (i == 0 || v.rows[i-1].hunk != r.hunk || v.rows[i-1].file != r.file || !v.rows[i-1].changed()) {
+			v.starts = append(v.starts, i)
+		}
+		r.h = 1
+		if b.wrap && r.kind == rowLine {
+			f := v.files[r.file]
+			if v.split {
+				if r.old >= 0 {
+					r.h = wrapCount(f.old.lines[r.old], l.cols[0])
+				}
+				if r.new >= 0 {
+					r.h = max(r.h, wrapCount(f.new.lines[r.new], l.cols[1]))
+				}
+			} else if n, newSide := r.line(); n >= 0 {
+				r.h = wrapCount(f.side(newSide).lines[n], l.cols[0])
+			}
+		}
+	}
+	v.tops = slices.Grow(v.tops[:0], len(v.rows)+1)
+	at := 0
+	for _, r := range v.rows {
+		v.tops = append(v.tops, at)
+		at += r.h
+	}
+	v.tops = append(v.tops, at)
+	v.current = min(v.current, len(v.starts)-1)
+	v.cursor = min(v.cursor, len(v.rows)-1)
+	// The row chosen stays chosen, or the header of its file, when it is
+	// folded away.
+	if chosen.file != nil {
+		v.cursor = -1
+		for i := range v.rows {
+			if a := v.anchorOf(i); a == chosen || v.cursor < 0 && a.file == chosen.file && a.kind == rowFile {
+				v.cursor = i
+				if a == chosen {
+					break
+				}
+			}
+		}
+	}
+	switch {
+	case reveal >= 0:
+		v.cursor = reveal
+		v.jumpRow(reveal, jumpTop)
+	case anchor.file != nil:
+		for i := range v.rows {
+			if v.anchorOf(i) == anchor {
+				v.scroll.Y = max(0, editorPadY+float32(v.tops[i])*lineH-offset)
+				break
+			}
+		}
+	}
+}
+
+// diffAnchor is a row of a diff as it stays from one layout to the next:
+// its kind, its file, and its line, negative for one of the old side only.
+type diffAnchor struct {
+	kind rowKind
+	file *diffFile
+	line int
+}
+
+func (v *diffView) anchorOf(i int) diffAnchor {
+	r := v.rows[i]
+	line := r.new
+	switch {
+	case r.kind == rowGap:
+		line = r.gap
+	case r.kind == rowLine && r.new < 0:
+		line = -1 - r.old
+	case r.kind != rowLine:
+		line = 0
+	}
+	return diffAnchor{r.kind, v.files[r.file], line}
+}
+
+// focusRowAt returns row i, past the rooms between files, -1 for none.
+func (v *diffView) focusRowAt(i int) int {
+	if i < 0 || i >= len(v.rows) {
+		return -1
+	}
+	for i+1 < len(v.rows) && (v.rows[i].kind == rowSpace || v.rows[i].kind == rowSection) {
+		i++
+	}
+	return i
+}
+
+// line returns the line a row of the unified layout shows, and whether it
+// is of the new side.
+func (r *diffRow) line() (int, bool) {
+	if r.new >= 0 {
+		return r.new, true
+	}
+	return r.old, false
+}
+
+// rowAt returns the row at y, in the diff's content.
+func (v *diffView) rowAt(y float32, lineH float32) int {
+	if len(v.rows) == 0 {
+		return -1
+	}
+	line := int((y - editorPadY) / lineH)
+	i, _ := slices.BinarySearch(v.tops, line+1)
+	return min(max(i-1, 0), len(v.rows)-1)
+}
+
+// topRow returns the row at the top of a diff's view.
+func (v *diffView) topRow(lineH float32) int {
+	return v.rowAt(v.scroll.Y+lineH/2, lineH)
+}
+
+// focusRow returns the row chosen, or the one at the top of the view.
+func (v *diffView) focusRow() int {
+	if v.cursor >= 0 && v.cursor < len(v.rows) {
+		return v.cursor
+	}
+	if v.tops == nil || len(v.rows) == 0 {
+		return -1
+	}
+	return min(len(v.rows)-1, max(0, v.topRow(v.lineH())))
+}
+
+// lineH is the height of a line of the diff, as it last laid out.
+func (v *diffView) lineH() float32 {
+	if v.built.font.lineH > 0 {
+		return v.built.font.lineH
+	}
+	return 20
+}
+
+// lineAt returns the file of row i and its line of the new side, or the
+// one after the nearest above it, for a row of the old side's lines only.
+func (v *diffView) lineAt(i int) (string, int) {
+	if i < 0 || i >= len(v.rows) {
+		return "", 0
+	}
+	file := v.rows[i].file
+	path := v.files[file].path
+	for k := i; k >= 0 && v.rows[k].file == file; k-- {
+		if n := v.rows[k].new; n >= 0 {
+			if k < i {
+				return path, n + 1
+			}
+			return path, n
+		}
+	}
+	return path, 0
+}
+
+// stepHunk goes to the next hunk of a diff, or the previous one for a
+// step of -1, round the ends.
+func (v *diffView) stepHunk(step int) {
+	if len(v.starts) == 0 {
 		return
 	}
-	rows, starts := v.rows()
-	lineH, charW := f.lineH, f.charW
-	view := v.pane.Bounds(c)
-	v.viewW = view.W
-	l := a.diffLayout(v, view.W)
-	textW := float32(v.widest)*charW + textPadR
-	contentW := max(view.W, l.textX+textW)
+	if v.current < 0 && step < 0 {
+		v.current = 0
+	}
+	v.current = ((v.current+step)%len(v.starts) + len(v.starts)) % len(v.starts)
+	if v.cursor >= 0 {
+		v.cursor = v.starts[v.current]
+	}
+	v.jumpRow(v.starts[v.current], jumpThird)
+}
+
+// stepFile goes to the header of the next file of a diff of every file,
+// or the previous one for a step of -1.
+func (v *diffView) stepFile(step int) {
+	if len(v.heads) == 0 {
+		return
+	}
+	at := v.focusRowAt(v.focusRow())
+	k := -1
+	if step > 0 {
+		for i, h := range v.heads {
+			if h > at {
+				k = i
+				break
+			}
+		}
+	} else {
+		for i := len(v.heads) - 1; i >= 0; i-- {
+			if v.heads[i] < at {
+				k = i
+				break
+			}
+		}
+	}
+	if k < 0 {
+		return
+	}
+	v.cursor = v.heads[k]
+	v.jumpRow(v.cursor, jumpTop)
+}
+
+// jumpRow scrolls to a row in the next frame.
+func (v *diffView) jumpRow(i int, place jumpPlace) {
+	v.jump, v.jumpTo = i, place
+}
+
+// moveCursor moves the chosen row by step rows, past the room between
+// files, from the row at the top of the view when none is chosen.
+func (v *diffView) moveCursor(step int) {
+	if len(v.rows) == 0 {
+		return
+	}
+	i := v.cursor
+	if i < 0 || i >= len(v.rows) {
+		i = v.focusRow()
+		if k := v.rows[i].kind; k != rowSpace && k != rowSection {
+			step = 0
+		}
+	}
+	i = min(max(i+step, 0), len(v.rows)-1)
+	for v.rows[i].kind == rowSpace || v.rows[i].kind == rowSection {
+		next := i + step
+		if step == 0 {
+			next = i + 1
+		}
+		if next < 0 || next >= len(v.rows) {
+			break
+		}
+		i = next
+	}
+	v.setCursor(i)
+	v.jumpRow(i, jumpReveal)
+}
+
+// setCursor chooses a row, and its hunk as the current one.
+func (v *diffView) setCursor(i int) {
+	v.cursor = i
+	if i < 0 || i >= len(v.rows) || !v.rows[i].changed() {
+		return
+	}
+	r := v.rows[i]
+	for k, s := range v.starts {
+		if v.rows[s].file == r.file && v.rows[s].hunk == r.hunk {
+			v.current = k
+		}
+	}
+}
+
+// inCurrent reports whether a row is a line of the hunk gone to last.
+func (v *diffView) inCurrent(r *diffRow) bool {
+	if v.current < 0 || v.current >= len(v.starts) || !r.changed() {
+		return false
+	}
+	s := &v.rows[v.starts[v.current]]
+	return s.file == r.file && s.hunk == r.hunk
+}
+
+// activateRow does what a click on a row, or Enter, does: opens a gap,
+// folds or unfolds a file, or, with open set, opens the file at a line.
+func (a *app) activateRow(v *diffView, i int, open bool) {
+	if i < 0 || i >= len(v.rows) {
+		return
+	}
+	r := v.rows[i]
+	f := v.files[r.file]
+	switch r.kind {
+	case rowGap:
+		a.toggleGap(v, i)
+	case rowFile:
+		f.folded = !f.folded
+		v.changed()
+	case rowLine, rowHunk:
+		if open {
+			path, line := v.lineAt(i)
+			a.openFileAt(path, line, true)
+		}
+	}
+}
+
+// toggleGap opens the gap of row i, or folds again the gap its line is in.
+func (a *app) toggleGap(v *diffView, i int) {
+	if i < 0 || i >= len(v.rows) || v.rows[i].gap < 0 {
+		return
+	}
+	r := v.rows[i]
+	f := v.files[r.file]
+	if f.open == nil {
+		f.open = map[int]bool{}
+	}
+	if r.kind == rowGap {
+		f.open[r.gap] = true
+	} else {
+		delete(f.open, r.gap)
+	}
+	v.changed()
+	// The chosen row stays where the gap was.
+	v.cursor = -1
+	a.layoutRows(v, a.diffGeometry(v, v.split, v.viewW))
+	for k, o := range v.rows {
+		if o.file == r.file && (o.gap == r.gap || o.kind == rowGap && o.gap == r.gap) {
+			v.setCursor(k)
+			break
+		}
+	}
+}
+
+// diffInput takes the keys of a diff that has the keyboard: those of a
+// pager, as Hunk has them.
+func (a *app) diffInput(v *diffView, ev ui.InputEvent) bool {
+	if ev.Kind != ui.InputKeyDown || ev.Mods&^ui.Shift != 0 {
+		return false
+	}
+	shift := ev.Mods&ui.Shift != 0
+	page := max(v.viewH-a.font.lineH, a.font.lineH)
+	switch ev.Key {
+	case ui.KeyJ, ui.KeyDown:
+		v.moveCursor(1)
+	case ui.KeyK, ui.KeyUp:
+		v.moveCursor(-1)
+	case ui.KeySpace:
+		if shift {
+			a.pageDiff(v, -page)
+		} else {
+			a.pageDiff(v, page)
+		}
+	case ui.KeyF, ui.KeyPageDown:
+		a.pageDiff(v, page)
+	case ui.KeyB, ui.KeyPageUp:
+		a.pageDiff(v, -page)
+	case ui.KeyD:
+		a.pageDiff(v, page/2)
+	case ui.KeyU:
+		a.pageDiff(v, -page/2)
+	case ui.KeyG:
+		if shift {
+			a.pageDiff(v, 1e9)
+		} else {
+			a.pageDiff(v, -1e9)
+		}
+	case ui.KeyHome:
+		a.pageDiff(v, -1e9)
+	case ui.KeyEnd:
+		a.pageDiff(v, 1e9)
+	case ui.KeyBracketRight:
+		v.stepHunk(1)
+	case ui.KeyBracketLeft:
+		v.stepHunk(-1)
+	case ui.KeyPeriod:
+		v.stepFile(1)
+	case ui.KeyComma:
+		v.stepFile(-1)
+	case ui.KeyZ:
+		a.toggleGap(v, v.focusRow())
+	case ui.KeyEnter:
+		a.activateRow(v, v.focusRow(), true)
+	case ui.KeyE:
+		a.openDiffFile(v)
+	default:
+		return false
+	}
+	return true
+}
+
+// pageDiff scrolls a diff by dy, and keeps the chosen row in view.
+func (a *app) pageDiff(v *diffView, dy float32) {
+	lineH := a.font.lineH
+	contentH := 2*editorPadY + float32(v.tops[len(v.tops)-1])*lineH
+	v.scroll.Y = clamp(v.scroll.Y+dy, 0, max(0, contentH-v.viewH))
+	if v.cursor < 0 {
+		return
+	}
+	first := v.rowAt(v.scroll.Y+lineH/2, lineH)
+	last := v.rowAt(v.scroll.Y+v.viewH-lineH/2, lineH)
+	switch {
+	case v.cursor < first:
+		v.setCursor(first)
+	case v.cursor > last:
+		v.setCursor(last)
+	}
+}
+
+// openFileAt shows a file with the caret at the start of a line.
+func (a *app) openFileAt(path string, line int, focus bool) {
+	a.openFile(path, focus)
+	if d := a.activeEditor(); d != nil && d.path == path {
+		snap := d.buf.Snapshot()
+		line = min(max(line, 0), snap.LineCount()-1)
+		s, _ := snap.LineRange(line)
+		d.selectRange(s, s, true)
+	}
+}
+
+// diffStatus is what the status bar says of a diff: how many lines it
+// adds and removes, and in how many hunks and files, once every file is
+// read.
+func (v *diffView) diffStatus() string {
+	hunks, add, del, files := 0, 0, 0, 0
+	all := true
+	for _, f := range v.files {
+		if !f.loaded {
+			all = false
+			continue
+		}
+		ad, de := f.counts()
+		hunks, add, del = hunks+len(f.hunks), add+ad, del+de
+	}
+	// A file both staged and changed since counts once.
+	paths := map[string]bool{}
+	for _, f := range v.files {
+		paths[f.path] = true
+	}
+	files = len(paths)
+	switch {
+	case files == 0:
+		return ""
+	case !all:
+		return plural(files, "file")
+	case hunks == 0:
+		return plural(files, "file") + " · no changes in the text"
+	}
+	return fmt.Sprintf("%s · %s · +%d −%d", plural(files, "file"), plural(hunks, "change"), add, del)
+}
+
+// diffButtons are the buttons at the end of a diff's breadcrumbs: going
+// from hunk to hunk, folding, wrapping, the layout, and opening the file.
+func (a *app) diffButtons(c *ui.Context, t *colTab) {
+	p := a.pal
+	v := t.diff
+	button := func(icon *ui.SVG, label string, on bool) ui.Element {
+		b := ui.ButtonBase(c.Key(label)).Height(crumbsH-4).Padding(0, 6).Radius(4).Shrink(0).
+			AlignItems(ui.Center).Label(label).Tooltip(label)
+		switch {
+		case on:
+			b.Background(p.active)
+		case b.Hovered():
+			b.Background(p.hover)
+		}
+		b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(p.muted) })
+		return b
+	}
+	act := func(icon *ui.SVG, label string, fn func()) {
+		if button(icon, label, false).Clicked() {
+			a.post(fn)
+		}
+	}
+	act(iconArrowUp, "Previous Change ([)", func() { v.stepHunk(-1) })
+	act(iconArrowDown, "Next Change (])", func() { v.stepHunk(1) })
+	if button(iconUnfold, "Show Full Files", v.full).Clicked() {
+		a.post(func() { a.setDiffFull(v, !v.full) })
+	}
+	if button(iconWrap, "Toggle Word Wrap (⌥Z)", a.wrapsDiff(v)).Clicked() {
+		a.post(func() { a.toggleDiffWrap(v) })
+	}
+	icon := iconRows
 	if v.split {
-		contentW = view.W + max(0, textW-(l.half-l.textX))
+		icon = iconColumns
 	}
-	contentH := 2*editorPadY + float32(len(rows))*lineH
-	if j := v.jump; j >= 0 && view.H > 0 {
-		v.jump = -1
-		y := editorPadY + float32(j)*lineH
-		if y < v.scroll.Y || y+lineH > v.scroll.Y+view.H {
-			v.scroll.Y = clamp(y-view.H/3, 0, max(0, contentH-view.H))
+	b := button(icon, "Layout", false)
+	b.Menu(func(m *ui.Menu) {
+		for _, l := range []struct {
+			layout diffLayout
+			label  string
+		}{{layoutAuto, "Side by Side When Wide"}, {layoutSplit, "Side by Side"}, {layoutInline, "Inline"}} {
+			if m.Item(l.label).Checked(v.layout == l.layout).Chosen() {
+				a.post(func() { a.setDiffLayout(v, l.layout) })
+			}
 		}
+	})
+	act(iconOpenFile, "Open File (E)", func() { a.openDiffFile(v) })
+}
+
+// setDiffLayout shows a diff side by side, inline, or as wide as it is,
+// as the next diffs opened will be.
+func (a *app) setDiffLayout(v *diffView, l diffLayout) {
+	if v.layout == l {
+		return
 	}
-	// The rows in view, and the lines of each side they show, to
-	// highlight.
-	first := max(0, int((v.scroll.Y-editorPadY)/lineH))
-	last := min(len(rows)-1, first+int(view.H/lineH)+1)
-	for k, s := range []*diffSide{&v.old, &v.new} {
-		lo, hi := -1, -1
-		for i := first; i <= last && i < len(rows); i++ {
-			n := rows[i].old
-			if k == 1 {
-				n = rows[i].new
-			}
-			if n >= 0 {
-				if lo < 0 {
-					lo = n
-				}
-				hi = n
-			}
-		}
-		if lo >= 0 && s.src != nil && s.hl != nil {
-			s.hl.Request(s.src, lo, hi)
-		}
-	}
-	ui.ScrollBoth(c.Key("diff")).TrackScroll(&v.scroll).Bind(&v.pane).Fill().Background(p.editor).
-		Focusable().FocusRing(false).Label("Changes " + v.name()).Children(func() {
-		box := ui.Box(c).Width(contentW).Height(contentH)
-		if box.DoubleClicked() {
-			if _, y, ok := box.PointerPosition(); ok {
-				if i := int((y - editorPadY) / lineH); i >= 0 && i < len(rows) {
-					a.openFileAt(v.path, newLineNear(rows, i), true)
-				}
-			}
-		}
-		box.Draw(func(pt *ui.Painter, r ui.Rect) {
-			vx, vy := r.X+v.scroll.X, r.Y+v.scroll.Y // the view's corner
-			_, numH := pt.MeasureText(0, ui.Span{Text: "0", Font: f.family, Size: f.size})
-			number := func(n int, right, y float32, col ui.Color) {
-				label := strconv.Itoa(n + 1)
-				pt.RichText(right-float32(len(label))*charW, y+(lineH-numH)/2, 0,
-					ui.Span{Text: label, Font: f.family, Size: f.size, Color: col})
-			}
-			for i := first; i <= last; i++ {
-				row := rows[i]
-				y := r.Y + editorPadY + float32(i)*lineH
-				if v.split {
-					for side := range 2 {
-						x0 := vx + float32(side)*l.half
-						w := l.half
-						if side == 1 {
-							w = view.W - l.half
-						}
-						n, tint := row.old, p.removed
-						if side == 1 {
-							n, tint = row.new, p.added
-						}
-						pt.Clip(ui.Rect{X: x0, Y: vy, W: w, H: view.H}, 0, func() {
-							switch {
-							case n < 0:
-								a.paintFiller(pt, ui.Rect{X: x0, Y: y, W: w, H: lineH})
-								return
-							case row.hunk >= 0:
-								pt.Fill(ui.Rect{X: x0, Y: y, W: w, H: lineH}, tint.Alpha(0.13), 0)
-							}
-							peer := -1
-							if row.hunk >= 0 && row.old >= 0 && row.new >= 0 {
-								peer = row.new
-								if side == 1 {
-									peer = row.old
-								}
-							}
-							pt.Clip(ui.Rect{X: x0 + l.textX - 4, Y: vy, W: w - l.textX + 4, H: view.H}, 0, func() {
-								a.paintDiffLine(pt, v, side == 1, n, peer, r.X+float32(side)*l.half+l.textX, y, tint)
-							})
-							number(n, x0+l.numW, y, p.gutter)
-							if row.hunk >= 0 {
-								mark := "-"
-								if side == 1 {
-									mark = "+"
-								}
-								pt.RichText(x0+l.numW+8, y+(lineH-numH)/2, 0, ui.Span{Text: mark, Font: f.family, Size: f.size, Color: tint})
-							}
-						})
-					}
-					continue
-				}
-				tint := p.added
-				if row.new < 0 {
-					tint = p.removed
-				}
-				if row.hunk >= 0 {
-					pt.Fill(ui.Rect{X: r.X, Y: y, W: max(r.W, view.W), H: lineH}, tint.Alpha(0.13), 0)
-				}
-				n := row.new
-				if n < 0 {
-					n = row.old
-				}
-				pt.Clip(ui.Rect{X: vx + l.textX - 4, Y: vy, W: view.W - l.textX + 4, H: view.H}, 0, func() {
-					a.paintDiffLine(pt, v, row.new >= 0, n, row.peer, r.X+l.textX, y, tint)
-				})
-				// The gutter, which stays as the text scrolls sideways.
-				gut := ui.Rect{X: vx, Y: y, W: l.textX - 4, H: lineH}
-				pt.Fill(gut, p.editor, 0)
-				if row.hunk >= 0 {
-					pt.Fill(gut, tint.Alpha(0.13), 0)
-				}
-				if row.old >= 0 {
-					number(row.old, vx+l.numW, y, p.gutter)
-				}
-				if row.new >= 0 {
-					number(row.new, vx+2*l.numW, y, p.gutter)
-				}
-				if row.hunk >= 0 {
-					mark := "+"
-					if row.new < 0 {
-						mark = "-"
-					}
-					pt.RichText(vx+2*l.numW+8, y+(lineH-numH)/2, 0, ui.Span{Text: mark, Font: f.family, Size: f.size, Color: tint})
-				}
-			}
-			if v.split {
-				pt.Fill(ui.Rect{X: vx + l.half - 0.5, Y: vy, W: 1, H: view.H}, p.border, 0)
-			}
-			// Along the right edge, the hunks of the whole file.
-			if len(rows) > 1 {
-				right := vx + view.W - 10
-				for k, at := range starts {
-					h := v.hunks[k]
-					n := h.ALen + h.BLen
-					if v.split {
-						n = max(h.ALen, h.BLen)
-					}
-					y0 := vy + float32(at)/float32(len(rows))*view.H
-					hh := max(float32(n)/float32(len(rows))*view.H, 2)
-					col := p.changed
-					switch {
-					case h.ALen == 0:
-						col = p.added
-					case h.BLen == 0:
-						col = p.removed
-					}
-					pt.Fill(ui.Rect{X: right, Y: y0, W: 3, H: hh}, col, 0)
-				}
-			}
-		})
+	v.layout = l
+	a.settings.DiffLayout = l.key()
+	a.settings.Changed()
+	a.rememberTabs()
+	a.keepTopRow(v, func() { v.split = a.splits(v, v.viewW) })
+}
+
+// setDiffFull shows every unchanged line of a diff, or folds them again.
+func (a *app) setDiffFull(v *diffView, full bool) {
+	a.keepTopRow(v, func() { v.full = full })
+}
+
+// toggleDiffWrap wraps the lines of a diff, or stops, until the settings'
+// Word Wrap changes.
+func (a *app) toggleDiffWrap(v *diffView) {
+	a.keepTopRow(v, func() {
+		w := !a.wrapsDiff(v)
+		v.wrap, v.wrapGen = &w, a.settings.WrapGen
 	})
 }
 
-// paintFiller paints the room across from lines the other side has.
-func (a *app) paintFiller(pt *ui.Painter, r ui.Rect) {
-	p := a.pal
-	pt.Fill(r, p.text.Alpha(0.025), 0)
-	var stripes ui.Path
-	for x := r.X - r.H; x < r.X+r.W; x += 8 {
-		stripes.MoveTo(x, r.Y+r.H).LineTo(x+r.H, r.Y)
+// keepTopRow changes how a diff lays out its rows, keeping the line at
+// the top of its view, or the chosen one, where it was.
+func (a *app) keepTopRow(v *diffView, change func()) {
+	lineH := a.font.lineH
+	chosen := v.cursor
+	at := v.focusRowAt(v.focusRow())
+	ok := at >= 0 && v.tops != nil
+	var want diffAnchor
+	var offset float32
+	if ok {
+		want = v.anchorOf(at)
+		offset = editorPadY + float32(v.tops[at])*lineH - v.scroll.Y
 	}
-	pt.StrokePath(&stripes, 1, p.text.Alpha(0.04))
-}
-
-// paintDiffLine paints line n of a side of a diff at x, y: its words that
-// changed from the line peer of the other side, then its text in the
-// colors of its tokens.
-func (a *app) paintDiffLine(pt *ui.Painter, v *diffView, newSide bool, n, peer int, x, y float32, tint ui.Color) {
-	f, p := a.font, a.pal
-	s := &v.old
-	if newSide {
-		s = &v.new
-	}
-	if n < 0 || n >= len(s.lines) {
+	change()
+	v.changed()
+	if !ok {
 		return
 	}
-	text := s.lines[n]
-	if len(text) > maxDiffLine {
-		text = text[:maxDiffLine]
-		for len(text) > 0 && !utf8.RuneStart(text[len(text)-1]) {
-			text = text[:len(text)-1]
-		}
-	}
-	shown, at := expandTabs(text)
-	if peer >= 0 {
-		key := [2]int{n, peer}
-		if !newSide {
-			key = [2]int{peer, n}
-		}
-		ws, ok := v.words[key]
-		if !ok && key[0] < len(v.old.lines) && key[1] < len(v.new.lines) {
-			o, w := linediff.Words(v.old.lines[key[0]], v.new.lines[key[1]])
-			ws = [2][]linediff.Span{o, w}
-			if v.words == nil {
-				v.words = map[[2]int][2][]linediff.Span{}
+	a.layoutRows(v, a.diffGeometry(v, v.split, v.viewW))
+	for i := range v.rows {
+		if v.anchorOf(i) == want {
+			v.scroll.Y = max(0, editorPadY+float32(v.tops[i])*lineH-offset)
+			if chosen >= 0 {
+				v.cursor = i
 			}
-			v.words[key] = ws
+			return
 		}
-		spans := ws[0]
-		if newSide {
-			spans = ws[1]
-		}
-		for _, sp := range spans {
-			if sp.Start >= len(text) {
-				continue
+	}
+}
+
+// diffsChanged has the diffs read the sides Git keeps again.
+func (a *app) diffsChanged() {
+	for _, col := range a.cols {
+		for _, t := range col.tabs {
+			if t.diff != nil {
+				for _, f := range t.diff.files {
+					f.gitStale = true
+				}
 			}
-			x0 := f.width(shown[:at(sp.Start)])
-			x1 := f.width(shown[:at(min(sp.End, len(text)))])
-			pt.Fill(ui.Rect{X: x + x0, Y: y + 1, W: max(x1-x0, 2), H: f.lineH - 2}, tint.Alpha(0.32), 2)
 		}
 	}
-	var spans []ui.Span
-	plain := func(s string) {
-		if s != "" {
-			spans = append(spans, ui.Span{Text: s, Font: f.family, Size: f.size, Color: p.text})
-		}
-	}
-	var toks []highlight.Token
-	if s.hl != nil && len(s.lines[n]) <= highlight.MaxLineRunes {
-		toks = s.hl.Line(n, s.lines[n])
-	}
-	if len(toks) == 0 {
-		plain(shown)
-	} else {
-		// Tokens are in runes from the line's start.
-		runeAt := make([]int, 0, len(text)+1)
-		for i := range text {
-			runeAt = append(runeAt, i)
-		}
-		runeAt = append(runeAt, len(text))
-		byteOf := func(r int) int { return runeAt[min(r, len(runeAt)-1)] }
-		done := 0
-		for _, t := range toks {
-			b0, b1 := at(byteOf(t.Start)), at(byteOf(t.End))
-			if b0 < done || b1 <= b0 {
-				continue
+}
+
+// diffsOnDisk has the diffs of files changed on disk read them again.
+func (a *app) diffsOnDisk(changed []string) {
+	for _, col := range a.cols {
+		for _, t := range col.tabs {
+			if t.diff != nil {
+				for _, f := range t.diff.files {
+					if slices.Contains(changed, f.path) {
+						f.diskStale = true
+					}
+				}
 			}
-			plain(shown[done:b0])
-			spans = append(spans, ui.Span{Text: shown[b0:b1], Font: f.family, Size: f.size, Color: p.syntax[t.Kind]})
-			done = b1
 		}
-		plain(shown[done:])
 	}
-	if len(spans) > 0 {
-		_, h := pt.MeasureText(0, spans[0])
-		pt.RichText(x, y+(f.lineH-h)/2, 0, spans...)
+}
+
+// stepChange goes to the next change of the tab shown, or the previous
+// one: a diff's hunk, or the lines of an editor changed since the last
+// commit.
+func (a *app) stepChange(step int) {
+	t := a.activeTab()
+	switch {
+	case t == nil:
+	case t.diff != nil:
+		t.diff.stepHunk(step)
+	case t.ed != nil:
+		a.queueEdit(t.ed, func(d *editor) { a.stepEditorHunk(d, step) })
 	}
 }
 
@@ -723,176 +1288,4 @@ func expandTabs(s string) (string, func(b int) int) {
 	}
 	at[len(s)] = out.Len()
 	return out.String(), func(b int) int { return at[min(max(b, 0), len(s))] }
-}
-
-// newLineNear returns the line of the new side at row i, or the one after
-// the nearest above it, for a row of the old side's lines only.
-func newLineNear(rows []diffRow, i int) int {
-	for k := i; k >= 0; k-- {
-		if rows[k].new >= 0 {
-			if k < i {
-				return rows[k].new + 1
-			}
-			return rows[k].new
-		}
-	}
-	return 0
-}
-
-// diffTopLine returns the line of the new side at the top of a diff's
-// view.
-func (a *app) diffTopLine(v *diffView) int {
-	rows, _ := v.rows()
-	if len(rows) == 0 {
-		return 0
-	}
-	i := min(len(rows)-1, max(0, int((v.scroll.Y-editorPadY)/a.font.lineH)+1))
-	return newLineNear(rows, i)
-}
-
-// stepHunk goes to the next hunk of a diff, or the previous one for a
-// step of -1, round the ends.
-func (v *diffView) stepHunk(step int) {
-	_, starts := v.rows()
-	if len(starts) == 0 {
-		return
-	}
-	v.current = (v.current + step + len(starts)) % len(starts)
-	if v.current < 0 {
-		v.current += len(starts)
-	}
-	v.jump = starts[v.current]
-}
-
-// openFileAt shows a file with the caret at the start of a line.
-func (a *app) openFileAt(path string, line int, focus bool) {
-	a.openFile(path, focus)
-	if d := a.activeEditor(); d != nil && d.path == path {
-		snap := d.buf.Snapshot()
-		line = min(max(line, 0), snap.LineCount()-1)
-		s, _ := snap.LineRange(line)
-		d.selectRange(s, s, true)
-	}
-}
-
-// diffStatus is what the status bar says of a diff: how many lines it
-// adds and removes, and in how many hunks.
-func (v *diffView) diffStatus() string {
-	if !v.loaded || v.binary {
-		return ""
-	}
-	if len(v.hunks) == 0 {
-		return "No changes"
-	}
-	add, del := 0, 0
-	for _, h := range v.hunks {
-		add, del = add+h.BLen, del+h.ALen
-	}
-	return fmt.Sprintf("%s · +%d −%d", plural(len(v.hunks), "change"), add, del)
-}
-
-// diffButtons are the buttons at the end of a diff's breadcrumbs: the
-// versions compared, going from hunk to hunk, the layout, and staging.
-func (a *app) diffButtons(c *ui.Context, t *colTab) {
-	p := a.pal
-	v := t.diff
-	old, new := v.base.sides()
-	ui.Text(c, old+" ↔ "+new).FontSize(11.5).TextColor(p.faint).SingleLine().Shrink(1).Padding(0, 6, 0, 0)
-	button := func(icon *ui.SVG, label string, fn func()) {
-		b := ui.ButtonBase(c.Key(label)).Height(crumbsH-4).Padding(0, 6).Radius(4).Shrink(0).
-			AlignItems(ui.Center).Label(label).Tooltip(label)
-		if b.Hovered() {
-			b.Background(p.hover)
-		}
-		b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(p.muted) })
-		if b.Clicked() {
-			a.post(fn)
-		}
-	}
-	button(iconArrowUp, "Previous Change (⇧⌥F5)", func() { v.stepHunk(-1) })
-	button(iconArrowDown, "Next Change (⌥F5)", func() { v.stepHunk(1) })
-	if v.split {
-		button(iconRows, "Show Inline", func() { a.setDiffSplit(v, false) })
-	} else {
-		button(iconColumns, "Show Side by Side", func() { a.setDiffSplit(v, true) })
-	}
-	if a.git.repo != nil {
-		if v.base == diffStaged {
-			button(iconMinus, "Unstage File", func() { a.unstage(v.path) })
-		} else {
-			button(iconPlus, "Stage File", func() { a.stage(v.path) })
-		}
-	}
-	if v.new.ok || v.base != diffStaged {
-		button(iconOpenFile, "Open File", func() { a.openFileAt(v.path, a.diffTopLine(v), true) })
-	}
-}
-
-// setDiffSplit shows a diff side by side, or inline, as the next diffs
-// opened will be.
-func (a *app) setDiffSplit(v *diffView, split bool) {
-	if v.split == split {
-		return
-	}
-	// Keep the row at the top in view.
-	rows, _ := v.rows()
-	top := int(max(0, v.scroll.Y-editorPadY) / a.font.lineH)
-	line, old := -1, false
-	if top < len(rows) {
-		line = rows[top].new
-		if line < 0 {
-			line, old = rows[top].old, true
-		}
-	}
-	v.split = split
-	a.settings.DiffSplit = split
-	a.settings.Changed()
-	a.rememberTabs()
-	rows, _ = v.rows()
-	for i, r := range rows {
-		if !old && r.new == line || old && r.old == line {
-			v.scroll.Y = editorPadY + float32(i)*a.font.lineH
-			break
-		}
-	}
-}
-
-// diffsChanged has the diffs read the sides Git keeps again.
-func (a *app) diffsChanged() {
-	for _, col := range a.cols {
-		for _, t := range col.tabs {
-			if t.diff != nil {
-				t.diff.gitStale = true
-			}
-		}
-	}
-}
-
-// diffsOnDisk has the diffs of files changed on disk read them again.
-func (a *app) diffsOnDisk(changed []string) {
-	for _, col := range a.cols {
-		for _, t := range col.tabs {
-			if t.diff != nil {
-				for _, p := range changed {
-					if p == t.diff.path {
-						t.diff.diskStale = true
-					}
-				}
-			}
-		}
-	}
-}
-
-// stepChange goes to the next change of the tab shown, or the previous
-// one: a diff's hunk, or the lines of an editor changed since the last
-// commit.
-func (a *app) stepChange(step int) {
-	t := a.activeTab()
-	switch {
-	case t == nil:
-	case t.diff != nil:
-		t.diff.stepHunk(step)
-	case t.ed != nil:
-		a.queueEdit(t.ed, func(d *editor) { a.stepEditorHunk(d, step) })
-	}
 }

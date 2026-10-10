@@ -9,6 +9,14 @@ needs a `## <version>` section here, or its build fails.
   stage, unstage, discard and commit, with Commit & Push and Amend.
 - Diffs open in a tab, in one column or side by side, with the words that
   changed tinted, and follow the file as you type.
+- Diffs fold the unchanged lines away from the changes, head each change
+  with its `@@` line and the block it is in, wrap long lines, and go side
+  by side when there is room.
+- Every file changed shows in one **Changes** tab, staged and not, each
+  under a header that folds it, stages it or discards it. Clicking a file
+  in source control scrolls the tab to it.
+- In a diff, `j`/`k`, `]`/`[`, `.`/`,`, Space, `g`/`G` and `z` move about as
+  in a pager.
 - Click a gutter mark to see what the lines were, and revert or stage that
   change alone. ⌥F5 goes to the next change.
 - The Explorer shows each changed file's letter and color.

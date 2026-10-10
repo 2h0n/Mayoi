@@ -28,6 +28,10 @@ func (a *app) toggleWordWrap() {
 // toggleTabWrap wraps the lines of the editor shown, or stops, until
 // the settings' Word Wrap changes.
 func (a *app) toggleTabWrap() {
+	if t := a.activeTab(); t != nil && t.diff != nil {
+		a.toggleDiffWrap(t.diff)
+		return
+	}
 	d := a.activeEditor()
 	if d == nil {
 		return

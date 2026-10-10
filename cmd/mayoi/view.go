@@ -485,6 +485,9 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 			last := i == len(parts)-1
 			if last {
 				icon, col := fileIcon(p, part)
+				if t.diff != nil {
+					icon, col = iconDiff, p.changed
+				}
 				ui.Icon(c, icon).FontSize(13).TextColor(col)
 			}
 			t := ui.Text(c, part).FontSize(12).SingleLine().TextColor(p.muted).Shrink(0)

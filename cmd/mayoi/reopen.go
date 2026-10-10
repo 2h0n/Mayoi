@@ -19,15 +19,15 @@ type closedTab struct {
 	colAt   int
 	weight  float32
 	preview bool // an SVG showed as an image
-	// diff is set for the changes of the file, against base, shown side
-	// by side when split.
-	diff, split bool
-	base        diffBase
-	sel         [2]int
-	caret       int
-	x, y        float32
-	wrap        *bool
-	wrapGen     int
+	// diff is set for the tab of the changes, laid out as layout; full is
+	// set for every unchanged line shown.
+	diff, full bool
+	layout     diffLayout
+	sel        [2]int
+	caret      int
+	x, y       float32
+	wrap       *bool
+	wrapGen    int
 }
 
 // rememberClosed keeps a tab about to close, to open again. An untitled
@@ -41,14 +41,15 @@ func (a *app) rememberClosed(t *colTab) {
 	switch {
 	case t.term != nil:
 		c.termDir = t.term.dir
+	case t.diff != nil:
 	case t.path() == "":
 		return
 	default:
 		c.path = t.path()
 	}
 	if v := t.diff; v != nil {
-		c.diff, c.base, c.split = true, v.base, v.split
-		c.y = v.scroll.Y
+		c.diff, c.layout, c.full = true, v.layout, v.full
+		c.y, c.wrap, c.wrapGen = v.scroll.Y, v.wrap, v.wrapGen
 	}
 	if ed := t.ed; ed != nil {
 		c.preview = ed.preview != nil
@@ -70,25 +71,25 @@ func (a *app) reopenClosed() {
 		c := a.closed[len(a.closed)-1]
 		a.closed = a.closed[:len(a.closed)-1]
 		col, made := a.closedColumn(c)
+		if c.diff {
+			if other, i := a.changesTab(); other != nil {
+				a.dropColumn(col, made)
+				a.activate(other, i, true)
+				return
+			}
+			v := newDiffView(c.layout)
+			v.scroll.Y, v.full, v.wrap, v.wrapGen = c.y, c.full, c.wrap, c.wrapGen
+			at := min(max(c.at, 0), len(col.tabs))
+			a.addTab(col, at, &colTab{diff: v})
+			a.activate(col, at, true)
+			return
+		}
 		if c.path == "" {
 			if a.newTerminalTabAt(col, c.at, c.termDir, true) {
 				return
 			}
 			a.dropColumn(col, made)
 			continue
-		}
-		if c.diff {
-			if i := col.showingDiff(c.path, c.base); i >= 0 {
-				a.dropColumn(col, made)
-				a.activate(col, i, true)
-				return
-			}
-			v := newDiffView(c.path, c.base, c.split)
-			v.scroll.Y = c.y
-			at := min(max(c.at, 0), len(col.tabs))
-			a.addTab(col, at, &colTab{diff: v})
-			a.activate(col, at, true)
-			return
 		}
 		if _, err := os.Stat(c.path); err != nil {
 			a.dropColumn(col, made)

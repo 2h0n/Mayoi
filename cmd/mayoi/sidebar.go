@@ -176,7 +176,7 @@ func (a *app) fileTree(c *ui.Context) {
 			m.Separator()
 			if _, changed := a.git.entries[path]; changed && !isDir {
 				if m.Item("Open Changes").Chosen() {
-					action = func() { a.openDiff(path, diffHead, true) }
+					action = func() { a.showChanges(diffTarget{path: path, any: true}, true) }
 				}
 				m.Separator()
 			}

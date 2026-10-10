@@ -92,6 +92,14 @@ text area has no way to leave the blank rows that side by side needs across from
 rows in view are painted, each side has its own highlighter, and word changes are found for the rows in view. The
 cost is that both sides are read-only. Double-clicking opens the file to edit.
 
+The one diff tab holds every file the status lists, staged and not, each read and compared on its own, four at a
+time, and only those within a view's height of what shows. `diffrows.go` lays the rows out again only when what they
+show changes: a file read, a gap opened, the layout, or the width while lines wrap. As a file above the view is read
+and grows, the row chosen, or else the row at the top, keeps its place on screen. It folds the unchanged lines into gaps, keyed by the line of the new side they start at so an
+open gap stays open as the file is typed in, and puts a header before each run of changes. A row may be several lines
+tall as its line wraps, so each row's top is kept, and the row at a point is found by binary search.
+`diffpaint.go` paints the rows in view.
+
 **`blame.go`.** Once the caret rests on a line for 350 ms, `git blame --contents -` blames that line of the editor's
 text, unsaved edits included.
 

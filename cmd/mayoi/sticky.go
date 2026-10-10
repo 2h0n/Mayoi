@@ -25,12 +25,12 @@ func scopes(snap ui.TextSnapshot, line int) []int {
 	if line <= 0 || line >= snap.LineCount() {
 		return nil
 	}
-	return scopesIn(snap, line, newLineWindow(snap, line-maxScopeScan, line+maxLineScan))
+	return scopesIn(snap.LineCount(), line, newLineWindow(snap, line-maxScopeScan, line+maxLineScan))
 }
 
-// scopesIn is scopes with the lines read from w, which has those above
-// line as far as the scan goes, and a few below for a blank line.
-func scopesIn(snap ui.TextSnapshot, line int, w *lineWindow) []int {
+// scopesIn is scopes of a text of n lines, read from w, which has those
+// above line as far as the scan goes, and a few below for a blank line.
+func scopesIn(n, line int, w *lineWindow) []int {
 	indentOf := func(i int) (int, string) {
 		if !w.has(i) {
 			return -1, ""
@@ -39,7 +39,7 @@ func scopesIn(snap ui.TextSnapshot, line int, w *lineWindow) []int {
 	}
 	// A blank line is as deep as the line below it.
 	cur := -1
-	for i := line; i < min(snap.LineCount(), line+maxLineScan) && cur < 0; i++ {
+	for i := line; i < min(n, line+maxLineScan) && cur < 0; i++ {
 		cur, _ = indentOf(i)
 	}
 	if cur <= 0 {
@@ -100,7 +100,7 @@ func (d *editor) scopesOf(snap ui.TextSnapshot, line int) []int {
 	}
 	var s []int
 	if line > 0 && line < snap.LineCount() {
-		s = scopesIn(snap, line, d.window(snap, line-maxScopeScan, line+maxLineScan))
+		s = scopesIn(snap.LineCount(), line, d.window(snap, line-maxScopeScan, line+maxLineScan))
 	}
 	sc.lines[line] = s
 	return s

@@ -4,10 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/linediff"
 )
@@ -165,74 +168,6 @@ func TestDiscardChanges(t *testing.T) {
 	}
 	if n := a.changeCount(); n != 0 {
 		t.Errorf("%d changes", n)
-	}
-}
-
-func TestDiffTab(t *testing.T) {
-	hs := newHarness(t, true)
-	hs.gitRepo()
-	a := hs.a
-	os.WriteFile(hs.path("main.go"), []byte("package main\n\nimport \"fmt\"\n\n// main says hi.\nfunc main() {\n\tfmt.Println(\"hi, mayoi\")\n\tfmt.Println(\"bye\")\n}\n"), 0o644)
-	hs.settleGit()
-	a.run("view.scm")
-	hs.settle()
-	if err := hs.tt.Click("main.go"); err != nil {
-		t.Fatal(err)
-	}
-	hs.settleGit()
-	tab := a.activeTab()
-	if tab == nil || tab.diff == nil || tab.diff.base != diffIndex {
-		t.Fatalf("tab %+v", tab)
-	}
-	v := tab.diff
-	want := []linediff.Hunk{hunk(4, 1, 4, 1), hunk(6, 1, 6, 2)}
-	if !slices.Equal(v.hunks, want) {
-		t.Fatalf("hunks %v, want %v", v.hunks, want)
-	}
-	if s := v.diffStatus(); s != "2 changes · +3 −2" {
-		t.Errorf("status %q", s)
-	}
-	if !hs.tt.HasText("Index ↔ Working Tree") {
-		t.Errorf("no sides: %q", hs.tt.Texts())
-	}
-	hs.shot("git-diff-unified")
-	a.setDiffSplit(v, true)
-	hs.settle()
-	if len(v.pairs) != 9 || len(v.unified) != 11 {
-		t.Errorf("rows %d %d", len(v.pairs), len(v.unified))
-	}
-	hs.shot("git-diff-split")
-	// Typing in the file changes the diff.
-	a.openFile(hs.path("main.go"), true)
-	d := a.activeEditor()
-	d.edit(d.sel, textEdit{0, 0, "// top\n"})
-	a.activate(a.column(), a.column().showingDiff(hs.path("main.go"), diffIndex), true)
-	time.Sleep(200 * time.Millisecond)
-	hs.settle()
-	if len(v.hunks) != 3 || v.hunks[0] != hunk(0, 0, 0, 1) {
-		t.Errorf("after typing: %v", v.hunks)
-	}
-	// It opened at its first change; two more go to the third.
-	v.stepHunk(1)
-	v.stepHunk(1)
-	if v.current != 2 || v.jump != v.pairsHunks[2] {
-		t.Errorf("current %d jump %d", v.current, v.jump)
-	}
-	// It is kept, and comes back.
-	a.rememberTabs()
-	found := false
-	for _, ts := range a.window.Columns[0].Tabs {
-		found = found || ts.Diff == "index" && ts.Split
-	}
-	if !found {
-		t.Errorf("tabs kept %+v", a.window.Columns)
-	}
-	a.closeActive()
-	hs.settle()
-	a.reopenClosed()
-	hs.settle()
-	if tab := a.activeTab(); tab == nil || tab.diff == nil || !tab.diff.split {
-		t.Errorf("reopened %+v", tab)
 	}
 }
 
@@ -482,35 +417,387 @@ func TestRenamesAndDiscardingOpenFiles(t *testing.T) {
 	}
 }
 
-func TestDiffScrollsToItsFirstChange(t *testing.T) {
+// diffFile returns the file of the tab of the changes compared against
+// base, nil when it has none.
+func diffFileOf(v *diffView, path string, base diffBase) *diffFile {
+	for _, f := range v.files {
+		if f.path == path && f.base == base {
+			return f
+		}
+	}
+	return nil
+}
+
+// kinds spells the rows of a diff, a letter each.
+func kinds(v *diffView) string {
+	var s strings.Builder
+	for _, r := range v.rows {
+		s.WriteByte("LGHSFNs"[r.kind])
+	}
+	return s.String()
+}
+
+func TestDiffTab(t *testing.T) {
+	hs := newHarness(t, true)
+	hs.gitRepo()
+	a := hs.a
+	os.WriteFile(hs.path("main.go"), []byte("package main\n\nimport \"fmt\"\n\n// main says hi.\nfunc main() {\n\tfmt.Println(\"hi, mayoi\")\n\tfmt.Println(\"bye\")\n}\n"), 0o644)
+	hs.settleGit()
+	a.run("view.scm")
+	hs.settle()
+	if err := hs.tt.Click("main.go"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	tab := a.activeTab()
+	if tab == nil || tab.diff == nil {
+		t.Fatalf("tab %+v", tab)
+	}
+	v := tab.diff
+	file := diffFileOf(v, hs.path("main.go"), diffIndex)
+	if file == nil {
+		t.Fatalf("files %v", v.files)
+	}
+	want := []linediff.Hunk{hunk(4, 1, 4, 1), hunk(6, 1, 6, 2)}
+	if !slices.Equal(file.hunks, want) {
+		t.Fatalf("hunks %v, want %v", file.hunks, want)
+	}
+	if s := v.diffStatus(); s != "1 file · 2 changes · +3 −2" {
+		t.Errorf("status %q", s)
+	}
+	if got := kinds(v); got != "SFHLLLLLLLLLLL" {
+		t.Errorf("rows %s", got)
+	}
+	// The click chose the file's header.
+	if v.cursor != 1 {
+		t.Errorf("cursor %d", v.cursor)
+	}
+	hs.shot("git-diff-unified")
+	a.setDiffLayout(v, layoutSplit)
+	hs.settle()
+	if !v.split || len(file.pairs) != 9 || len(file.unified) != 11 {
+		t.Errorf("rows %d %d", len(file.pairs), len(file.unified))
+	}
+	hs.shot("git-diff-split")
+	// Typing in the file changes the diff.
+	a.openFile(hs.path("main.go"), true)
+	d := a.activeEditor()
+	d.edit(d.sel, textEdit{0, 0, "// top\n"})
+	col, i := a.changesTab()
+	a.activate(col, i, true)
+	time.Sleep(200 * time.Millisecond)
+	hs.settle()
+	if len(file.hunks) != 3 || file.hunks[0] != hunk(0, 0, 0, 1) {
+		t.Errorf("after typing: %v", file.hunks)
+	}
+	// Open Changes in the editor comes back to the same tab.
+	a.openFile(hs.path("main.go"), true)
+	a.openChanges()
+	hs.settle()
+	if tab := a.activeTab(); tab == nil || tab.diff != v {
+		t.Errorf("open changes: %+v", tab)
+	}
+	v.current = -1
+	v.stepHunk(1)
+	v.stepHunk(1)
+	v.stepHunk(1)
+	if v.current != 2 || v.jump != v.starts[2] {
+		t.Errorf("current %d jump %d", v.current, v.jump)
+	}
+	// It is kept, and comes back.
+	a.rememberTabs()
+	found := false
+	for _, ts := range a.window.Columns[0].Tabs {
+		found = found || ts.Diff != "" && ts.Layout == "split"
+	}
+	if !found {
+		t.Errorf("tabs kept %+v", a.window.Columns)
+	}
+	a.closeActive()
+	hs.settle()
+	a.reopenClosed()
+	hs.settle()
+	if tab := a.activeTab(); tab == nil || tab.diff == nil || tab.diff.layout != layoutSplit {
+		t.Errorf("reopened %+v", tab)
+	}
+}
+
+func TestDiffScrollsToTheFileChosen(t *testing.T) {
 	hs := newHarness(t, true)
 	git := hs.gitRepo()
 	a := hs.a
-	long := hs.path("long.txt")
-	var b strings.Builder
-	for i := range 400 {
-		fmt.Fprintf(&b, "line %d\n", i)
+	// Files enough that most are out of view.
+	for i := range 30 {
+		os.WriteFile(hs.path(fmt.Sprintf("f%02d.txt", i)), []byte("one\ntwo\nthree\n"), 0o644)
 	}
+	git("add", ".")
+	git("commit", "-qm", "files")
+	for i := range 30 {
+		os.WriteFile(hs.path(fmt.Sprintf("f%02d.txt", i)), []byte(fmt.Sprintf("one\n%d\nthree\n", i)), 0o644)
+	}
+	git("add", "f05.txt")
+	os.WriteFile(hs.path("f05.txt"), []byte("one\nfive\nthree\nfour\n"), 0o644)
+	hs.settleGit()
+	a.run("view.scm")
+	hs.settle()
+	// Staged first, then the rest.
+	a.showChanges(diffTarget{path: hs.path("f25.txt"), base: diffIndex}, true)
+	hs.settleGit()
+	v := a.activeTab().diff
+	if len(v.files) != 31 || v.files[0].base != diffStaged || v.files[1].base != diffIndex {
+		t.Fatalf("%d files", len(v.files))
+	}
+	at := v.heads[26]
+	if v.cursor != at || v.files[v.rows[at].file].path != hs.path("f25.txt") {
+		t.Fatalf("cursor %d, want %d", v.cursor, at)
+	}
+	// In view: at the top, unless the end of the files was in view.
+	if top := editorPadY + float32(v.tops[at])*a.font.lineH; top < v.scroll.Y || top > v.scroll.Y+v.viewH {
+		t.Errorf("scrolled to %v, header at %v", v.scroll.Y, top)
+	}
+	// Only the files near the view were read.
+	if f := diffFileOf(v, hs.path("f02.txt"), diffIndex); f.loaded {
+		t.Errorf("a file far from the view was read")
+	}
+	if f := diffFileOf(v, hs.path("f25.txt"), diffIndex); !f.loaded {
+		t.Errorf("the file chosen was not read: near %v, scroll %v, rows %d", v.near, v.scroll.Y, len(v.rows))
+	}
+	// The source control view chose it too.
+	if r := a.scm.rows[a.scm.row]; r.e.Path != hs.path("f25.txt") {
+		t.Errorf("scm chose %q", r.e.Path)
+	}
+	// A file both staged and changed since: its staged changes, or those
+	// not, as the group clicked.
+	a.showChanges(diffTarget{path: hs.path("f05.txt"), base: diffStaged}, true)
+	hs.settleGit()
+	if f := v.files[v.rows[v.cursor].file]; f.path != hs.path("f05.txt") || f.base != diffStaged {
+		t.Errorf("staged: %+v", v.rows[v.cursor])
+	}
+	a.showChanges(diffTarget{path: hs.path("f05.txt"), any: true}, true)
+	hs.settleGit()
+	if f := v.files[v.rows[v.cursor].file]; f.path != hs.path("f05.txt") || f.base != diffIndex {
+		t.Errorf("any: %+v", v.rows[v.cursor])
+	}
+	// A section.
+	a.showChanges(diffTarget{base: diffIndex}, true)
+	hs.settleGit()
+	if r := v.rows[v.cursor]; r.kind != rowSection || v.files[r.file].base != diffIndex {
+		t.Errorf("section: %+v", r)
+	}
+	// A file folded above the view keeps the rows in view where they were.
+	a.showChanges(diffTarget{path: hs.path("f10.txt"), base: diffIndex}, true)
+	hs.settleGit()
+	place := func() float32 { return editorPadY + float32(v.tops[v.cursor])*a.font.lineH - v.scroll.Y }
+	was := place()
+	if was != 0 {
+		t.Errorf("f10 at %v", was)
+	}
+	diffFileOf(v, hs.path("f08.txt"), diffIndex).folded = true
+	v.changed()
+	hs.settle()
+	if f := v.files[v.rows[v.cursor].file]; f.path != hs.path("f10.txt") || place() != was {
+		t.Errorf("moved: %v → %v", was, place())
+	}
+	// A file with no changes says so.
+	a.showChanges(diffTarget{path: hs.path("go.mod"), any: true}, true)
+	hs.settle()
+	if len(a.errors) == 0 && !hs.tt.HasText("go.mod has no changes.") {
+		t.Errorf("no word of no changes")
+	}
+}
+
+func TestDiffFolds(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	long := hs.path("long.go")
+	var b strings.Builder
+	b.WriteString("package main\n\nfunc long() {\n")
+	for i := range 100 {
+		fmt.Fprintf(&b, "\tprintln(%d)\n", i)
+	}
+	b.WriteString("}\n")
 	os.WriteFile(long, []byte(b.String()), 0o644)
 	git("add", ".")
 	git("commit", "-qm", "long")
 	data, _ := os.ReadFile(long)
-	os.WriteFile(long, []byte(strings.Replace(string(data), "line 300", "LINE 300", 1)), 0o644)
+	os.WriteFile(long, []byte(strings.Replace(string(data), "println(50)", "println(\"fifty\")", 1)), 0o644)
 	hs.settleGit()
-	a.openDiff(long, diffIndex, true)
+	a.showChanges(diffTarget{path: long, any: true}, true)
 	hs.settleGit()
 	v := a.activeTab().diff
-	top := int((v.scroll.Y - editorPadY) / a.font.lineH)
-	if v.current != 0 || top > 299 || top+20 < 299 {
-		t.Fatalf("current %d, top row %d", v.current, top)
+	if got := kinds(v); got != "SFGHLLLLLLLLG" {
+		t.Fatalf("rows %s", got)
 	}
-	// A change in view needs no scrolling.
-	os.WriteFile(long, []byte(strings.Replace(string(data), "line 3\n", "LINE 3\n", 1)), 0o644)
-	a.closeActive()
+	if g := v.rows[2]; g.n != 50 || g.gap != 0 {
+		t.Errorf("gap %+v", g)
+	}
+	if h := v.rows[3].label; h != "@@ -51,7 +51,7 @@ func long() {" {
+		t.Errorf("header %q", h)
+	}
+	// Opening a gap shows its lines; z on one of them folds it again.
+	a.activateRow(v, 2, false)
+	hs.settle()
+	if got := kinds(v); got != "SFH"+strings.Repeat("L", 58)+"G" {
+		t.Fatalf("opened: %s", got)
+	}
+	a.toggleGap(v, 10)
+	hs.settle()
+	if got := kinds(v); got != "SFGHLLLLLLLLG" {
+		t.Fatalf("folded again: %s", got)
+	}
+	// Every line, and no headers, with the full files.
+	a.setDiffFull(v, true)
+	hs.settle()
+	if got := kinds(v); got != "SF"+strings.Repeat("L", 105) {
+		t.Errorf("full: %s", got)
+	}
+	a.setDiffFull(v, false)
+	hs.settle()
+
+	// A click on a gap opens it.
+	if pane, ok := hs.tt.Find("Diff of the Changes"); ok {
+		v.scroll.Y = 0
+		hs.settle()
+		hs.tt.ClickAt(pane.X+60, pane.Y+editorPadY+(float32(v.tops[2])+0.5)*a.font.lineH)
+		hs.settle()
+	}
+	if got := kinds(v); v.cursor < 0 || v.rows[v.cursor].gap != 0 || got != "SFH"+strings.Repeat("L", 58)+"G" {
+		t.Errorf("click on the gap: cursor %d, %s", v.cursor, got)
+	}
+	a.toggleGap(v, v.cursor)
+	hs.settle()
+
+	// The keys of a pager.
+	v.pane.Focus()
+	v.cursor = -1
+	v.scroll.Y = 0
+	hs.settle()
+	hs.key(0, ui.KeyJ)
+	hs.key(0, ui.KeyJ)
+	if v.cursor != 2 {
+		t.Errorf("cursor %d", v.cursor)
+	}
+	hs.key(0, ui.KeyBracketRight)
+	if v.current != 0 || v.cursor != v.starts[0] {
+		t.Errorf("current %d, cursor %d", v.current, v.cursor)
+	}
+	for range 4 {
+		hs.key(0, ui.KeyK)
+	}
+	hs.key(0, ui.KeyZ) // on the header: nothing to fold
+	if got := kinds(v); v.cursor != 3 || got != "SFGHLLLLLLLLG" {
+		t.Errorf("z on a header: %d %s", v.cursor, got)
+	}
+	hs.key(0, ui.KeyK)
+	hs.key(0, ui.KeyZ)
+	if got := kinds(v); got != "SFH"+strings.Repeat("L", 58)+"G" {
+		t.Errorf("z on a gap: %s", got)
+	}
+	hs.key(0, ui.KeyZ)
+	if got := kinds(v); got != "SFGHLLLLLLLLG" {
+		t.Errorf("z in an open gap: %s", got)
+	}
+	// Enter on a file's header folds it.
+	v.setCursor(1)
+	hs.key(0, ui.KeyEnter)
+	if got := kinds(v); got != "SF" {
+		t.Errorf("folded file: %s", got)
+	}
+	hs.key(0, ui.KeyEnter)
+
+	// Lines wrap at the edge of the view.
+	if l := a.diffGeometry(v, false, 400); l.cols[0] >= 40 {
+		t.Errorf("cols %v", l.cols)
+	}
+	if wrapCount(strings.Repeat("word ", 40), 30) != 7 || wrapCount("short", 30) != 1 {
+		t.Errorf("wrapCount %d", wrapCount(strings.Repeat("word ", 40), 30))
+	}
+	os.WriteFile(long, []byte(strings.Replace(string(data), "println(50)", "println(\""+strings.Repeat("fifty ", 60)+"\")", 1)), 0o644)
 	hs.settleGit()
-	a.openDiff(long, diffIndex, true)
+	a.toggleDiffWrap(v)
+	hs.settle()
+	tall := 0
+	for _, r := range v.rows {
+		tall = max(tall, r.h)
+	}
+	if tall < 3 || v.tops[len(v.rows)] <= len(v.rows) {
+		t.Errorf("wrapped: tallest row %d", tall)
+	}
+	hs.shot("git-diff-wrap")
+	a.toggleDiffWrap(v)
+
+	// Side by side when wide enough, unless chosen.
+	if a.splits(v, 900) || !a.splits(v, 2400) {
+		t.Errorf("auto layout")
+	}
+	v.layout = layoutInline
+	if a.splits(v, 2400) {
+		t.Errorf("inline")
+	}
+	v.layout = layoutAuto
+}
+
+func TestDiffOfEveryFile(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	os.WriteFile(hs.path("main.go"), []byte("package main\n\nimport \"fmt\"\n\n// main says hi.\nfunc main() {\n\tfmt.Println(\"hello, mayoi\")\n}\n"), 0o644)
+	os.WriteFile(hs.path("README.md"), []byte("# Mayoi\n\nA small editor, with diffs.\n"), 0o644)
+	git("add", "README.md")
+	os.WriteFile(hs.path("new.txt"), []byte("a new file\n"), 0o644)
 	hs.settleGit()
-	if v := a.activeTab().diff; v.scroll.Y != 0 {
-		t.Errorf("scrolled to %v", v.scroll.Y)
+	a.run("git.openAllChanges")
+	hs.settleGit()
+	v := a.activeTab().diff
+	var names []string
+	for _, f := range v.files {
+		names = append(names, filepath.Base(f.path)+string(f.letter))
+	}
+	if strings.Join(names, " ") != "README.mdM main.goM new.txtU" {
+		t.Fatalf("files %v", names)
+	}
+	if got := kinds(v); !strings.HasPrefix(got, "SFHLLL") || strings.Count(got, "S") != 2 || strings.Count(got, "F") != 3 {
+		t.Errorf("rows %s", got)
+	}
+	if s := v.diffStatus(); s != "3 files · 3 changes · +3 −2" {
+		t.Errorf("status %q", s)
+	}
+	if !hs.tt.HasText("Changes") {
+		t.Errorf("no name: %q", hs.tt.Texts())
+	}
+	hs.shot("git-diff-all")
+	v.cursor = -1
+	v.scroll.Y = 0
+	v.stepFile(1)
+	if v.cursor != v.heads[1] {
+		t.Errorf("next file: cursor %d", v.cursor)
+	}
+	// A click on a header folds its file.
+	pane, ok := hs.tt.Find("Diff of the Changes")
+	if !ok {
+		t.Fatal("no diff pane")
+	}
+	click := func(i int) {
+		hs.tt.ClickAt(pane.X+60, pane.Y+editorPadY+(float32(v.tops[i])+0.5)*a.font.lineH-v.scroll.Y)
+		hs.settle()
+	}
+	v.scroll.Y = 0
+	hs.settle()
+	head := v.heads[1]
+	click(head)
+	if f := v.files[v.rows[head].file]; !f.folded {
+		t.Errorf("click on a header did not fold it")
+	}
+	// The header chosen has buttons: staging takes the file out of its
+	// section, and into the staged one.
+	v.setCursor(head)
+	hs.settle()
+	if err := hs.tt.Click("Stage Changes"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	if diffFileOf(v, hs.path("main.go"), diffStaged) == nil || diffFileOf(v, hs.path("main.go"), diffIndex) != nil {
+		t.Errorf("after staging: %v", names)
 	}
 }

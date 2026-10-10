@@ -82,14 +82,39 @@ tree, with a count of them. Files are grouped as merge changes, staged changes, 
 
 ### Diffs
 
-A diff opens in a tab. From source control, a staged file compares HEAD with the index, and any other file compares the
-index with the work tree. **Open Changes**, from the Explorer, a tab's menu or the **Git** menu, compares HEAD with the
-work tree. The diff follows the file as you type in it.
+Every file changed shows in one **Changes** tab, as source control lists them: the staged changes first, from HEAD
+to the index, then the rest, from the index to the work tree. Each file is under a header with its path and the lines
+added and removed. Click a file in source control and the tab scrolls to it; **Open Changes** from the Explorer, a
+tab's menu or the **Git** menu does the same for a file. As you scroll, source control chooses the file you are
+reading. The diff follows a file as you type in it.
+
+Click a header to fold its file; a file with more than 2,000 changed lines starts folded. Point at a header, or choose
+it, for buttons that open the file, stage or unstage it, and discard its changes. Files are read as they come near the
+view, so a long list of changes opens at once.
+
+Only three unchanged lines show around each change. The rest fold into a row that says how many lines it hides, and a
+click opens it. Each run of changes starts with an `@@` header naming the lines and the block it is in, as Git writes
+it. **Show Full Files** in the breadcrumbs shows every line.
 
 Removed and added lines show in one column, or side by side with the lines of a change across from each other. The
-button in the breadcrumbs switches between the two, and new diffs open the way you chose last. Words that changed
-within a line are tinted. Double-click a line to open the file there. The arrows go from change to change, and the
-status bar counts the lines added and removed.
+layout button in the breadcrumbs chooses side by side, one column, or side by side when each side has room for 80
+columns, which is the default. Words that changed within a line are tinted,
+and a bar along the left is brightest for the change you are on. Long lines wrap as the editor's do: **Word Wrap**
+sets them all, and ⌥Z or the wrap button just the tab.
+
+Double-click a line to open the file there. The arrows go from change to change, and the status bar counts the lines
+added and removed. With the diff focused, keys work as in a pager:
+
+| Key | Does |
+| --- | --- |
+| `j` `k`, ↓ ↑ | Choose the next or previous row |
+| `]` `[` | Go to the next or previous change |
+| `.` `,` | Go to the next or previous file |
+| Space, `f`, `b`, `d`, `u` | Scroll a page down or up, or half a page |
+| `g` `G` | Go to the top or the bottom |
+| `z` | Open the folded lines chosen, or fold them again |
+| Enter | Open folded lines, fold a file, or open the file at a line |
+| `e` | Open the file at the chosen line |
 
 ### Branches and remotes
 

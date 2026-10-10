@@ -30,7 +30,10 @@ type Settings struct {
 	// scrolling sideways to them. A tab may choose otherwise, until this
 	// changes: WrapGen counts its changes.
 	WordWrap bool `json:"wordWrap,omitempty"`
-	// DiffSplit shows diffs side by side, rather than in one column.
+	// DiffLayout is how diffs show: "split" side by side, "inline" in
+	// one column, or "" side by side when they are wide enough to.
+	DiffLayout string `json:"diffLayout,omitempty"`
+	// DiffSplit is what an older version kept for DiffLayout "split".
 	DiffSplit bool `json:"diffSplit,omitempty"`
 	// Blame shows who last changed the caret's line, and when, after it.
 	Blame   bool `json:"blame"`
@@ -86,10 +89,13 @@ type Tab struct {
 	// Preview is set for an SVG shown as a picture rather than as text.
 	Preview bool `json:"preview,omitempty"`
 	// Diff is set for the changes of File rather than the file: "head",
-	// "index" or "staged", what they are against; Split is set for a diff
-	// shown side by side.
-	Diff  string `json:"diff,omitempty"`
-	Split bool   `json:"split,omitempty"`
+	// "index" or "staged", what they are against. With no File, it is
+	// the changes of every file, against that. Layout is the diff's, as
+	// the settings' DiffLayout; Split is what an older version kept for
+	// "split".
+	Diff   string `json:"diff,omitempty"`
+	Layout string `json:"layout,omitempty"`
+	Split  bool   `json:"split,omitempty"`
 }
 
 // Default is the settings of a first launch.
@@ -113,6 +119,9 @@ func Load(path string) *Settings {
 	s.FontSize = clamp(s.FontSize, 9, 28)
 	if s.FontFamily == "" {
 		s.FontFamily = "monospace"
+	}
+	if s.DiffSplit {
+		s.DiffLayout, s.DiffSplit = "split", false
 	}
 	s.migrate()
 	return s

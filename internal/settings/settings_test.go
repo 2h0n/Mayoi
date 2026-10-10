@@ -69,3 +69,15 @@ func TestKeepTheWindowsInOrder(t *testing.T) {
 		t.Fatalf("new window %d of %d", d.ID, len(s.Windows))
 	}
 }
+
+func TestMigrateDiffSplit(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	os.WriteFile(path, []byte(`{"diffSplit": true}`), 0o644)
+	if s := Load(path); s.DiffLayout != "split" || s.DiffSplit {
+		t.Errorf("layout %q, split %v", s.DiffLayout, s.DiffSplit)
+	}
+	os.WriteFile(path, []byte(`{}`), 0o644)
+	if s := Load(path); s.DiffLayout != "" {
+		t.Errorf("layout %q", s.DiffLayout)
+	}
+}

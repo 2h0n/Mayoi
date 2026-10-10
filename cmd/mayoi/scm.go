@@ -238,10 +238,16 @@ func (a *app) scmHeader(c *ui.Context, r scmRow, action *func()) {
 			paths := a.groupPaths(r.group)
 			switch r.group {
 			case groupStaged:
+				if a.smallButton(c, iconFiles, "Open Staged Changes") {
+					*action = func() { a.showChanges(diffTarget{base: diffStaged}, true) }
+				}
 				if a.smallButton(c, iconMinus, "Unstage All Changes") {
 					*action = func() { a.unstage(paths...) }
 				}
 			case groupChanges, groupUntracked:
+				if a.smallButton(c, iconFiles, "Open Changes") {
+					*action = func() { a.showChanges(diffTarget{base: diffIndex}, true) }
+				}
 				if a.smallButton(c, iconUndo, "Discard All Changes…") {
 					*action = func() { a.discard(a.groupEntries()[r.group]...) }
 				}
@@ -357,6 +363,10 @@ func (a *app) scmMenu(m *ui.Menu) {
 	}
 	m.Separator()
 	groups := a.groupEntries()
+	if m.Item("Open All Changes").Disabled(len(groups[groupStaged])+len(groups[groupChanges])+len(groups[groupUntracked]) == 0).Chosen() {
+		a.post(func() { a.openChangesTab(true) })
+	}
+	m.Separator()
 	if m.Item("Stage All Changes").Disabled(len(groups[groupChanges])+len(groups[groupUntracked])+len(groups[groupMerge]) == 0).Chosen() {
 		a.post(a.stageAll)
 	}
@@ -415,6 +425,17 @@ func entryPaths(e git.Entry, staged bool) []string {
 	return []string{e.Path}
 }
 
+// chooseScmFile chooses the row of a file of a diff in the view, as the
+// diff scrolls to it.
+func (a *app) chooseScmFile(f *diffFile) {
+	for i, r := range a.scm.rows {
+		if !r.header && r.e.Path == f.path && (r.group == groupStaged) == (f.base == diffStaged) {
+			a.scm.row = i
+			return
+		}
+	}
+}
+
 // openChange shows the changes of a file of the view: those staged, or
 // those not, or the file itself while it is in conflict.
 func (a *app) openChange(r scmRow, focus bool) {
@@ -422,9 +443,9 @@ func (a *app) openChange(r scmRow, focus bool) {
 	case groupMerge:
 		a.openFile(r.e.Path, focus)
 	case groupStaged:
-		a.openDiff(r.e.Path, diffStaged, focus)
+		a.showChanges(diffTarget{path: r.e.Path, base: diffStaged}, focus)
 	default:
-		a.openDiff(r.e.Path, diffIndex, focus)
+		a.showChanges(diffTarget{path: r.e.Path, base: diffIndex}, focus)
 	}
 }
 

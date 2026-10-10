@@ -56,8 +56,6 @@ func (t *colTab) path() string {
 	switch {
 	case t.view != nil:
 		return t.view.path
-	case t.diff != nil:
-		return t.diff.path
 	case t.ed != nil:
 		return t.ed.path
 	}
@@ -485,8 +483,8 @@ func (a *app) splitRight() {
 		a.activate(nc, 0, true)
 		return
 	case t.diff != nil:
-		v := newDiffView(t.diff.path, t.diff.base, t.diff.split)
-		v.scroll = t.diff.scroll
+		v := newDiffView(t.diff.layout)
+		v.scroll, v.full, v.wrap, v.wrapGen = t.diff.scroll, t.diff.full, t.diff.wrap, t.diff.wrapGen
 		a.addTab(nc, 0, &colTab{diff: v})
 		a.activate(nc, 0, true)
 		return
@@ -513,7 +511,7 @@ func (a *app) moveTab(t *colTab, to *column, at int) {
 		case t.ed != nil:
 			j = to.showing(t.ed.document)
 		case t.diff != nil:
-			j = to.showingDiff(t.diff.path, t.diff.base)
+			j = to.showingDiff()
 		default:
 			j = to.showingImage(t.view.path)
 		}
@@ -570,7 +568,7 @@ func (a *app) rememberTabs() {
 			case t.term != nil:
 				cs.Tabs = append(cs.Tabs, settings.Tab{Terminal: true})
 			case t.diff != nil:
-				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.diff.path, Diff: t.diff.base.key(), Split: t.diff.split})
+				cs.Tabs = append(cs.Tabs, settings.Tab{Diff: "all", Layout: t.diff.layout.key()})
 			case t.path() != "":
 				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil})
 			default:
@@ -611,8 +609,14 @@ func (a *app) restoreTabs() {
 					a.newTerminalTab(col, a.root, false)
 				}
 			case ts.Diff != "":
-				if base, ok := parseDiffBase(ts.Diff); ok {
-					a.addTab(col, len(col.tabs), &colTab{diff: newDiffView(ts.File, base, ts.Split)})
+				// The tabs of the changes of a file an older version kept are
+				// the one tab of them all.
+				if c, _ := a.changesTab(); c == nil {
+					layout := parseDiffLayout(ts.Layout)
+					if ts.Split && ts.Layout == "" {
+						layout = layoutSplit
+					}
+					a.addTab(col, len(col.tabs), &colTab{diff: newDiffView(layout)})
 					a.activate(col, len(col.tabs)-1, false)
 				}
 			case ts.File != "":
