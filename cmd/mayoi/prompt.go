@@ -77,3 +77,50 @@ func (a *app) promptView(c *ui.Context) {
 		})
 	})
 }
+
+// confirm asks whether to go on with something, as discarding changes:
+// run runs once the button named ok is chosen.
+type confirm struct {
+	title, message, ok string
+	danger             bool
+	run                func()
+}
+
+func (a *app) confirmView(c *ui.Context) {
+	cf := a.confirm
+	if cf == nil {
+		return
+	}
+	p := a.pal
+	t := c.Theme()
+	ui.Overlay(c, func() {
+		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back.Children(func() {
+			box := ui.Column(c).Width(420).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10).
+				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).
+				Role(ui.RoleDialog).Label(cf.title)
+			box.Children(func() {
+				ui.Text(c, cf.title).FontSize(13).FontWeight(600).TextColor(p.text)
+				if cf.message != "" {
+					ui.Text(c, cf.message).FontSize(12.5).TextColor(p.muted)
+				}
+				ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
+					if ui.Button(c, "Cancel").Clicked() {
+						a.confirm = nil
+					}
+					ok := ui.PrimaryButton(c, cf.ok).AutoFocus()
+					if cf.danger {
+						ok.Background(p.danger)
+					}
+					if ok.Clicked() {
+						a.confirm = nil
+						cf.run()
+					}
+				})
+			})
+			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
+				a.confirm = nil
+			}
+		})
+	})
+}

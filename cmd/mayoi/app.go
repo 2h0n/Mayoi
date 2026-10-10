@@ -68,10 +68,8 @@ type app struct {
 	// treeSynced is the document the tree last followed, selectInTree the
 	// file it should choose once its row shows.
 	treeSynced, selectInTree string
-	branch                   string
-	// gitIndex is when the repository's index last changed, as a commit
-	// changes it; gitChecked when the app last looked.
-	gitIndex, gitChecked time.Time
+	git                      gitState
+	scm                      scmState
 
 	// ignored is what Git ignores in the workspace, which the tree shows
 	// faint.
@@ -115,9 +113,10 @@ type app struct {
 	// dragging is set while a tab is dragged, as the frame before found.
 	dragging, dragNow bool
 
-	quick  quickOpen
-	find   findState
-	prompt *prompt
+	quick   quickOpen
+	find    findState
+	prompt  *prompt
+	confirm *confirm
 
 	errors  []string // to show as toasts
 	title   string
@@ -136,6 +135,7 @@ const (
 
 func newApp(h host, s *settings.Settings, w *settings.Window) *app {
 	a := &app{host: h, settings: s, window: w, fileRow: -1}
+	a.scm.row = -1
 	a.files.List.Selected = &a.fileRow
 	a.cols = []*column{a.newColumn()}
 	return a
@@ -213,7 +213,7 @@ func (a *app) openFolder(dir string) {
 	a.files.List.Selected = &a.fileRow
 	a.index, a.indexStale = nil, true
 	a.ignored, a.ignoredStale = nil, true
-	a.branch = gitBranch(dir)
+	a.git = gitState{}
 	a.window.Folder = dir
 	a.settings.AddRecent(dir)
 	for _, d := range a.docs {
@@ -254,7 +254,7 @@ func (a *app) closeFolder() {
 		if a.tree != nil {
 			a.tree.Close()
 		}
-		a.root, a.tree, a.index, a.branch = "", nil, nil, ""
+		a.root, a.tree, a.index, a.git = "", nil, nil, gitState{}
 		a.closed = nil
 		a.window.Folder = ""
 		a.settings.Changed()
@@ -283,6 +283,7 @@ func (a *app) saveDoc(d *document, then func()) {
 		return
 	}
 	d.diskGone, d.autoSave.failed = false, false
+	a.git.stale = true
 	a.rememberTabs()
 	if then != nil {
 		then()
@@ -324,6 +325,7 @@ func (a *app) saveAll() {
 // changes of its own shows the file's new text.
 func (a *app) diskChanged(changed, removed []string) {
 	a.indexStale, a.ignoredStale = true, true
+	a.diffsOnDisk(append(changed, removed...))
 	// An image shows the file's new picture, or that it is gone.
 	for _, v := range a.imageViewers() {
 		switch {
@@ -346,20 +348,7 @@ func (a *app) diskChanged(changed, removed []string) {
 		if d.dirty() {
 			continue
 		}
-		data, err := os.ReadFile(p)
-		if err != nil || isBinary(data) {
-			continue
-		}
-		data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
-		if string(data) == d.buf.String() {
-			continue // as when the editor saved it
-		}
-		// Reloading is a step of undo, as in other editors.
-		if ed := d.main(); ed != nil {
-			ed.edit(ed.sel, textEdit{0, d.buf.Len(), string(data)})
-		}
-		d.markSaved()
-		d.measureWidest()
+		a.reloadDoc(d)
 	}
 	for _, p := range removed {
 		if i := a.docIndex(p); i >= 0 {
@@ -368,16 +357,24 @@ func (a *app) diskChanged(changed, removed []string) {
 			}
 		}
 	}
-	a.branch = gitBranch(a.root)
 	a.gitChanged()
 }
 
-// gitChanged has the documents read their bases again, as when a commit
-// may have been made.
-func (a *app) gitChanged() {
-	for _, d := range a.docs {
-		d.git.HeadMoved()
+// reloadDoc makes a document's text the file's on disk, as a step of
+// undo, as in other editors.
+func (a *app) reloadDoc(d *document) {
+	data, err := os.ReadFile(d.path)
+	if err != nil || isBinary(data) {
+		return
 	}
+	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
+	if string(data) != d.buf.String() {
+		if ed := d.main(); ed != nil {
+			ed.edit(ed.sel, textEdit{0, d.buf.Len(), string(data)})
+		}
+		d.measureWidest()
+	}
+	d.markSaved()
 }
 
 // imageViewers returns the viewers of the image files open in tabs.
@@ -445,30 +442,6 @@ func (a *app) isIgnored(path string) bool {
 	return false
 }
 
-// gitBranch returns the branch checked out in dir's repository, "" when it
-// is none.
-func gitBranch(dir string) string {
-	if dir == "" {
-		return ""
-	}
-	for d := dir; ; d = filepath.Dir(d) {
-		head := filepath.Join(d, ".git", "HEAD")
-		if data, err := os.ReadFile(head); err == nil {
-			s := strings.TrimSpace(string(data))
-			if ref, ok := strings.CutPrefix(s, "ref: refs/heads/"); ok {
-				return ref
-			}
-			if len(s) >= 7 {
-				return s[:7] // detached
-			}
-			return ""
-		}
-		if filepath.Dir(d) == d {
-			return ""
-		}
-	}
-}
-
 // windowTitle is the title the window shows.
 func (a *app) windowTitle() string {
 	parts := []string{}
@@ -491,42 +464,9 @@ func (a *app) windowTitle() string {
 // tick runs once a frame, after the posted functions.
 func (a *app) tick() {
 	a.refreshIgnored()
-	a.checkGitIndex()
+	a.refreshGit()
 	if t := a.windowTitle(); t != a.title {
 		a.title = t
 		a.host.setTitle(t)
-	}
-}
-
-// checkGitIndex looks, now and then, whether the repository's index
-// changed, as a commit or a checkout made in the terminal changes it: then
-// the editors compare their lines with HEAD again.
-func (a *app) checkGitIndex() {
-	if a.root == "" || time.Since(a.gitChecked) < 1500*time.Millisecond {
-		return
-	}
-	a.gitChecked = time.Now()
-	info, err := os.Stat(filepath.Join(gitDir(a.root), "index"))
-	if err != nil {
-		return
-	}
-	if t := info.ModTime(); !t.Equal(a.gitIndex) {
-		if !a.gitIndex.IsZero() {
-			a.gitChanged()
-			a.branch = gitBranch(a.root)
-		}
-		a.gitIndex = t
-	}
-}
-
-// gitDir returns the .git folder of dir's repository, "" when it is none.
-func gitDir(dir string) string {
-	for d := dir; ; d = filepath.Dir(d) {
-		if info, err := os.Stat(filepath.Join(d, ".git")); err == nil && info.IsDir() {
-			return filepath.Join(d, ".git")
-		}
-		if filepath.Dir(d) == d {
-			return ""
-		}
 	}
 }

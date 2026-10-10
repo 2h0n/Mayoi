@@ -63,6 +63,8 @@ func (a *app) view(c *ui.Context) {
 			a.focus, a.col = paneEditor, i
 		case t.view != nil && t.view.pane.FocusWithin(c):
 			a.focus, a.col = paneEditor, i
+		case t.diff != nil && t.diff.pane.FocusWithin(c):
+			a.focus, a.col = paneEditor, i
 		case t.ed != nil && t.ed.preview != nil && t.ed.preview.pane.FocusWithin(c):
 			a.focus, a.col = paneEditor, i
 		}
@@ -96,6 +98,7 @@ func (a *app) view(c *ui.Context) {
 	})
 	a.quickOpenView(c)
 	a.promptView(c)
+	a.confirmView(c)
 	for _, msg := range a.errors {
 		c.Toast(msg)
 	}
@@ -340,6 +343,10 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					if t == shown {
 						a.viewerView(c, t.view, t.name())
 					}
+				case t.diff != nil:
+					if t == shown {
+						a.diffViewUI(c, t.diff)
+					}
 				case t == shown && t.ed.preview != nil:
 					// The text keeps its place, out of sight, under the picture.
 					ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Invisible().Children(func() {
@@ -348,6 +355,7 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					a.viewerView(c, t.ed.preview, t.name())
 				case t == shown:
 					a.editorView(c, t.ed)
+					a.hunkPeekView(c, t.ed)
 					if col == a.column() {
 						a.findView(c, t.ed)
 					}
@@ -508,6 +516,10 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 			ui.Spacer(c)
 			a.previewButton(c, t, d)
 		}
+		if t.diff != nil {
+			ui.Spacer(c)
+			a.diffButtons(c, t)
+		}
 	})
 }
 
@@ -577,8 +589,23 @@ func (a *app) statusBar(c *ui.Context) {
 			b.Children(func() { text(label) })
 			b.Menu(build)
 		}
-		if a.branch != "" {
-			item("branch", a.branch, "Branch "+a.branch, iconBranch, nil)
+		if b := a.branch(); b != "" {
+			bb := ui.ButtonBase(c.Key("status:branch")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
+				AlignItems(ui.Center).Label("Branch " + b).Tooltip("Branch " + b + ": switch, fetch, pull or push")
+			if bb.Hovered() {
+				bb.Background(p.hover)
+			}
+			bb.Children(func() {
+				ui.Icon(c, iconBranch).FontSize(12).TextColor(p.statusFg)
+				text(a.branchLabel())
+			})
+			bb.Menu(a.branchMenu)
+		}
+		if busy := a.git.busy; busy != "" {
+			ui.Row(c.Key("status:busy")).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Spinner(c).Size(11, 11)
+				text(busy)
+			})
 		}
 		if a.root != "" {
 			item("folder", filepath.Base(a.root), "Reveal "+shortenHome(a.root)+" in Finder", iconFolder, func() { a.host.reveal(a.root) })
@@ -586,6 +613,12 @@ func (a *app) statusBar(c *ui.Context) {
 		ui.Spacer(c)
 		if v := a.activeViewer(); v != nil {
 			a.viewerStatus(c, v, item, text)
+			return
+		}
+		if t := a.activeTab(); t != nil && t.diff != nil {
+			if s := t.diff.diffStatus(); s != "" {
+				item("diff", s, "", iconDiff, nil)
+			}
 			return
 		}
 		if t := a.activeTab(); t != nil && t.term != nil {

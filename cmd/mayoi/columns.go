@@ -29,11 +29,12 @@ type column struct {
 }
 
 // colTab is a tab of a column: an editor of a document, a viewer of an
-// image, or a terminal.
+// image, the changes of a file, or a terminal.
 type colTab struct {
 	id   int
 	ed   *editor
 	view *viewer
+	diff *diffView
 	term *session
 }
 
@@ -43,16 +44,20 @@ func (t *colTab) name() string {
 		return t.term.title
 	case t.view != nil:
 		return t.view.name()
+	case t.diff != nil:
+		return t.diff.name()
 	}
 	return t.ed.name()
 }
 
-// path is the file the tab shows, "" for a terminal or an untitled
-// document.
+// path is the file the tab shows, or the changes of, "" for a terminal
+// or an untitled document.
 func (t *colTab) path() string {
 	switch {
 	case t.view != nil:
 		return t.view.path
+	case t.diff != nil:
+		return t.diff.path
 	case t.ed != nil:
 		return t.ed.path
 	}
@@ -280,6 +285,8 @@ func (a *app) focusTab(t *colTab) {
 		t.term.view.Focus()
 	case t.view != nil:
 		t.view.pane.Focus()
+	case t.diff != nil:
+		t.diff.pane.Focus()
 	case t.ed.preview != nil:
 		t.ed.preview.pane.Focus()
 	default:
@@ -340,7 +347,7 @@ func (a *app) closeTab(t *colTab, then func()) {
 		}
 		done()
 	}
-	if t.view != nil {
+	if t.view != nil || t.diff != nil {
 		remove()
 		return
 	}
@@ -403,6 +410,9 @@ func (a *app) dropTab(t *colTab) {
 	col.take(i)
 	if t.view != nil {
 		t.view.stop()
+	}
+	if t.diff != nil {
+		t.diff.stop()
 	}
 	if t.ed != nil {
 		doc := t.ed.document
@@ -474,6 +484,12 @@ func (a *app) splitRight() {
 		a.addTab(nc, 0, &colTab{view: v})
 		a.activate(nc, 0, true)
 		return
+	case t.diff != nil:
+		v := newDiffView(t.diff.path, t.diff.base, t.diff.split)
+		v.scroll = t.diff.scroll
+		a.addTab(nc, 0, &colTab{diff: v})
+		a.activate(nc, 0, true)
+		return
 	}
 	ed := newEditor(t.ed.document)
 	ed.sel, ed.caret = t.ed.sel, t.ed.caret
@@ -493,9 +509,12 @@ func (a *app) moveTab(t *colTab, to *column, at int) {
 	}
 	if from != to && t.term == nil {
 		var j int
-		if t.ed != nil {
+		switch {
+		case t.ed != nil:
 			j = to.showing(t.ed.document)
-		} else {
+		case t.diff != nil:
+			j = to.showingDiff(t.diff.path, t.diff.base)
+		default:
 			j = to.showingImage(t.view.path)
 		}
 		if j >= 0 {
@@ -550,6 +569,8 @@ func (a *app) rememberTabs() {
 			switch {
 			case t.term != nil:
 				cs.Tabs = append(cs.Tabs, settings.Tab{Terminal: true})
+			case t.diff != nil:
+				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.diff.path, Diff: t.diff.base.key(), Split: t.diff.split})
 			case t.path() != "":
 				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil})
 			default:
@@ -588,6 +609,11 @@ func (a *app) restoreTabs() {
 			case ts.Terminal:
 				if a.root != "" {
 					a.newTerminalTab(col, a.root, false)
+				}
+			case ts.Diff != "":
+				if base, ok := parseDiffBase(ts.Diff); ok {
+					a.addTab(col, len(col.tabs), &colTab{diff: newDiffView(ts.File, base, ts.Split)})
+					a.activate(col, len(col.tabs)-1, false)
 				}
 			case ts.File != "":
 				if _, err := os.Stat(ts.File); err == nil {

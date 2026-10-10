@@ -21,8 +21,12 @@ type Marks struct {
 	// the text they are of.
 	Lines   []linediff.Kind
 	Version uint64
+	// Hunks are the runs of lines changed, against the lines at HEAD,
+	// of the same version.
+	Hunks []linediff.Hunk
 
 	base    []string // the lines at HEAD; nil for a file Git has none of
+	of      []string // the base the hunks are of
 	loaded  bool
 	loading bool
 	stale   bool // HEAD may have moved: read the base again
@@ -58,7 +62,7 @@ func (g *Marks) Refresh(path string, snap ui.TextSnapshot, post func(func())) {
 					text := strings.ReplaceAll(string(out), "\r\n", "\n")
 					g.base = strings.Split(text, "\n")
 				} else {
-					g.Lines = nil
+					g.Lines, g.Hunks, g.of = nil, nil, nil
 				}
 			})
 		}()
@@ -74,15 +78,21 @@ func (g *Marks) Refresh(path string, snap ui.TextSnapshot, post func(func())) {
 	g.running, g.started = true, time.Now()
 	base := g.base
 	go func() {
-		marks := linediff.Lines(base, strings.Split(snap.String(), "\n"))
+		lines := strings.Split(snap.String(), "\n")
+		hunks := linediff.Hunks(base, lines)
+		marks := linediff.Marks(hunks, len(lines))
 		post(func() {
 			g.running = false
 			if g.loaded && sameLines(g.base, base) {
-				g.Lines, g.Version, g.diffed = marks, snap.Version(), true
+				g.Lines, g.Hunks, g.of, g.Version, g.diffed = marks, hunks, base, snap.Version(), true
 			}
 		})
 	}()
 }
+
+// Base returns the lines of the file at HEAD that the hunks are of, nil
+// for a file Git has none of.
+func (g *Marks) Base() []string { return g.of }
 
 // HeadMoved has the next Refresh read the base again, as when a commit
 // may have been made.

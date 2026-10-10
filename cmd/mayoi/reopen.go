@@ -19,11 +19,15 @@ type closedTab struct {
 	colAt   int
 	weight  float32
 	preview bool // an SVG showed as an image
-	sel     [2]int
-	caret   int
-	x, y    float32
-	wrap    *bool
-	wrapGen int
+	// diff is set for the changes of the file, against base, shown side
+	// by side when split.
+	diff, split bool
+	base        diffBase
+	sel         [2]int
+	caret       int
+	x, y        float32
+	wrap        *bool
+	wrapGen     int
 }
 
 // rememberClosed keeps a tab about to close, to open again. An untitled
@@ -41,6 +45,10 @@ func (a *app) rememberClosed(t *colTab) {
 		return
 	default:
 		c.path = t.path()
+	}
+	if v := t.diff; v != nil {
+		c.diff, c.base, c.split = true, v.base, v.split
+		c.y = v.scroll.Y
 	}
 	if ed := t.ed; ed != nil {
 		c.preview = ed.preview != nil
@@ -68,6 +76,19 @@ func (a *app) reopenClosed() {
 			}
 			a.dropColumn(col, made)
 			continue
+		}
+		if c.diff {
+			if i := col.showingDiff(c.path, c.base); i >= 0 {
+				a.dropColumn(col, made)
+				a.activate(col, i, true)
+				return
+			}
+			v := newDiffView(c.path, c.base, c.split)
+			v.scroll.Y = c.y
+			at := min(max(c.at, 0), len(col.tabs))
+			a.addTab(col, at, &colTab{diff: v})
+			a.activate(col, at, true)
+			return
 		}
 		if _, err := os.Stat(c.path); err != nil {
 			a.dropColumn(col, made)

@@ -5,6 +5,17 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Source control: the sidebar lists the files changed, staged and not, to
+  stage, unstage, discard and commit, with Commit & Push and Amend.
+- Diffs open in a tab, in one column or side by side, with the words that
+  changed tinted, and follow the file as you type.
+- Click a gutter mark to see what the lines were, and revert or stage that
+  change alone. ⌥F5 goes to the next change.
+- The Explorer shows each changed file's letter and color.
+- The branch in the status bar switches and creates branches, says how far
+  it is ahead and behind, and fetches, pulls and pushes.
+- The caret's line shows who changed it last.
+
 - ⇧⌘T (**File → Reopen Closed Tab**) reopens the last tab closed, where it
   was and scrolled as it was. Terminals come back as a new shell.
 - Highlighting keeps up with typing: after a keystroke only the lines around

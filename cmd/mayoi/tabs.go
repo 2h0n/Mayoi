@@ -80,7 +80,10 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 							ui.Box(c).Absolute().Top(0).Left(0).Right(0).Height(1.5).Background(p.faint)
 						}
 						icon, tint := iconTerminal, p.muted
-						if t.term == nil {
+						switch {
+						case t.diff != nil:
+							icon, tint = iconDiff, p.changed
+						case t.term == nil:
 							icon, tint = fileIcon(p, t.name())
 						}
 						ui.Icon(c, icon).FontSize(14).TextColor(tint)
@@ -182,6 +185,13 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 		}
 	}
 	path := t.path()
+	if t.diff != nil {
+		if m.Item("Open File").Chosen() {
+			show(a.openChanges)
+		}
+	} else if t.ed != nil && path != "" && a.git.repo != nil && m.Item("Open Changes").Chosen() {
+		show(a.openChanges)
+	}
 	if m.Item("Reveal in Explorer").Disabled(path == "" || a.root == "").Chosen() {
 		a.post(func() { a.revealInTree(path); a.settings.SidebarOpen = true })
 	}

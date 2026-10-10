@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,14 +9,28 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// sidebar is the explorer: the workspace's files in a tree.
+// sidebar is the explorer, the workspace's files in a tree, or the
+// changes to commit, as the switch at its top chooses.
 func (a *app) sidebar(c *ui.Context) {
 	p := a.pal
 	sb := ui.Column(c).Fill().Background(p.chrome)
 	hovered := sb.Hovered()
+	scm := a.settings.SidebarView == "git" && a.root != ""
 	sb.Children(func() {
-		ui.Row(c).Height(34).Padding(0, 6, 0, 16).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, "EXPLORER").FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Grow(1)
+		ui.Row(c).Height(34).Padding(0, 6, 0, 8).Gap(2).AlignItems(ui.Center).Children(func() {
+			if a.root != "" {
+				a.sidebarSwitch(c, iconFiles, "Explorer (⇧⌘E)", !scm, 0, a.showExplorer)
+				a.sidebarSwitch(c, iconBranch, "Source Control (⌃⇧G)", scm, a.changeCount(), a.showSourceControl)
+			}
+			title := "EXPLORER"
+			if scm {
+				title = "SOURCE CONTROL"
+			}
+			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Grow(1).
+				Padding(0, 0, 0, 6).SingleLine()
+			if scm {
+				return
+			}
 			if a.root == "" || !hovered && !a.files.List.FocusWithin(c) {
 				return
 			}
@@ -37,12 +52,47 @@ func (a *app) sidebar(c *ui.Context) {
 			a.noFolder(c)
 			return
 		}
+		if scm {
+			a.scmView(c)
+			return
+		}
 		ui.Row(c).Height(24).Padding(0, 16).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Text(c, strings.ToUpper(filepath.Base(a.root))).FontSize(11).FontWeight(700).LetterSpacing(0.4).
 				TextColor(p.text).SingleLine()
 		})
 		a.fileTree(c)
 	})
+}
+
+// sidebarSwitch is a button at the top of the sidebar that shows a view
+// of it, with a count of what it has when count is more than 0.
+func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, count int, show func()) {
+	p := a.pal
+	// No tooltip: it would show over the title bar, and the title beside
+	// the buttons names the view.
+	b := ui.ButtonBase(c.Key(label)).Size(28, 24).Radius(5).Justify(ui.Center).AlignItems(ui.Center).Label(label)
+	col := p.muted
+	if on {
+		b.Background(p.active)
+		col = p.text
+	} else if b.Hovered() {
+		b.Background(p.hover)
+		col = p.text
+	}
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(14).TextColor(col)
+		if count > 0 {
+			label := fmt.Sprint(count)
+			if count > 99 {
+				label = "99+"
+			}
+			ui.Text(c, label).Absolute().Top(-2).Right(-3).FontSize(9).FontWeight(600).Padding(0, 3).Radius(6).
+				MinWidth(13).TextAlign(ui.Center).Background(p.accent).TextColor(ui.Hex("#ffffff"))
+		}
+	})
+	if b.Clicked() {
+		show()
+	}
 }
 
 func (a *app) noFolder(c *ui.Context) {
@@ -124,6 +174,12 @@ func (a *app) fileTree(c *ui.Context) {
 				action = func() { a.newTerminalIn(path) }
 			}
 			m.Separator()
+			if _, changed := a.git.entries[path]; changed && !isDir {
+				if m.Item("Open Changes").Chosen() {
+					action = func() { a.openDiff(path, diffHead, true) }
+				}
+				m.Separator()
+			}
 			if m.Item("Copy Path").Chosen() {
 				action = func() { a.services.WriteClipboard(path) }
 			}
@@ -152,14 +208,34 @@ func (a *app) fileTree(c *ui.Context) {
 			}
 			ui.Icon(c, icon).FontSize(14).TextColor(col)
 			label := ui.Text(c, name).FontSize(13).SingleLine().Shrink(1).TextColor(p.text)
+			// What Git has of the file: its letter, or a dot by a folder
+			// that has changes.
+			var letter byte
+			if isDir {
+				letter = a.git.dirs[path]
+			} else if e, ok := a.git.entries[path]; ok {
+				letter = e.Letter()
+			}
 			switch i := a.docIndex(path); {
 			case i >= 0 && a.docs[i].dirty():
 				label.TextColor(p.modified)
 			case ignored:
 				label.TextColor(p.faint)
+			case letter != 0:
+				label.TextColor(gitColor(p, letter))
 			case path != activePath && !isDir:
 				label.TextColor(mix(p.text, p.muted, 0.35))
 			}
+			if letter == 0 {
+				return
+			}
+			ui.Spacer(c)
+			if isDir {
+				ui.Box(c).Size(6, 6).Radius(3).Margin(0, 6, 0, 0).Background(gitColor(p, letter).Alpha(0.8))
+				return
+			}
+			ui.Text(c, string(letter)).FontSize(11).FontWeight(600).Font(a.font.family).Padding(0, 4, 0, 0).
+				TextColor(gitColor(p, letter)).Shrink(0)
 		})
 	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
 	c.SetTheme(base)
@@ -299,6 +375,20 @@ func (a *app) relOrPath(path string) string {
 		}
 	}
 	return shortenHome(path)
+}
+
+// gitColor is the color of a file of a letter of Git's: changed, added,
+// removed or in conflict.
+func gitColor(p *palette, letter byte) ui.Color {
+	switch letter {
+	case 'A', 'U':
+		return p.added
+	case 'D':
+		return p.removed
+	case 'C':
+		return p.danger
+	}
+	return p.modified
 }
 
 // mix blends from toward to by t.

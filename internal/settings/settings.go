@@ -15,7 +15,10 @@ import (
 // the windows with the folder and the files open in each. A window's
 // frame is its StateKey's.
 type Settings struct {
-	SidebarOpen  bool    `json:"sidebarOpen"`
+	SidebarOpen bool `json:"sidebarOpen"`
+	// SidebarView is what the sidebar shows: "" the explorer, "git" the
+	// changes for source control.
+	SidebarView  string  `json:"sidebarView,omitempty"`
 	SidebarWidth float32 `json:"sidebarWidth"`
 	PanelHeight  float32 `json:"panelHeight"`
 	FontSize     float32 `json:"fontSize"`
@@ -27,7 +30,11 @@ type Settings struct {
 	// scrolling sideways to them. A tab may choose otherwise, until this
 	// changes: WrapGen counts its changes.
 	WordWrap bool `json:"wordWrap,omitempty"`
-	WrapGen  int  `json:"-"`
+	// DiffSplit shows diffs side by side, rather than in one column.
+	DiffSplit bool `json:"diffSplit,omitempty"`
+	// Blame shows who last changed the caret's line, and when, after it.
+	Blame   bool `json:"blame"`
+	WrapGen int  `json:"-"`
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string   `json:"appearance,omitempty"`
 	Recent     []string `json:"recent"`
@@ -78,6 +85,11 @@ type Tab struct {
 	Terminal bool   `json:"terminal,omitempty"`
 	// Preview is set for an SVG shown as a picture rather than as text.
 	Preview bool `json:"preview,omitempty"`
+	// Diff is set for the changes of File rather than the file: "head",
+	// "index" or "staged", what they are against; Split is set for a diff
+	// shown side by side.
+	Diff  string `json:"diff,omitempty"`
+	Split bool   `json:"split,omitempty"`
 }
 
 // Default is the settings of a first launch.
@@ -85,7 +97,7 @@ func Default() *Settings {
 	return &Settings{
 		SidebarOpen: true, SidebarWidth: 248, PanelHeight: 260,
 		FontSize: 13, FontFamily: "monospace",
-		AutoSave: true,
+		AutoSave: true, Blame: true,
 	}
 }
 

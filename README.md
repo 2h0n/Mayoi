@@ -20,7 +20,8 @@
 - **Explorer:** a live file tree that follows the disk and dims Git-ignored files
 - **Quick open:** fuzzy file search, go to line (`:42`) and go to symbol (`@`)
 - **Find and replace:** case, whole-word and regex matching, searched in the background in large files
-- **Git:** gutter marks and an overview strip for lines changed since the last commit
+- **Git:** a source control view to stage, commit, amend, pull and push, diffs inline or side by side, gutter marks
+  that revert or stage a change, branches and blame
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the bottom panel or in a tab
 - **Image viewer:** PNG, JPEG, GIF, WebP and BMP, plus a live SVG preview
 - **Auto save,** light and dark themes, one window per folder, and a `mayoi` shell command

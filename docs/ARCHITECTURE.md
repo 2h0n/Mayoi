@@ -67,8 +67,33 @@ image that parsed. The text area stays built, out of sight, so the editor keeps 
 
 ## Git
 
-**`gitmarks.go`, `internal/linediff`.** The text at `HEAD` is read with `git show`, and the lines are compared using
-Myers' diff in the background after each edit. Comparing a few edits in a 100,000-line file takes about 0.25 ms.
+**`internal/git`.** This package runs the `git` command, never a library. It finds the work tree with `git rev-parse`
+and keeps the root spelled as the folder it came from, so paths match the editor's even through a symlink. It reads
+`git status --porcelain=v2` and runs stage, unstage, discard, commit, blame, switch, fetch, pull and push. Commands run
+with `GIT_TERMINAL_PROMPT=0` and SSH in batch mode, so a login that needs a prompt fails instead of hanging.
+
+**`git.go`, `scm.go`.** The window keeps the status, read in the background when the tree sees a change, after a save
+or a Git command, when the window gets focus, and every 5 seconds. Every 1.5 seconds it also checks the times of the
+index, `HEAD` and `FETCH_HEAD`. A commit or checkout made in a terminal changes them, and then the documents compare
+their lines again. Commands from the source control view run in the background, and the status is read again after
+each.
+
+**`internal/gitmarks`, `internal/linediff`.** The text at `HEAD` is read with `git show`, and the lines are compared using
+Myers' diff in the background after each edit. Comparing a few edits in a 100,000-line file takes about 0.25 ms. The
+diff gives hunks, runs of lines replaced, which the gutter marks, the peek box and the diff tab all use.
+
+**`hunks.go`.** Reverting a hunk is an edit of the document. Staging one cannot apply the HEAD hunk to the index
+directly, because the index may already differ from HEAD. So the index text is compared with the editor's again, the
+hunks of that comparison that overlap the change are applied, and the result goes in with `git hash-object` and
+`git update-index`. There is no patch to build and no fuzz to go wrong.
+
+**`diffview.go`.** A diff tab paints its rows itself in a pane that scrolls both ways, rather than using text areas. A
+text area has no way to leave the blank rows that side by side needs across from lines the other side lacks. Only the
+rows in view are painted, each side has its own highlighter, and word changes are found for the rows in view. The
+cost is that both sides are read-only. Double-clicking opens the file to edit.
+
+**`blame.go`.** Once the caret rests on a line for 350 ms, `git blame --contents -` blames that line of the editor's
+text, unsaved edits included.
 
 ## Internal packages
 

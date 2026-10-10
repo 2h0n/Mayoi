@@ -3,7 +3,8 @@
 ## Explorer
 
 A lazy file tree that follows the disk, with Git-ignored files shown faint. You can create, rename, trash and reveal files
-from it.
+from it. In a Git work tree, a changed file shows its letter (M, A, D, U for untracked, C for a conflict) and its name in a
+color, and a folder with changes inside gets a dot.
 
 ## Editor
 
@@ -57,6 +58,46 @@ reloading from disk can all be undone. Undoing back to the saved text marks the 
 
 The gutter marks lines added, changed or removed since the last commit. A strip along the right edge shows these
 changes, find matches and the caret position for the whole file.
+
+Click a mark to see the lines as they were at HEAD, in a box under the change. From there you can revert the change,
+which is a step of undo, or stage it, which puts only those lines in the index. ⌥F5 and ⇧⌥F5 go to the next and previous
+change, and the **Git** menu has the same commands for the change at the caret.
+
+The caret's line shows who changed it last, when, and the commit's summary, a moment after the caret stops. Turn this
+off from **Git → Inline Blame**.
+
+## Source control
+
+The button beside **EXPLORER** at the top of the sidebar (⌃⇧G) switches it to the changes of the folder's Git work
+tree, with a count of them. Files are grouped as merge changes, staged changes, changes and untracked files.
+
+- Click a file to see its changes, Enter opens them too, and Space stages or unstages it.
+- The buttons on a row open the file, discard its changes, and stage or unstage it. A group's header does the same for
+  all its files. Discarding asks first, and moves untracked files to the Trash.
+- Write a message and press ⌘↵ or **Commit**. With nothing staged, Mayoi offers to stage everything and commit it.
+  Changed files save first.
+- The **⋯** menu has **Commit & Push**, **Amend Last Commit** (which fills in the last message), stage, unstage and
+  discard all, and fetch, pull and push.
+- A folder outside a repository gets an **Initialize Repository** button.
+
+### Diffs
+
+A diff opens in a tab. From source control, a staged file compares HEAD with the index, and any other file compares the
+index with the work tree. **Open Changes**, from the Explorer, a tab's menu or the **Git** menu, compares HEAD with the
+work tree. The diff follows the file as you type in it.
+
+Removed and added lines show in one column, or side by side with the lines of a change across from each other. The
+button in the breadcrumbs switches between the two, and new diffs open the way you chose last. Words that changed
+within a line are tinted. Double-click a line to open the file there. The arrows go from change to change, and the
+status bar counts the lines added and removed.
+
+### Branches and remotes
+
+The branch in the status bar shows how far it is ahead of its upstream (↑) and behind it (↓). Click it to switch
+branches, create one, or fetch, pull and push. Switching waits until open files are saved.
+
+Pull only fast-forwards. Push sets the upstream the first time. Git never prompts for a password inside Mayoi: it uses
+your SSH agent and credential helper, and if those fail, the error says to run the command once in the terminal.
 
 ## Image viewer
 

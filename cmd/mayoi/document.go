@@ -122,11 +122,16 @@ type editor struct {
 	// preview shows an SVG document as a picture in the editor's place,
 	// nil while it shows the text.
 	preview *viewer
+	// gutterW is how wide the line numbers were in the last frame; peek
+	// the first line of the hunk whose box shows under it, -1 for none.
+	gutterW float32
+	peek    int
+	blame   blameState
 }
 
 // newEditor makes an editor of doc, its caret at the start.
 func newEditor(doc *document) *editor {
-	d := &editor{document: doc, parked: -1, version: doc.buf.Version()}
+	d := &editor{document: doc, parked: -1, peek: -1, version: doc.buf.Version()}
 	doc.views = append(doc.views, d)
 	if doc.typist == nil {
 		doc.typist = d

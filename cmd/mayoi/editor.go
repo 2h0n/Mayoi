@@ -103,6 +103,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 	d.version = snap.Version()
 	lines := snap.LineCount()
 	gutterW := f.gutterWidth(lines)
+	d.gutterW = gutterW
 	view := d.hscroll.Bounds(c)
 	textX := gutterW + gutterGap
 	focused := d.vscroll.Focused(c)
@@ -230,6 +231,15 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		}
 
 		lineH, charW, size, family := f.lineH, f.charW, f.size, f.family
+		// Who changed the caret's line last, after it, unless it wraps.
+		var blame string
+		var blameX float32
+		if !wrap {
+			if blame = a.blameLine(d, caretLine, snap.Version(), focused); blame != "" {
+				s, e := snap.LineRange(caretLine)
+				blameX = textX + f.width(snap.Slice(s, min(e, s+maxBlameAfter))) + 4*charW
+			}
+		}
 		matches := a.visibleMatches(d, first, last)
 		deco := a.decorate(d, snap, first, last)
 		d.git.Refresh(d.path, d.buf.Snapshot(), a.post)
@@ -338,6 +348,11 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 						pt.Fill(box, p.match, 3)
 					}
 				})
+			}
+			if blame != "" {
+				span := ui.Span{Text: blame, Font: family, Size: size * 0.92, Color: p.faint}
+				_, h := pt.MeasureText(0, span)
+				pt.RichText(r.X+blameX, lineY(r, caretLine)+(lineH-h)/2, 0, span)
 			}
 		})
 		area.DrawOver(func(pt *ui.Painter, r ui.Rect) {
