@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.2.0
 
 - Source control: the sidebar lists the files changed, staged and not, to
   stage, unstage, discard and commit, with Commit & Push and Amend.
