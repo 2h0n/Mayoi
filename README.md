@@ -46,7 +46,7 @@ To open folders from a shell, choose **File → Install 'mayoi' Command**, then 
 ## Development
 
 ```sh
-go tool mygo dev                                            # run with live reload
+scripts/dev.sh                                              # run Mayoi Dev with live reload, with its own settings
 go test ./...                                               # headless UI tests
 go test -short ./...                                        # skip the tests that start a shell
 go test -short -run XXX -bench Frame ./cmd/mayoi            # benchmark an editor frame

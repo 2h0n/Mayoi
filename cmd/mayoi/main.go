@@ -160,6 +160,11 @@ func settingsPath() string {
 
 func main() {
 	mygo.App.SetName("Mayoi")
+	// MAYOI_DATA_DIR keeps the settings and window state elsewhere, such as
+	// scripts/dev.sh's Mayoi-dev, so a development app leaves Mayoi's alone.
+	if dir := os.Getenv("MAYOI_DATA_DIR"); dir != "" {
+		mygo.App.SetPath(mygo.PathUserData, dir)
+	}
 	// One Mayoi runs: the folders and files another is started with open
 	// in this one.
 	if os.Getenv("MAYOI_SNAPSHOT") == "" && !mygo.App.RequestSingleInstanceLock() {
