@@ -437,6 +437,10 @@ func TestLayoutChangesKeepEditorState(t *testing.T) {
 	a.panelMax, a.window.PanelOpen = false, false
 	a.run("view.sidebar")
 	hs.settle()
+	a.run("view.sidebarRight")
+	hs.settle()
+	a.run("view.sidebarRight")
+	hs.settle()
 	d := a.activeEditor()
 	if d.caret != caret {
 		t.Errorf("caret %d after layout changes, was %d", d.caret, caret)
@@ -462,6 +466,27 @@ func TestSplittersResize(t *testing.T) {
 	hs.settle()
 	if got := a.settings.SidebarWidth; got < w+50 || got > w+70 {
 		t.Errorf("sidebar %v after dragging 60 from %v", got, w)
+	}
+}
+
+// On the right, the sidebar's splitter is along its left edge, and
+// dragging it left widens it.
+func TestSidebarOnTheRight(t *testing.T) {
+	hs := newHarness(t, true)
+	a, tt := hs.a, hs.tt
+	a.run("view.sidebarRight")
+	a.openFile(hs.path("main.go"), true)
+	hs.settle()
+	hs.shot("sidebar-right")
+	w := a.settings.SidebarWidth
+	x := 1200 - w + 2 // the sidebar's left edge
+	tt.Press(x, 300)
+	tt.Move(x-40, 300)
+	tt.Move(x-60, 300)
+	tt.Release(x-60, 300)
+	hs.settle()
+	if got := a.settings.SidebarWidth; got < w+50 || got > w+70 {
+		t.Errorf("sidebar %v after dragging 60 left from %v", got, w)
 	}
 }
 

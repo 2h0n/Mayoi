@@ -3,6 +3,11 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **View → Sidebar on Right** moves the sidebar, and its button in the
+  title bar, to the right of the editors.
+
 ## 0.2.1
 
 - Source control lists the last commits of the branch, with those not yet

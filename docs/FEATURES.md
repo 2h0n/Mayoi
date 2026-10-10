@@ -216,9 +216,10 @@ The command returns immediately, and starts Mayoi if it isn't running.
 
 ## Appearance and persistence
 
-Mayoi follows the system's light or dark mode, or the mode chosen in **View → Appearance**. It remembers the sidebar and
-panel sizes, and every window with its folder, frame, columns and tabs. Started without a folder, Mayoi reopens the
-windows that were open when it quit. Closing the last window quits the app.
+Mayoi follows the system's light or dark mode, or the mode chosen in **View → Appearance**. **View → Sidebar on Right**
+moves the sidebar to the right of the editors. It remembers the sidebar's side, the sidebar and panel sizes, and every
+window with its folder, frame, columns and tabs. Started without a folder, Mayoi reopens the windows that were open when
+it quit. Closing the last window quits the app.
 
 ## Updates
 

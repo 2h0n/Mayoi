@@ -69,6 +69,7 @@ func (a *app) commands() []command {
 		{"go.nextTab", "Next Tab", "Ctrl+Tab", func() { a.cycleTab(1) }},
 		{"go.prevTab", "Previous Tab", "Ctrl+Shift+Tab", func() { a.cycleTab(-1) }},
 		{"view.sidebar", "Toggle Sidebar", "CmdOrCtrl+B", a.toggleSidebar},
+		{"view.sidebarRight", "Sidebar on Right", "", a.toggleSidebarRight},
 		{"view.explorer", "Explorer", "Shift+CmdOrCtrl+E", a.showExplorer},
 		{"view.scm", "Source Control", "Ctrl+Shift+G", a.showSourceControl},
 		{"git.commit", "Commit", "", func() { a.commit(false) }},
@@ -289,7 +290,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
-			item("view.sidebar"), item("view.explorer"), item("view.scm"), mygo.Separator(),
+			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.scm"), mygo.Separator(),
 			checkbox("view.wordWrap", a.settings.WordWrap), item("view.wordWrapTab"), item("view.togglePreview"), mygo.Separator(),
 			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),
 			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),

@@ -20,6 +20,8 @@ type Settings struct {
 	// changes for source control.
 	SidebarView  string  `json:"sidebarView,omitempty"`
 	SidebarWidth float32 `json:"sidebarWidth"`
+	// SidebarRight puts the sidebar right of the editors, rather than left.
+	SidebarRight bool    `json:"sidebarRight,omitempty"`
 	PanelHeight  float32 `json:"panelHeight"`
 	FontSize     float32 `json:"fontSize"`
 	FontFamily   string  `json:"fontFamily"`

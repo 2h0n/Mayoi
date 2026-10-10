@@ -83,17 +83,35 @@ func (a *app) view(c *ui.Context) {
 		// The panes keep their places in the tree, by keys, as the sidebar
 		// and the panel come and go, so that the editors keep their state.
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-			if a.settings.SidebarOpen {
-				s := a.settings
-				ui.Column(c.Key("sidebar")).Width(s.SidebarWidth).Shrink(0).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
+			s := a.settings
+			sidebar := func() {
+				if !s.SidebarOpen {
+					return
+				}
+				// Its splitter is along the edge facing the editors.
+				at, dir := edgeRight, float32(1)
+				box := ui.Column(c.Key("sidebar")).Width(s.SidebarWidth).Shrink(0).BorderColor(p.border)
+				if s.SidebarRight {
+					at, dir = edgeLeft, -1
+					box.BorderWidth(0, 0, 0, 1)
+				} else {
+					box.BorderWidth(0, 1, 0, 0)
+				}
+				box.Children(func() {
 					a.sidebar(c)
-					a.splitter(c, edgeRight, func(d float32) {
+					a.splitter(c, at, func(d float32) {
 						w, _ := c.Size()
-						s.SidebarWidth = clamp(s.SidebarWidth+d, 160, max(w-320, 160))
+						s.SidebarWidth = clamp(s.SidebarWidth+dir*d, 160, max(w-320, 160))
 					})
 				})
 			}
+			if !s.SidebarRight {
+				sidebar()
+			}
 			ui.Column(c.Key("main")).Grow(1).MinWidth(0).Children(func() { a.main(c) })
+			if s.SidebarRight {
+				sidebar()
+			}
 		})
 		a.statusBar(c)
 	})
@@ -153,9 +171,9 @@ func (a *app) main(c *ui.Context) {
 type edge int
 
 const (
-	edgeRight edge = iota // the sidebar's
+	edgeRight edge = iota // the sidebar's, on the left
 	edgeTop               // the panel's
-	edgeLeft              // a column's, after the first
+	edgeLeft              // a column's, after the first, or the sidebar's on the right
 )
 
 // splitter is the handle along an edge of a pane that resizes it. drag
@@ -201,9 +219,20 @@ func (a *app) titleBar(c *ui.Context) {
 	bar := c.TitleBar()
 	ui.Row(c).Height(max(bar.Height, titleBarH)).Padding(0, bar.Right+8, 0, bar.Left+10).AlignItems(ui.Center).
 		BorderWidth(0, 0, 1, 0).BorderColor(p.border).DragWindow().Children(func() {
-		ui.Row(c).Width(120).Gap(2).Children(func() {
-			if a.iconButton(c, iconSidebar, "Toggle Sidebar (⌘B)", a.settings.SidebarOpen).Clicked() {
+		// The sidebar's button is on its side.
+		right := a.settings.SidebarRight
+		sidebarButton := func() {
+			icon := iconSidebar
+			if right {
+				icon = iconSidebarRight
+			}
+			if a.iconButton(c, icon, "Toggle Sidebar (⌘B)", a.settings.SidebarOpen).Clicked() {
 				a.toggleSidebar()
+			}
+		}
+		ui.Row(c).Width(120).Gap(2).Children(func() {
+			if !right {
+				sidebarButton()
 			}
 		})
 		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
@@ -212,6 +241,9 @@ func (a *app) titleBar(c *ui.Context) {
 		ui.Row(c).Width(120).Justify(ui.End).Gap(2).Children(func() {
 			if a.iconButton(c, iconPanel, "Toggle Terminal (⌃`)", a.window.PanelOpen).Clicked() {
 				a.togglePanel()
+			}
+			if right {
+				sidebarButton()
 			}
 		})
 	})
@@ -869,6 +901,12 @@ func (a *app) keycaps(c *ui.Context, keys string) {
 
 func (a *app) toggleSidebar() {
 	a.settings.SidebarOpen = !a.settings.SidebarOpen
+	a.settings.Changed()
+}
+
+// toggleSidebarRight moves the sidebar to the other side of the editors.
+func (a *app) toggleSidebarRight() {
+	a.settings.SidebarRight = !a.settings.SidebarRight
 	a.settings.Changed()
 }
 
