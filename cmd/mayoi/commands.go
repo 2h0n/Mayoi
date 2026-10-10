@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"runtime"
+	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
@@ -28,6 +29,9 @@ func (a *app) commands() []command {
 		{"file.new", "New File", "CmdOrCtrl+N", a.newFile},
 		{"file.openFolder", "Open Folder…", "CmdOrCtrl+O", a.chooseFolder},
 		{"file.openFolderWindow", "Open Folder in New Window…", "Alt+CmdOrCtrl+O", a.chooseFolderWindow},
+		// ⌃R, which the view takes itself, so that a terminal keeps it.
+		{"file.openRecent", "Open Recent…", "", a.openRecentPicker},
+		{"file.clearRecent", "Clear Recently Opened", "", a.clearRecent},
 		{"file.save", "Save", "CmdOrCtrl+S", a.saveActive},
 		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
@@ -110,7 +114,15 @@ func (a *app) commands() []command {
 	}
 }
 
+// recentCommand is the prefix of the commands that open a recent
+// folder, before the folder.
+const recentCommand = "file.recent:"
+
 func (a *app) run(id string) {
+	if dir, ok := strings.CutPrefix(id, recentCommand); ok {
+		a.switchFolder(dir)
+		return
+	}
 	for _, cmd := range a.commands() {
 		if cmd.id == id {
 			cmd.run()
@@ -128,6 +140,12 @@ func (a *app) chooseFolder() {
 // chooseFolderWindow asks for a folder to open in a window of its own.
 func (a *app) chooseFolderWindow() {
 	a.host.openFolder(func(dir string) { a.host.newWindow(dir) })
+}
+
+// clearRecent forgets the recent folders.
+func (a *app) clearRecent() {
+	a.settings.ClearRecent()
+	a.host.recentChanged()
 }
 
 // switchFolder opens dir in the window, unless another window has it
@@ -215,8 +233,25 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		it.Type, it.Checked = mygo.MenuItemRadio, a.settings.Appearance == appearance
 		return it
 	}
+	// The recent folders but the window's, and the box of them all.
+	var recent []*mygo.MenuItem
+	for _, dir := range a.settings.RecentExcept(a.root) {
+		id := recentCommand + dir
+		recent = append(recent, &mygo.MenuItem{Label: shortenHome(dir), Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+			run(id, win)
+		}})
+	}
+	if len(recent) > 0 {
+		recent = append(recent, mygo.Separator())
+	}
+	more := item("file.openRecent")
+	more.Label = "More…"
+	forget := item("file.clearRecent")
+	forget.Disabled = len(a.settings.Recent) == 0
+	recent = append(recent, more, mygo.Separator(), forget)
 	file := []*mygo.MenuItem{
-		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"), mygo.Separator(),
+		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"),
+		{Label: "Open Recent", Submenu: recent}, mygo.Separator(),
 		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), mygo.Separator(),
 		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"),
 	}
@@ -285,8 +320,24 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	return mygo.NewMenu(menus)
 }
 
+// terminalFocused reports whether a terminal has the keyboard, of the
+// panel or of a tab.
+func (a *app) terminalFocused(c *ui.Context) bool {
+	for _, t := range a.terms {
+		if t.view.FocusWithin(c) {
+			return true
+		}
+	}
+	return false
+}
+
 // shortcuts are the keys the view takes itself.
 func (a *app) shortcuts(c *ui.Context) {
+	// ⌃R, unless a terminal has the keyboard: shells search their history
+	// with it.
+	if !a.terminalFocused(c) && c.Shortcut(ui.Ctrl, ui.KeyR) {
+		a.openRecentPicker()
+	}
 	// Cmd+1…9 shows a tab of the column, as in browsers.
 	for i, k := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
 		if c.Shortcut(ui.Cmd, k) {

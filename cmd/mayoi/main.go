@@ -99,6 +99,8 @@ func (h *desktop) newWindow(dir string) {
 	h.m.openFolder(filepath.Clean(dir), false)
 }
 
+func (h *desktop) recentChanged() { h.m.refreshMenu() }
+
 func (h *desktop) installCLI() {
 	go func() {
 		home, _ := os.UserHomeDir()
@@ -214,7 +216,7 @@ func main() {
 			return
 		}
 		first := m.wins[0]
-		mygo.App.SetMenu(first.a.menu(runtime.GOOS == "darwin" && mygo.App.IsPackaged(), m.run))
+		m.setMenu(first.a)
 		if out := os.Getenv("MAYOI_SNAPSHOT"); out != "" {
 			// For checking the real window: capture it once it settles, and
 			// quit.
@@ -387,6 +389,41 @@ func (m *mayoi) of(st *settings.Window) *desktop {
 	return nil
 }
 
+// refreshMenu builds the menus anew on the window in front, whose folder
+// the recent folders of the File menu leave out.
+func (m *mayoi) refreshMenu() {
+	if !m.ready || len(m.wins) == 0 {
+		return
+	}
+	front := m.wins[0]
+	front.do(func() { m.setMenu(front.a) })
+}
+
+// setMenu sets the app's menu as a's window has it, and the Dock's menu of
+// the recent folders.
+func (m *mayoi) setMenu(a *app) {
+	mygo.App.SetMenu(a.menu(runtime.GOOS == "darwin" && mygo.App.IsPackaged(), m.run))
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	var items []*mygo.MenuItem
+	for _, dir := range m.s.RecentExcept("") {
+		id := recentCommand + dir
+		// In the window in front, which comes forward.
+		items = append(items, &mygo.MenuItem{Label: shortenHome(dir), Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+			if len(m.wins) > 0 {
+				m.wins[0].show()
+			}
+			m.run(id, nil)
+		}})
+	}
+	var dock *mygo.Menu
+	if len(items) > 0 {
+		dock = mygo.NewMenu(items)
+	}
+	mygo.App.Dock.SetMenu(dock)
+}
+
 // run runs a command of the menu in the window it was chosen in, or the
 // one focused last.
 func (m *mayoi) run(id string, win *mygo.Window) {
@@ -482,6 +519,8 @@ func (m *mayoi) openWindow(st *settings.Window) *desktop {
 		}
 		m.s.Focused(st)
 		a.post(a.gitChanged)
+		// The File menu's recent folders leave out this one's.
+		m.refreshMenu()
 	})
 	win.OnBlur(func() { a.post(a.autoSaveAll) })
 	// The last window to close quits the app, and stays in the settings

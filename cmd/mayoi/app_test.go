@@ -28,6 +28,8 @@ type fakeHost struct {
 	// asked to open in a window of their own.
 	others  []string
 	windows []string
+	// recentChanges counts the changes of the recent folders.
+	recentChanges int
 }
 
 func (h *fakeHost) openFolder(done func(string)) { done(h.folder) }
@@ -51,6 +53,7 @@ func (h *fakeHost) showFolder(dir string) bool {
 	return slices.Contains(h.others, dir)
 }
 func (h *fakeHost) newWindow(dir string) { h.windows = append(h.windows, dir) }
+func (h *fakeHost) recentChanged()       { h.recentChanges++ }
 func (h *fakeHost) installCLI()          {}
 func (h *fakeHost) uninstallCLI()        {}
 

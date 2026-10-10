@@ -11,7 +11,8 @@ goes to the window that already has it, or to a new one. A file goes to the wind
 
 **`app.go`, `commands.go`.** These hold state and commands. Each window has its own `app`, and the windows share the
 settings and the menu bar. A menu item runs the command of the window it was chosen in. Menus, accelerators and tests
-all run the same commands.
+all run the same commands. The menu bar is built anew when a window comes to the front or the recent folders change, so
+that **Open Recent** leaves out the front window's folder.
 
 **`view.go`.** This is the layout. The sidebar, the columns and the panel keep stable keys as panes come and go, so
 editors never lose their state. Tabs are dragged as values within the window, and the drop targets a column offers only
@@ -112,6 +113,9 @@ change, so it reads nothing again as the work tree does.
 
 **`branchpicker.go`.** Switch Branch is a box like quick open's. It reads the branches, local and of the remotes, with
 `git for-each-ref` as it opens, the one committed to last first, and finds them with the same fuzzy matcher as files.
+
+**`recentpicker.go`.** Open Recent's box is the same kind of box over the recent folders the settings keep. ⌃R is a
+shortcut of the view rather than of the menu, so that a terminal with the keyboard keeps it.
 
 **`blame.go`.** Once the caret rests on a line for 350 ms, `git blame --contents -` blames that line of the editor's
 text, unsaved edits included.

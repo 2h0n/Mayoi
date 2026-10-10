@@ -233,3 +233,25 @@ func (s *Settings) AddRecent(dir string) {
 		s.Recent = s.Recent[:10]
 	}
 }
+
+// RecentExcept returns the recent folders but dir, and those that are not
+// on the disk now, which stay in the list for when they come back, as a
+// drive plugged in again.
+func (s *Settings) RecentExcept(dir string) []string {
+	var out []string
+	for _, d := range s.Recent {
+		if d == dir {
+			continue
+		}
+		if info, err := os.Stat(d); err == nil && info.IsDir() {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// ClearRecent forgets the recent folders.
+func (s *Settings) ClearRecent() {
+	s.Recent = nil
+	s.Changed()
+}

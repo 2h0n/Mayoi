@@ -99,6 +99,7 @@ func (a *app) view(c *ui.Context) {
 	})
 	a.quickOpenView(c)
 	a.branchPickerView(c)
+	a.recentPickerView(c)
 	a.promptView(c)
 	a.confirmView(c)
 	for _, msg := range a.errors {
@@ -777,9 +778,13 @@ func (a *app) welcome(c *ui.Context) {
 					a.welcomeAction(c, iconTerminal, "Toggle Terminal", "⌃`", a.togglePanel)
 					a.welcomeAction(c, iconSidebar, "Toggle Sidebar", "⌘B", a.toggleSidebar)
 				})
-				if a.root == "" && len(a.settings.Recent) > 0 {
+				var recent []string
+				if a.root == "" {
+					recent = a.settings.RecentExcept("")
+				}
+				if len(recent) > 0 {
 					a.welcomeSection(c, "Recent", func() {
-						for _, dir := range a.settings.Recent[:min(6, len(a.settings.Recent))] {
+						for _, dir := range recent[:min(6, len(recent))] {
 							r := ui.ButtonBase(c.Key("recent:"+dir)).FillWidth().Padding(6, 10).Radius(6).Gap(10).
 								Justify(ui.Start).AlignItems(ui.Center).Label("Open " + dir).Tooltip(shortenHome(dir))
 							if r.Hovered() {

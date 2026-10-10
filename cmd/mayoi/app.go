@@ -38,6 +38,9 @@ type host interface {
 	// newWindow opens dir in a window of its own, or brings the one that
 	// has it open to the front.
 	newWindow(dir string)
+	// recentChanged shows the recent folders anew, in the menus, once
+	// they change.
+	recentChanged()
 	// installCLI and uninstallCLI put the mayoi command on the shell's
 	// path, and take it away, saying how it went.
 	installCLI()
@@ -115,6 +118,7 @@ type app struct {
 
 	quick    quickOpen
 	branches branchPicker // the box that switches branches
+	recents  recentPicker // the box of the recent folders
 	find     findState
 	prompt   *prompt
 	confirm  *confirm
@@ -228,6 +232,7 @@ func (a *app) openFolder(dir string) {
 	a.git = gitState{}
 	a.window.Folder = dir
 	a.settings.AddRecent(dir)
+	a.host.recentChanged()
 	for _, d := range a.docs {
 		a.tree.Watch(d.path)
 	}

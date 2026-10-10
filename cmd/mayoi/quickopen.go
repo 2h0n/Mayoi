@@ -213,31 +213,35 @@ func (a *app) quickRow(c *ui.Context, rel string, positions []int) {
 	base := strings.LastIndexByte(rel, '/') + 1
 	icon, col := fileIcon(p, rel[base:])
 	ui.Icon(c, icon).FontSize(15).TextColor(col)
-	// The positions are byte offsets, in order: walk them along the text.
-	spans := func(s string, from int, normal ui.Color) []ui.Span {
-		out := make([]ui.Span, 0, 4)
-		k := 0
-		for i, r := range s {
-			for k < len(positions) && positions[k] < from+i {
-				k++
-			}
-			on := k < len(positions) && positions[k] == from+i
-			if n := len(out); n > 0 && (out[n-1].Weight == 650) == on {
-				out[n-1].Text += string(r)
-				continue
-			}
-			sp := ui.Span{Text: string(r), Color: normal}
-			if on {
-				sp.Color, sp.Weight = p.accent, 650
-			}
-			out = append(out, sp)
-		}
-		return out
-	}
-	ui.RichText(c, spans(rel[base:], base, p.text)...).FontSize(13).SingleLine().Shrink(0)
+	ui.RichText(c, a.matchSpans(rel[base:], base, positions, p.text)...).FontSize(13).SingleLine().Shrink(0)
 	if dir := path.Dir(rel); dir != "." {
-		ui.RichText(c, spans(dir, 0, p.faint)...).FontSize(12).SingleLine().Shrink(1)
+		ui.RichText(c, a.matchSpans(dir, 0, positions, p.faint)...).FontSize(12).SingleLine().Shrink(1)
 	}
+}
+
+// matchSpans is s, which starts at from of the text matched, with the
+// characters at positions in the accent color. The positions are byte
+// offsets, in order: walk them along the text.
+func (a *app) matchSpans(s string, from int, positions []int, normal ui.Color) []ui.Span {
+	p := a.pal
+	out := make([]ui.Span, 0, 4)
+	k := 0
+	for i, r := range s {
+		for k < len(positions) && positions[k] < from+i {
+			k++
+		}
+		on := k < len(positions) && positions[k] == from+i
+		if n := len(out); n > 0 && (out[n-1].Weight == 650) == on {
+			out[n-1].Text += string(r)
+			continue
+		}
+		sp := ui.Span{Text: string(r), Color: normal}
+		if on {
+			sp.Color, sp.Weight = p.accent, 650
+		}
+		out = append(out, sp)
+	}
+	return out
 }
 
 // goToLine moves the caret to a line (and column) of the document shown,

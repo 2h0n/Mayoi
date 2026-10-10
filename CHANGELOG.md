@@ -36,6 +36,11 @@ needs a `## <version>` section here, or its build fails.
   files: an idle frame of 2,000 changes went from 0.39 ms to 0.22 ms and
   allocates a tenth as much, and reading the status again when nothing
   changed no longer lays the diff out again.
+- **File → Open Recent** lists the folders opened last, but the window's
+  and those not on the disk, with **Clear Recently Opened**. ⌃R, or
+  **More…**, finds one by name: ⏎ opens it in the window, ⌘⏎ in a new
+  one. A terminal keeps ⌃R for its shell. On macOS the Dock icon's menu
+  lists them too.
 
 ## 0.2.0
 

@@ -81,3 +81,26 @@ func TestMigrateDiffSplit(t *testing.T) {
 		t.Errorf("layout %q", s.DiffLayout)
 	}
 }
+
+// The recent folders leave out the one given and those gone from the
+// disk, which they keep; Clear forgets them all.
+func TestRecentExcept(t *testing.T) {
+	a, b, gone := t.TempDir(), t.TempDir(), filepath.Join(t.TempDir(), "gone")
+	s := Default()
+	for _, d := range []string{gone, b, a} {
+		s.AddRecent(d)
+	}
+	if got := s.RecentExcept(a); !slices.Equal(got, []string{b}) {
+		t.Errorf("except %s: %v", a, got)
+	}
+	if got := s.RecentExcept(""); !slices.Equal(got, []string{a, b}) {
+		t.Errorf("all: %v", got)
+	}
+	if len(s.Recent) != 3 {
+		t.Errorf("a folder gone was forgotten: %v", s.Recent)
+	}
+	s.ClearRecent()
+	if len(s.Recent) != 0 || len(s.RecentExcept("")) != 0 {
+		t.Errorf("cleared: %v", s.Recent)
+	}
+}
