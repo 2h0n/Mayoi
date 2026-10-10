@@ -57,13 +57,13 @@ go run ./tools/icongen                                      # redraw resources/i
 
 ## Releasing
 
-Add a `## <version>` section to `CHANGELOG.md` and commit it, then:
+Write the release notes under `## Unreleased` in `CHANGELOG.md` and commit them, then:
 
 ```sh
 scripts/bump.sh patch    # or minor, major, or a version such as 0.2.0
 ```
 
-It sets the version in `mygo.json`, commits and tags `v<version>`, and after asking pushes `main` and the tag. The
+It sets the version in `mygo.json`, renames `## Unreleased` to `## <version>` in `CHANGELOG.md`, commits and tags `v<version>`, and after asking pushes `main` and the tag. The
 [Release workflow](.github/workflows/release.yml) then builds macOS (arm64 and Intel, signed and notarized), Windows and
 Linux, uploads them with their signed updates, and publishes the release. Installed apps check for it once a day, and
 from **Mayoi → Check for Updates…**; the update window shows the changelog section.

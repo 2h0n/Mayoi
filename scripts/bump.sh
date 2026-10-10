@@ -4,14 +4,15 @@
 # Release workflow build and publish it.
 # Usage: scripts/bump.sh <version | patch | minor | major>
 #
-# CHANGELOG.md needs a "## <version>" section first: the update window shows
-# it, and the release fails without it. Pre-release versions such as
-# 1.2.0-beta.1 are refused, as Mayoi has no beta channel yet.
+# The "## Unreleased" section of CHANGELOG.md becomes "## <version>" in the
+# same commit, unless a "## <version>" section is there already: the update
+# window shows it, and the release fails without it. Pre-release versions
+# such as 1.2.0-beta.1 are refused, as Mayoi has no beta channel yet.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ $# -ne 1 ]; then
-    sed -n '2,9s/^# \{0,1\}//p' "$0" >&2
+    sed -n '2,10s/^# \{0,1\}//p' "$0" >&2
     exit 1
 fi
 
@@ -64,8 +65,18 @@ if gh release view "$TAG" >/dev/null 2>&1; then
     echo "Release $TAG exists already." >&2
     exit 1
 fi
-if ! grep -q "^## $VERSION\$" CHANGELOG.md; then
-    echo "CHANGELOG.md has no \"## $VERSION\" section. Add one and commit it first." >&2
+if grep -q "^## $VERSION\$" CHANGELOG.md; then
+    RENAME_UNRELEASED=
+elif /usr/bin/python3 - <<'PY'
+import re, sys
+text = open("CHANGELOG.md").read()
+m = re.search(r"^## Unreleased\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+sys.exit(0 if m and m.group(1).strip() else 1)
+PY
+then
+    RENAME_UNRELEASED=1
+else
+    echo "CHANGELOG.md has no \"## $VERSION\" section, nor an \"## Unreleased\" one with notes. Add one and commit it first." >&2
     exit 1
 fi
 
@@ -79,14 +90,27 @@ with open("mygo.json", "w") as f:
     json.dump(config, f, indent=2, ensure_ascii=False)
     f.write("\n")
 PY
-if [ "$(git diff --name-only)" != mygo.json ] \
-    || [ "$(git diff -U0 mygo.json | grep -c '^[-+] ')" != 2 ]; then
-    echo "Expected only the version in mygo.json to change:" >&2
+FILES=mygo.json
+if [ -n "$RENAME_UNRELEASED" ]; then
+    /usr/bin/python3 - "$VERSION" <<'PY'
+import re, sys
+with open("CHANGELOG.md") as f:
+    text = f.read()
+text = re.sub(r"^## Unreleased$", "## " + sys.argv[1], text, count=1, flags=re.M)
+with open("CHANGELOG.md", "w") as f:
+    f.write(text)
+PY
+    FILES="CHANGELOG.md mygo.json"
+fi
+if [ "$(git diff --name-only | tr '\n' ' ')" != "$FILES " ] \
+    || [ "$(git diff -U0 mygo.json | grep -c '^[-+] ')" != 2 ] \
+    || { [ -n "$RENAME_UNRELEASED" ] && [ "$(git diff -U0 CHANGELOG.md | grep -c '^[-+]#')" != 2 ]; }; then
+    echo "Expected only the version in $FILES to change:" >&2
     git diff >&2
-    echo "Undo with: git checkout -- mygo.json" >&2
+    echo "Undo with: git checkout -- $FILES" >&2
     exit 1
 fi
-git commit --quiet -m "$TAG" mygo.json
+git commit --quiet -m "$TAG" $FILES
 git tag "$TAG"
 git --no-pager log -1 --stat --format='%h %s' "$TAG"
 
