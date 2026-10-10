@@ -16,6 +16,7 @@
 
 - **Editor:** tabs, Chroma syntax highlighting, indent guides, sticky scroll, breadcrumbs and word wrap
 - **Smart editing:** auto-indent, auto-closing brackets and quotes, line commands, and per-tab undo
+- **Vim mode:** normal, insert and visual modes, with motions, operators, text objects, counts and `.`
 - **Columns:** split the editor side by side and drag tabs between columns
 - **Explorer:** a live file tree that follows the disk and dims Git-ignored files
 - **Quick open:** fuzzy file search, go to line (`:42`) and go to symbol (`@`)

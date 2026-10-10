@@ -41,7 +41,9 @@ type Settings struct {
 	// folders, rather than by path.
 	ScmTree bool `json:"scmTree,omitempty"`
 	// Blame shows who last changed the caret's line, and when, after it.
-	Blame   bool `json:"blame"`
+	Blame bool `json:"blame"`
+	// Vim edits with vim's keys: the editors start in normal mode.
+	Vim     bool `json:"vim,omitempty"`
 	WrapGen int  `json:"-"`
 	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string   `json:"appearance,omitempty"`

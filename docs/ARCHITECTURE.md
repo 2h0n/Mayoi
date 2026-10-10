@@ -48,6 +48,12 @@ joins the previous step until a pause or a caret move.
 before the text area does, and they run in the next frame, once the selection is known. Brackets close by following up
 the edit that typed them, within the same undo step.
 
+**`vim.go`.** In vim mode, the keys of normal and visual mode reach `editorKey` as key presses and are read as a
+command there. The mode the command leaves changes at once, so the keys after it are read the right way. The command
+itself runs in the next frame, as the other edits do. Typed text goes to the text area's input method rather than to
+`HandleInput`, so normal mode makes the area read-only, which also hides its caret, and paints a block for the cursor.
+An insert started by a change joins that change's step of undo: `history.group` keeps the step open until Esc.
+
 ## Decorations
 
 **`decorations.go`, `selection.go`, `sticky.go`.** These paint what goes around the text: indent guides, bracket pairs,

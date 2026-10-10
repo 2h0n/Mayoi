@@ -5,6 +5,10 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- **View → Vim Mode** edits with vim's keys: normal, insert and visual
+  modes, motions, operators and text objects with counts, `.` to repeat,
+  and yanks and pastes through the system clipboard. The status bar shows
+  the mode, and normal mode shows a block cursor.
 - **View → Sidebar on Right** moves the sidebar, and its button in the
   title bar, to the right of the editors.
 

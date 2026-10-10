@@ -103,6 +103,7 @@ func (a *app) commands() []command {
 		{"view.moveTabNext", "Move Tab to Next Column", "", func() { a.moveTabBy(1) }},
 		{"view.moveTabPrev", "Move Tab to Previous Column", "", func() { a.moveTabBy(-1) }},
 		{"view.wordWrap", "Word Wrap", "", a.toggleWordWrap},
+		{"view.vim", "Vim Mode", "", a.toggleVim},
 		{"view.wordWrapTab", "Toggle Word Wrap in Tab", "Alt+Z", a.toggleTabWrap},
 		{"view.togglePreview", "Toggle SVG Preview", "Shift+CmdOrCtrl+V", a.togglePreview},
 		// The text, or the picture shown.
@@ -291,7 +292,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.scm"), mygo.Separator(),
-			checkbox("view.wordWrap", a.settings.WordWrap), item("view.wordWrapTab"), item("view.togglePreview"), mygo.Separator(),
+			checkbox("view.wordWrap", a.settings.WordWrap), item("view.wordWrapTab"), item("view.togglePreview"),
+			checkbox("view.vim", a.settings.Vim), mygo.Separator(),
 			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),
 			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),
 			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"), mygo.Separator(),
@@ -335,8 +337,8 @@ func (a *app) terminalFocused(c *ui.Context) bool {
 // shortcuts are the keys the view takes itself.
 func (a *app) shortcuts(c *ui.Context) {
 	// ⌃R, unless a terminal has the keyboard: shells search their history
-	// with it.
-	if !a.terminalFocused(c) && c.Shortcut(ui.Ctrl, ui.KeyR) {
+	// with it. Vim's normal mode redoes with it.
+	if !a.terminalFocused(c) && !a.vimTakesKeys(c) && c.Shortcut(ui.Ctrl, ui.KeyR) {
 		a.openRecentPicker()
 	}
 	// Cmd+1…9 shows a tab of the column, as in browsers.

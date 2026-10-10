@@ -57,6 +57,9 @@ type app struct {
 	pal      *palette
 	font     codeFont
 	services ui.Services
+	// vimReg is what vim mode put on the clipboard last, which tells
+	// whether a paste of the same text pastes lines.
+	vimReg vimRegister
 
 	// queue holds the functions other goroutines post for the main thread,
 	// which the next frame runs.

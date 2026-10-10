@@ -695,11 +695,17 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		snap := d.buf.Snapshot()
 		caret := min(d.caret, snap.Len())
+		if a.settings.Vim && d.vim.mode.visual() {
+			caret = vimCursor(d, snap)
+		}
 		line := snap.LineAt(caret)
 		s, _ := snap.LineRange(line)
 		pos := fmt.Sprintf("Ln %d, Col %d", line+1, columns(snap.Slice(s, caret))+1)
 		if n := abs(d.sel[1] - d.sel[0]); n > 0 {
 			pos += fmt.Sprintf(" (%d selected)", n)
+		}
+		if a.settings.Vim {
+			item("vim", d.vim.label(), "", nil, nil)
 		}
 		item("pos", pos, "Go to Line (⌃G)", nil, func() { a.openQuick(":") })
 		item("lines", plural(snap.LineCount(), "line"), "", nil, nil)

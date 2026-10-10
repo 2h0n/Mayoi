@@ -22,6 +22,32 @@ type history struct {
 	// it ends with a pause, a move of the caret, or an edit of the app's.
 	typing bool
 	at     time.Time
+	// group joins the edits of an insert of vim mode into one step, with
+	// the change that started it: groupOpen until its first edit, which
+	// makes a step, groupJoin after, as the edits join the last step.
+	group histGroup
+}
+
+type histGroup uint8
+
+const (
+	groupNone histGroup = iota
+	groupOpen
+	groupJoin
+)
+
+// grouped makes the step for an edit about to be made: a new one, or none
+// while the edit joins the group's.
+func (h *history) grouped(s histStep) {
+	if h.group == groupJoin && len(h.undo) > 0 {
+		clear(h.redo)
+		h.redo = h.redo[:0]
+		return
+	}
+	h.push(s)
+	if h.group == groupOpen {
+		h.group = groupJoin
+	}
 }
 
 type histStep struct {
@@ -64,9 +90,12 @@ func (d *document) observe() {
 	}
 	now := time.Now()
 	old, sel := h.snap, t.sel
-	if !h.typing || now.Sub(h.at) > typingPause || len(h.undo) == 0 {
+	switch {
+	case h.group != groupNone:
+		h.grouped(histStep{h.snap, t.sel})
+	case !h.typing || now.Sub(h.at) > typingPause || len(h.undo) == 0:
 		h.push(histStep{h.snap, t.sel})
-	} else {
+	default:
 		clear(h.redo)
 		h.redo = h.redo[:0]
 	}
@@ -90,7 +119,7 @@ type textEdit struct {
 func (d *editor) edit(sel [2]int, edits ...textEdit) {
 	d.observe()
 	h := &d.hist
-	h.push(histStep{h.snap, d.sel})
+	h.grouped(histStep{h.snap, d.sel})
 	sortEdits(edits)
 	before := h.snap.Len()
 	for _, e := range edits {
@@ -207,6 +236,9 @@ func (d *editor) undo() bool {
 	}
 	s := h.undo[len(h.undo)-1]
 	h.undo = h.undo[:len(h.undo)-1]
+	if h.group == groupJoin {
+		h.group = groupOpen // what is typed next is a step of its own
+	}
 	h.redo = append(h.redo, histStep{d.buf.Snapshot(), d.sel})
 	d.restore(s)
 	return true
@@ -221,6 +253,9 @@ func (d *editor) redo() bool {
 	}
 	s := h.redo[len(h.redo)-1]
 	h.redo = h.redo[:len(h.redo)-1]
+	if h.group == groupJoin {
+		h.group = groupOpen
+	}
 	h.undo = append(h.undo, histStep{d.buf.Snapshot(), d.sel})
 	d.restore(s)
 	return true

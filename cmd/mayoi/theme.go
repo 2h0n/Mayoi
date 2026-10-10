@@ -41,6 +41,7 @@ type palette struct {
 	guideNow              ui.Color // the guide of the caret's block
 	bracket               ui.Color // the brackets paired at the caret
 	word                  ui.Color // the other occurrences of the word at the caret
+	cursor                ui.Color // the block cursor of vim's normal mode
 	shadow                ui.Color
 	added                 ui.Color // lines changed since Git's last commit
 	changed               ui.Color
@@ -164,6 +165,7 @@ var palettes = [2]*palette{lightPalette().derive(), darkPalette().derive()}
 func (p *palette) derive() *palette {
 	p.selected = p.selection.Over(p.editor)
 	p.selectedDim = p.selection.Alpha(0.5).Over(p.editor)
+	p.cursor = p.accent.Alpha(0.5)
 	return p
 }
 

@@ -127,6 +127,7 @@ type editor struct {
 	gutterW float32
 	peek    int
 	blame   blameState
+	vim     vimState
 }
 
 // newEditor makes an editor of doc, its caret at the start.

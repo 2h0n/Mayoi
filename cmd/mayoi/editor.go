@@ -96,6 +96,9 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		d.pinFrame = 0
 		d.vscroll.Y = d.pinY
 	}
+	if !a.settings.Vim {
+		vimReset(d)
+	}
 	// What was typed since the last frame, for undo.
 	d.observe()
 	snap := d.buf.Snapshot()
@@ -105,7 +108,11 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 	gutterW := f.gutterWidth(lines)
 	d.gutterW = gutterW
 	view := d.hscroll.Bounds(c)
+	d.vim.viewH = view.H
 	textX := gutterW + gutterGap
+	// Vim's normal and visual modes take the keys as commands: the area
+	// types nothing, and shows a block for its caret.
+	vimKeys := a.settings.Vim && d.vim.mode != vimInsert
 	focused := d.vscroll.Focused(c)
 	g := a.geometry(d, lines)
 	wrap := g.lines != nil
@@ -119,7 +126,8 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			FillHeight().
 			Padding(editorPadY, textPadR, editorPadY, textX).
 			Label("Editor " + d.name()).
-			HandleInput(func(ev ui.InputEvent) bool { return a.editorKey(d, ev) })
+			HandleInput(func(ev ui.InputEvent) bool { return a.editorKey(d, ev) }).
+			ReadOnly(vimKeys)
 		if wrap {
 			area.TrackLines(&d.lines)
 		} else {
@@ -181,6 +189,10 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			a.invalidate()
 		}
 		caretLine := snap.LineAt(min(caret, snap.Len()))
+		if vimKeys && d.vim.mode.visual() {
+			// The line of vim's cursor, not of the end of the selection.
+			caretLine = snap.LineAt(vimCursor(d, snap))
+		}
 		// The view follows the caret of the editor typed in, not one that
 		// an edit made in another column moved.
 		follows := focused || jump
@@ -259,6 +271,26 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		if !shape.native {
 			area.SelectionColor(ui.Color{})
 		}
+		// The block of vim's cursor: from the cursor to the next rune, or a
+		// cell wide at the end of a line.
+		var block *runeRect
+		if vimKeys {
+			at := vimCursor(d, snap)
+			l := snap.LineAt(at)
+			s, e := snap.LineRange(l)
+			var x0, x1 float32
+			if e-s > highlightRunes {
+				x0 = float32(at-s) * f.charW
+				x1 = x0 + f.charW
+			} else {
+				x0 = f.width(snap.Slice(s, at))
+				x1 = x0 + f.charW
+				if at < e {
+					x1 = f.width(snap.Slice(s, at+1))
+				}
+			}
+			block = &runeRect{line: l, x0: x0, x1: x1}
+		}
 		// rowsAt finds where the lines in view wrap, as this frame laid
 		// them out, and lineY places line i's first row.
 		var wr *wrapRows
@@ -290,6 +322,16 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 				pt.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: lineHeight(caretLine)}, p.line, 0)
 			}
 			shape.paint(pt, func(i int, x0, x1 float32, fn func(y, x0, x1 float32)) { place(r, i, x0, x1, fn) }, lineH, selCol)
+			if block != nil {
+				place(r, block.line, block.x0, block.x1, func(y, x0, x1 float32) {
+					box := ui.Rect{X: x0, Y: y, W: x1 - x0, H: lineH}
+					if focused {
+						pt.Fill(box, p.cursor, 1)
+					} else {
+						pt.Stroke(box, p.cursor, 1, 1)
+					}
+				})
+			}
 			for _, w := range deco.words {
 				if selecting && len(shape.rects) == 1 && shape.rects[0].line == w.line && shape.rects[0].x0 == w.x0 {
 					continue // the selection itself

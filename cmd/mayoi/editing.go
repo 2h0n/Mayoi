@@ -477,11 +477,18 @@ func (a *app) editorKey(d *editor, ev ui.InputEvent) bool {
 		a.invalidate()
 		return true
 	}
+	if ev.Kind == ui.InputPointerDown && a.settings.Vim && d.vim.mode.visual() {
+		// A click ends visual mode; a drag selects anew.
+		d.vim.mode, d.vim.keys = vimNormal, d.vim.keys[:0]
+	}
 	if ev.Kind != ui.InputKeyDown {
 		return false
 	}
 	if ev.Key == ui.KeyEscape && ev.Mods == 0 && d.peek >= 0 {
 		d.peek = -1
+		return true
+	}
+	if a.settings.Vim && a.vimKey(d, ev) {
 		return true
 	}
 	var cmd func(d *editor)

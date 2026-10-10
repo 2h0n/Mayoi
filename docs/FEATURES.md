@@ -39,6 +39,24 @@ Closing a changed file saves it without asking. Untitled files wait for ⌘S. Tu
 - Home goes to the first non-blank character of the line.
 - The status bar shows the file's indentation and line endings, and you can change either from there.
 
+### Vim mode
+
+**View → Vim Mode** edits with vim's keys. Each tab has its own mode, shown in the status bar, and starts in normal
+mode, where the caret is a block.
+
+- **Motions:** `h j k l`, `w b e ge` and `W B E gE`, `0 ^ $ g_`, `gg G`, `f F t T` with `;` and `,`, `%`, `{ }`, Enter
+  and `-`. Arrows, Home and End move too. A count goes before any of them.
+- **Operators:** `d c y`, `> <`, `gc` to comment, and `g~ gu gU` for case. They take a motion or a text object (`iw
+  aw iW aW`, `i" a"` and the other quotes, `i( a(`, `i[`, `i{`, `i<`), or apply to lines when typed twice, as `dd`.
+- **Commands:** `x X D C Y s S r J ~ p P o O`, `i a I A` to insert, `u` and ⌃R to undo and redo, `.` to repeat the
+  last change, ⌃D ⌃U ⌃F ⌃B to scroll by half a view or a view, and ⌃E ⌃Y by a line.
+- **Visual mode:** `v` selects characters and `V` lines. A selection made with the mouse is one too. Motions extend it,
+  `o` swaps its ends, and operators, `r`, `J`, `~ u U` and `p` act on it.
+
+Esc, ⌃[ or ⌃C leaves insert mode. A change and the text typed after it undo as one step. Yanking, deleting and pasting
+use the system clipboard, and a yank of whole lines pastes as lines. In normal mode, ⌃R redoes rather than opening
+recent folders. ⌘ shortcuts work as usual in every mode. Punctuation keys are read as a US keyboard types them.
+
 ### Undo
 
 Each tab keeps its own history. It covers the app's edits as well as typing, so indenting, moving lines, replacing and
