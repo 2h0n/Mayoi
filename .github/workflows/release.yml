@@ -82,33 +82,21 @@ jobs:
             '.macos.signingIdentity = $identity | .macos.notarize = {keychainProfile: "notary", keychain: $keychain}' \
             mygo.json > "$RUNNER_TEMP/mygo.json"
           mv "$RUNNER_TEMP/mygo.json" mygo.json
-      - name: Build
+      # mygo build only warns when it cannot sign the updates, and a release
+      # without them is one installed apps never see.
+      - name: Check the update signing key
         env:
-          GH_TOKEN: ${{ github.token }} # finds the published versions that delta updates start from
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-        run: go tool mygo build -platform "${{ matrix.platform }}"
-      # Not mygo build -upload: it names the disk image and the installer
-      # without the architecture, so the two builds of a system would upload
-      # files of the same name. The update archives and manifests have it.
-      - name: Upload
+        run: test -n "$MYGO_UPDATER_PRIVATE_KEY" || { echo "::error::MYGO_UPDATER_PRIVATE_KEY is not set"; exit 1; }
+      # -upload adds the installers, the install script and the updates to
+      # the draft release, then the update manifests, so that they never
+      # point at a file that isn't there. The disk images and installers
+      # carry their architecture, so the two builds of a system keep both.
+      - name: Build and upload
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          shopt -s nullglob
-          version="$(jq -r .version mygo.json)"
-          for dir in build/*-*/; do
-            arch="$(basename "$dir")"; arch="${arch#*-}"
-            for f in "$dir"*.dmg; do mv "$f" "${dir}Mayoi-$version-$arch.dmg"; done
-            for f in "$dir"*" Setup "*.exe; do mv "$f" "${dir}Mayoi-Setup-$version-$arch.exe"; done
-          done
-          files=(build/*/*.dmg build/*/Mayoi-Setup-*.exe build/*/*.deb build/*/*.tar.gz build/*/*.delta)
-          scripts=(build/linux-*/install.sh)
-          [ ${#scripts[@]} -gt 0 ] && files+=("${scripts[0]}") # the same for every Linux target
-          manifests=(build/*/update-*.json)
-          test ${#manifests[@]} -gt 0 || { echo "::error::no update manifests: is MYGO_UPDATER_PRIVATE_KEY set?"; exit 1; }
-          # The manifests go last, so they never point at a file that isn't there.
-          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${files[@]}"
-          gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber "${manifests[@]}"
+          GH_TOKEN: ${{ github.token }} # finds the published versions that delta updates start from, and uploads
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
+        run: go tool mygo build -platform "${{ matrix.platform }}" -upload
       - name: Remove the keychain
         if: always() && runner.os == 'macOS'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

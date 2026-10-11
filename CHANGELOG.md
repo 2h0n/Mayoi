@@ -3,6 +3,14 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Built with MyGo 0.4.1: a select or combobox list no longer jumps back
+  to its highlighted option while you scroll it, and text an input method
+  is composing keeps its highlighting.
+- The disk images and Windows installers of a release are named
+  `Mayoi.<version>.<arch>.dmg` and `Mayoi.Setup.<version>.<arch>.exe`.
+
 ## 0.3.0
 
 - **View → Vim Mode** edits with vim's keys: normal, insert and visual
