@@ -63,7 +63,6 @@ func (a *app) quickOpenView(c *ui.Context) {
 		return
 	}
 	p := a.pal
-	t := c.Theme()
 	line, col, isLine := gotoLine(q.query)
 	symQuery, isSym := strings.CutPrefix(strings.TrimLeft(q.query, " "), "@")
 	if isSym {
@@ -87,10 +86,9 @@ func (a *app) quickOpenView(c *ui.Context) {
 		a.openFile(a.root+"/"+rel, true)
 	}
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back := a.dialogBack(c, "quick")
 		back.Children(func() {
-			box := ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10).
-				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).Clip().
+			box := a.floating(c, ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
 				Role(ui.RoleDialog).Label("Quick Open")
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
@@ -309,7 +307,6 @@ func (a *app) recentFirst(results []workspace.Match) []workspace.Match {
 func (a *app) quickSymbols(c *ui.Context, query string) {
 	q := &a.quick
 	p := a.pal
-	t := c.Theme()
 	syms, names := a.documentSymbols()
 	key := "@" + query
 	if q.stale || q.shown != key {
@@ -332,10 +329,9 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 		}
 	}
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back := a.dialogBack(c, "quick")
 		back.Children(func() {
-			box := ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10).
-				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).Clip().
+			box := a.floating(c, ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
 				Role(ui.RoleDialog).Label("Go to Symbol")
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {

@@ -128,6 +128,10 @@ type app struct {
 	find     findState
 	prompt   *prompt
 	confirm  *confirm
+	// dialog is the dialog shown, which came in as it showed, and
+	// dialogBuilt says a build of the view built one.
+	dialog      string
+	dialogBuilt bool
 
 	errors  []string // to show as toasts
 	notes   []note   // what went well, to show as toasts

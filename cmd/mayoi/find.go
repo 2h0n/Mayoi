@@ -305,7 +305,6 @@ func (a *app) findView(c *ui.Context, d *editor) {
 		return
 	}
 	p := a.pal
-	t := c.Theme()
 	a.searchIn(d, true)
 	if f.reveal && f.cur >= 0 {
 		m := f.matches[f.cur]
@@ -327,8 +326,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			f.stale = true
 		}
 	}
-	box := ui.Column(c).Absolute().Top(4).Right(22).Width(430).Padding(5, 6).Gap(4).Radius(8).
-		Background(t.Surface).Border(1, p.border).Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.22)).
+	box := a.floating(c, ui.Column(c).Absolute().Top(4).Right(22).Width(430).Padding(5, 6).Gap(4).Radius(8), false).Transition(popIn).
 		Role(ui.RoleToolbar).Label("Find")
 	box.Children(func() {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {

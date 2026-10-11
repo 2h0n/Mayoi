@@ -243,7 +243,6 @@ func (a *app) hunkPeekView(c *ui.Context, d *editor) {
 		return
 	}
 	p, f := a.pal, a.font
-	t := c.Theme()
 	snap := d.buf.Snapshot()
 	n := snap.LineCount()
 	g := a.geometry(d, n)
@@ -257,8 +256,7 @@ func (a *app) hunkPeekView(c *ui.Context, d *editor) {
 	}
 	base := d.git.Base()
 	const most = 12
-	box := ui.Column(c.Key("hunk-peek")).Absolute().Top(y+1).Left(d.gutterW-4).Right(14).Radius(6).Clip().
-		Background(t.Surface).Border(1, p.border).Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.22)).
+	box := a.floating(c, ui.Column(c.Key("hunk-peek")).Absolute().Top(y+1).Left(d.gutterW-4).Right(14).Radius(6).Clip(), false).Transition(popIn).
 		Role(ui.RoleToolbar).Label("Change")
 	box.Children(func() {
 		ui.Row(c).Height(26).Padding(0, 4, 0, 10).Gap(2).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {

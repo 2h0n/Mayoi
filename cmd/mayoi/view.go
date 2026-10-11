@@ -120,6 +120,10 @@ func (a *app) view(c *ui.Context) {
 	a.recentPickerView(c)
 	a.promptView(c)
 	a.confirmView(c)
+	if !a.dialogBuilt {
+		a.dialog = ""
+	}
+	a.dialogBuilt = false
 	for _, msg := range a.errors {
 		c.Toast(msg)
 	}

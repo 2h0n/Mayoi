@@ -88,7 +88,7 @@ func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, 
 				label = "99+"
 			}
 			ui.Text(c, label).Absolute().Top(-2).Right(-3).FontSize(9).FontWeight(600).Padding(0, 3).Radius(6).
-				MinWidth(13).TextAlign(ui.Center).Background(p.accent).TextColor(ui.Hex("#ffffff"))
+				MinWidth(13).TextAlign(ui.Center).Background(p.fill).TextColor(ui.Hex("#ffffff"))
 		}
 	})
 	if b.Clicked() {
@@ -98,8 +98,15 @@ func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, 
 
 func (a *app) noFolder(c *ui.Context) {
 	p := a.pal
-	ui.Column(c).Padding(12, 16).Gap(12).Children(func() {
-		ui.Text(c, "You have not yet opened a folder.").FontSize(12.5).TextColor(p.muted)
+	// As source control shows a folder without a repository.
+	ui.Column(c).Padding(28, 20, 16, 20).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconFolderOpen).FontSize(20).TextColor(p.muted)
+		})
+		ui.Text(c, "No Folder Open").FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, "Open a folder to browse its files, search them and track their changes.").
+			FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
+		ui.Box(c).Height(4)
 		if ui.PrimaryButton(c, "Open Folder").FillWidth().Clicked() {
 			a.chooseFolder()
 		}

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"time"
+
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/highlight"
@@ -23,8 +25,11 @@ type palette struct {
 	faint     ui.Color
 	accent    ui.Color
 	accentDim ui.Color
-	line      ui.Color // the caret's line
-	selection ui.Color
+	// fill is the accent as a button's background, under white text, and
+	// fillHover and fillPressed the button under the pointer and pressed.
+	fill, fillHover, fillPressed ui.Color
+	line                         ui.Color // the caret's line
+	selection                    ui.Color
 	// The selection as the editor paints it, opaque over its background:
 	// while it has the keyboard, and fainter while it has not.
 	selected, selectedDim ui.Color
@@ -166,6 +171,17 @@ func (p *palette) derive() *palette {
 	p.selected = p.selection.Over(p.editor)
 	p.selectedDim = p.selection.Alpha(0.5).Over(p.editor)
 	p.cursor = p.accent.Alpha(0.5)
+	black, white := ui.Hex("#000000"), ui.Hex("#ffffff")
+	if p.dark {
+		// The dark accent is light, for marks on a dark ground: white on
+		// it would be hard to read, so buttons take a deeper purple, with
+		// white on it at 4.6:1.
+		p.fill = ui.Hex("#7260e3")
+		p.fillHover, p.fillPressed = p.fill.Mix(white, 0.1), p.fill.Mix(black, 0.15)
+	} else {
+		p.fill = p.accent
+		p.fillHover, p.fillPressed = p.fill.Mix(black, 0.1), p.fill.Mix(black, 0.22)
+	}
 	return p
 }
 
@@ -178,7 +194,11 @@ func applyTheme(c *ui.Context) *palette {
 		p = palettes[1]
 	}
 	t.Background = p.editor
-	t.Accent = p.accent
+	// Every state of the accent, or a hovered button would turn the
+	// default theme's blue.
+	t.Accent, t.AccentText = p.fill, ui.Hex("#ffffff")
+	t.AccentHover, t.AccentPressed = p.fillHover, p.fillPressed
+	t.Danger, t.Warning, t.Success = p.danger, p.modified, p.added
 	t.Selection = p.selection
 	t.Border = p.border
 	t.Text, t.TextMuted = p.text, p.muted
@@ -197,4 +217,44 @@ func applyTheme(c *ui.Context) *palette {
 	}
 	c.SetTheme(&t)
 	return p
+}
+
+// popIn is how a box over an editor comes in, as find's: it fades in,
+// from a little above where it settles. Only its colors follow it after.
+var popIn = ui.ElementTransition{Duration: 130 * time.Millisecond, Colors: true, Enter: &ui.Motion{Y: -6}}
+
+// floating styles a box that floats over the window: a dialog, as quick
+// open's, a picker's or a prompt's, or a smaller box over an editor, as
+// find's. The shadow is lighter on a light window, where a dark one looks
+// smudged.
+func (a *app) floating(c *ui.Context, box ui.Element, dialog bool) ui.Element {
+	p := a.pal
+	box.Background(c.Theme().Surface).Border(1, p.border)
+	switch {
+	case dialog && p.dark:
+		box.Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.40))
+	case dialog:
+		box.Shadow(0, 12, 32, 0, ui.RGBA(20, 20, 40, 0.16))
+	case p.dark:
+		box.Shadow(0, 6, 18, 0, ui.RGBA(0, 0, 0, 0.30))
+	default:
+		box.Shadow(0, 4, 14, 0, ui.RGBA(20, 20, 40, 0.12))
+	}
+	return box
+}
+
+// dialogBack is the layer under a dialog, over the whole window, that
+// the dialog is in: label names the dialog. It fades in, from a little
+// above, as the dialog shows. The layer is new with the dialog, so a
+// Transition would not move it: its motion starts the first time it is
+// built for the dialog.
+func (a *app) dialogBack(c *ui.Context, label string) ui.Element {
+	back := ui.Column(c).Absolute().Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+	if a.dialog != label {
+		a.dialog = label
+		back.Animate("in", 0, 0)
+	}
+	a.dialogBuilt = true
+	k := back.Animate("in", 1, 130*time.Millisecond)
+	return back.Top(-6 * (1 - k)).Opacity(k)
 }

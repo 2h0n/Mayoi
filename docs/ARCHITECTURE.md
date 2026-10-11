@@ -145,4 +145,5 @@ batched together. This package also holds the file index and the fuzzy matcher f
 
 ## Theme
 
-**`theme.go`.** The light and dark palettes for the window, the code and the terminal.
+**`theme.go`.** The light and dark palettes for the window, the code and the terminal. It also styles what floats over
+the window, dialogs and the boxes over an editor, and fades them in as they show.

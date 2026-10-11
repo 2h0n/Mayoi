@@ -158,7 +158,6 @@ func (a *app) branchPickerView(c *ui.Context) {
 		return
 	}
 	p := a.pal
-	t := c.Theme()
 	if b.stale || b.shown != b.query {
 		b.results = workspace.Fuzzy(b.names, strings.TrimSpace(b.query), 200)
 		if strings.TrimSpace(b.query) == "" {
@@ -172,10 +171,9 @@ func (a *app) branchPickerView(c *ui.Context) {
 	}
 	choices := a.branchChoices()
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back := a.dialogBack(c, "branches")
 		back.Children(func() {
-			box := ui.Column(c).Width(560).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10).
-				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).Clip().
+			box := a.floating(c, ui.Column(c).Width(560).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
 				Role(ui.RoleDialog).Label("Switch Branch")
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {

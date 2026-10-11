@@ -23,7 +23,6 @@ func (a *app) promptView(c *ui.Context) {
 		return
 	}
 	p := a.pal
-	t := c.Theme()
 	submit := func() {
 		if msg := pr.done(pr.value); msg != "" {
 			pr.err = msg
@@ -32,10 +31,9 @@ func (a *app) promptView(c *ui.Context) {
 		a.prompt = nil
 	}
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back := a.dialogBack(c, "prompt:"+pr.title)
 		back.Children(func() {
-			box := ui.Column(c).Width(420).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10).
-				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).
+			box := a.floating(c, ui.Column(c).Width(420).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10), true).
 				Role(ui.RoleDialog).Label(pr.title)
 			box.Children(func() {
 				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
@@ -92,12 +90,10 @@ func (a *app) confirmView(c *ui.Context) {
 		return
 	}
 	p := a.pal
-	t := c.Theme()
 	ui.Overlay(c, func() {
-		back := ui.Column(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).AlignItems(ui.Center).Modal()
+		back := a.dialogBack(c, "confirm:"+cf.title)
 		back.Children(func() {
-			box := ui.Column(c).Width(420).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10).
-				Background(t.Surface).Border(1, p.border).Shadow(0, 16, 40, 0, ui.RGBA(0, 0, 0, 0.32)).
+			box := a.floating(c, ui.Column(c).Width(420).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10), true).
 				Role(ui.RoleDialog).Label(cf.title)
 			box.Children(func() {
 				ui.Text(c, cf.title).FontSize(13).FontWeight(600).TextColor(p.text)

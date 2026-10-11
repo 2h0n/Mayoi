@@ -9,6 +9,14 @@ needs a `## <version>` section here, or its build fails.
   where they should go, or on the side of a column to open them in a new
   column there. A folder dropped on a window opens as `mayoi <dir>` opens
   it. Dropped on a terminal, files type their paths, quoted for the shell.
+- Primary buttons, such as **Commit**, stay purple under the pointer and
+  as they are pressed, rather than turning blue. In a dark window they
+  are a deeper purple, so their white labels read clearly.
+- Quick open, the pickers and the prompts fade in from just above where
+  they settle, and so do find and the peek of a change. Their shadows are
+  lighter in a light window.
+- The explorer of a window without a folder looks like source control's
+  empty views, with a button to open one.
 
 ## 0.3.1
 
