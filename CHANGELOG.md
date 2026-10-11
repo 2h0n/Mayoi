@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.3.1
 
 - Built with MyGo 0.4.1: a select or combobox list no longer jumps back
   to its highlighted option while you scroll it, and text an input method
