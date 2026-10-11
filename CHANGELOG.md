@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.3.2
 
 - Drop files from the Finder to open them: on a column, on its tab strip
   where they should go, or on the side of a column to open them in a new
