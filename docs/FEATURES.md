@@ -192,10 +192,15 @@ two columns. A file can show in several columns at once. Those columns share its
 its own caret and scroll position. Drag a tab along its strip, into another column, or to the edge of a column to give it
 a new column.
 
+Files dragged from the Finder open where you drop them: in a column after the tab shown, on its tab strip where the
+marker shows, or on the edge of a column in a new column there. Dropped elsewhere, as on the explorer, they open in the
+column that has the keyboard. A dropped folder opens as `mayoi <dir>` opens it.
+
 ## Terminal
 
 Ghostty's emulator (libghostty-vt), in the bottom panel or in a column tab. You can run several terminals, move one
 between the panel and a column by dragging it or from its menu, and maximize the panel. Terminal colors follow the theme.
+Files dropped on a terminal type their paths, quoted for the shell.
 
 ## Quick open
 

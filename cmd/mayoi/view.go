@@ -355,9 +355,11 @@ func (a *app) columns(c *ui.Context) {
 // or the terminal of the tab shown, or the welcome page.
 func (a *app) columnView(c *ui.Context, col *column) {
 	if len(col.tabs) == 0 {
-		ui.Column(c).Bind(&col.body).Grow(1).MinHeight(0).Children(func() {
+		body := ui.Column(c).Bind(&col.body).Grow(1).MinHeight(0)
+		over := a.takeFiles(body, col)
+		body.Children(func() {
 			a.welcome(c)
-			a.dropZones(c, col)
+			a.dropZones(c, col, over)
 		})
 		return
 	}
@@ -369,7 +371,9 @@ func (a *app) columnView(c *ui.Context, col *column) {
 	// Every tab keeps its editor, so that its selection and its place stay
 	// as tabs change: those not shown are built invisible, out of the way.
 	// The key keeps them as the breadcrumbs above come and go.
-	ui.Box(c.Key("body")).Bind(&col.body).Grow(1).Children(func() {
+	body := ui.Box(c.Key("body")).Bind(&col.body).Grow(1)
+	over := a.takeFiles(body, col)
+	body.Children(func() {
 		for _, t := range col.tabs {
 			box := ui.Column(c.Key(t.id)).Absolute().Top(0).Left(0).Right(0).Bottom(0)
 			if t != shown {
@@ -407,7 +411,7 @@ func (a *app) columnView(c *ui.Context, col *column) {
 				}
 			})
 		}
-		a.dropZones(c, col)
+		a.dropZones(c, col, over)
 	})
 }
 
@@ -469,28 +473,61 @@ func (a *app) dropBeside(it dragItem, col *column, after bool) {
 	a.dropInColumn(it, a.splitColumn(col, after), 0)
 }
 
-// dropZones are where a tab dragged over a column is dropped: on a side,
-// for a column of its own there, or between them, for a tab of this one.
-// They are there only while a tab is dragged, over the editor.
-func (a *app) dropZones(c *ui.Context, col *column) {
-	if !a.dragging {
+// takeFiles makes a column's body take files dragged from another app,
+// which open in it, and reports whether they are over it.
+func (a *app) takeFiles(body ui.Element, col *column) bool {
+	if paths := body.DroppedFiles(); paths != nil {
+		paths = slices.Clone(paths)
+		a.post(func() { a.dropOnColumn(paths, col) })
+	}
+	return body.FileDragOver()
+}
+
+// dropZones are where a tab or files dragged over a column are dropped:
+// on a side, for a column of their own there, or between them, in this
+// one. They are there only while something is dragged over the editor;
+// over says files are over the column's body.
+func (a *app) dropZones(c *ui.Context, col *column, over bool) {
+	files := over || col.filesOver
+	if !a.dragging && !files {
 		return
 	}
 	w := col.body.Bounds(c).W
 	side := min(w/4, 140)
-	zone := func(key string, left, width, markLeft, markW float32, drop func(it dragItem)) {
+	zone := func(key string, left, width, markLeft, markW float32, drop func(it dragItem), dropFiles func([]string)) {
 		z := ui.Box(c.Key(key)).Absolute().Top(0).Bottom(0).Left(left).Width(width)
-		if _, ok := ui.DragOver[dragItem](z); ok {
+		_, ok := ui.DragOver[dragItem](z)
+		if files && z.FileDragOver() {
+			ok, over = true, true
+		}
+		if ok {
 			ui.Box(c.Key(key+"-mark")).Absolute().Top(0).Bottom(0).Left(markLeft).Width(markW).PassThrough().
 				Background(a.pal.accent.Alpha(0.14)).Border(1, a.pal.accentDim)
 		}
 		if it, ok := ui.Drop[dragItem](z); ok {
 			a.post(func() { drop(it) })
 		}
+		if !files {
+			return
+		}
+		if paths := z.DroppedFiles(); paths != nil {
+			paths = slices.Clone(paths)
+			a.post(func() { dropFiles(paths) })
+		}
 	}
-	zone("drop-before", 0, side, 0, w/2, func(it dragItem) { a.dropBeside(it, col, false) })
-	zone("drop-in", side, w-2*side, 0, w, func(it dragItem) { a.dropInColumn(it, col, len(col.tabs)) })
-	zone("drop-after", w-side, side, w/2, w/2, func(it dragItem) { a.dropBeside(it, col, true) })
+	zone("drop-before", 0, side, 0, w/2, func(it dragItem) { a.dropBeside(it, col, false) },
+		func(paths []string) { a.dropFilesBeside(paths, col, false) })
+	zone("drop-in", side, w-2*side, 0, w, func(it dragItem) { a.dropInColumn(it, col, len(col.tabs)) },
+		func(paths []string) { a.dropOnColumn(paths, col) })
+	zone("drop-after", w-side, side, w/2, w/2, func(it dragItem) { a.dropBeside(it, col, true) },
+		func(paths []string) { a.dropFilesBeside(paths, col, true) })
+	if col.filesOver != over {
+		col.filesOver = over
+		if !over {
+			// One more frame, without the zones.
+			a.invalidate()
+		}
+	}
 }
 
 // dropMark tints a pane that takes what is dragged over it.

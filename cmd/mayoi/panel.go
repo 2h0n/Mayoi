@@ -313,7 +313,17 @@ func (a *app) panel(c *ui.Context) {
 				a.hidePanel()
 			}
 		})
-		ui.Box(c).Grow(1).Children(func() {
+		term := ui.Box(c).Grow(1)
+		// Files from another app type their paths into the terminal shown.
+		filesOver := false
+		if s := a.panelTerm; s != nil {
+			if paths := term.DroppedFiles(); paths != nil {
+				paths = slices.Clone(paths)
+				a.post(func() { a.pastePaths(s, paths) })
+			}
+			filesOver = term.FileDragOver()
+		}
+		term.Children(func() {
 			s := a.panelTerm
 			if s == nil {
 				ui.Column(c).Fill().Center().Children(func() {
@@ -324,7 +334,7 @@ func (a *app) panel(c *ui.Context) {
 			} else {
 				a.terminalView(c, s)
 			}
-			if over.tab != nil && over.tab.term != nil {
+			if over.tab != nil && over.tab.term != nil || filesOver {
 				a.dropMark(c)
 			}
 		})

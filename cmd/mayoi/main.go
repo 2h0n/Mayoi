@@ -99,6 +99,12 @@ func (h *desktop) newWindow(dir string) {
 	h.m.openFolder(filepath.Clean(dir), false)
 }
 
+func (h *desktop) openFolders(dirs []string) {
+	for _, dir := range dirs {
+		h.m.openFolder(dir, true)
+	}
+}
+
 func (h *desktop) recentChanged() { h.m.refreshMenu() }
 
 func (h *desktop) installCLI() {
@@ -523,6 +529,15 @@ func (m *mayoi) openWindow(st *settings.Window) *desktop {
 		m.refreshMenu()
 	})
 	win.OnBlur(func() { a.post(a.autoSaveAll) })
+	// Files dropped where nothing takes them, as on the explorer, open in
+	// the column that has the keyboard.
+	win.OnFileDrop(func(e *mygo.FileDropEvent) {
+		paths := e.Paths
+		a.post(func() {
+			col := a.column()
+			a.dropFiles(paths, col, col.active+1)
+		})
+	})
 	// The last window to close quits the app, and stays in the settings
 	// to open again, as do those the quitting closes.
 	win.OnClosed(func() {

@@ -3,6 +3,13 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Drop files from the Finder to open them: on a column, on its tab strip
+  where they should go, or on the side of a column to open them in a new
+  column there. A folder dropped on a window opens as `mayoi <dir>` opens
+  it. Dropped on a terminal, files type their paths, quoted for the shell.
+
 ## 0.3.1
 
 - Built with MyGo 0.4.1: a select or combobox list no longer jumps back

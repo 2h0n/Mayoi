@@ -24,6 +24,17 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 				a.dropInColumn(it, col, at)
 			})
 		}
+		// Files from another app, there too.
+		if paths := e.DroppedFiles(); paths != nil {
+			paths = slices.Clone(paths)
+			a.post(func() {
+				at := len(col.tabs)
+				if _, i := a.locate(before); i >= 0 {
+					at = i
+				}
+				a.dropFiles(paths, col, at)
+			})
+		}
 	}
 	ui.Row(c).Height(tabStripH).Background(p.chrome).AlignItems(ui.Center).Children(func() {
 		// The strip's edge along the bottom, which the tab shown breaks to
@@ -33,6 +44,7 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 		// Past the last tab: there.
 		drop(strip, nil)
 		_, atEnd := ui.DragOver[dragItem](strip)
+		atEnd = atEnd || strip.FileDragOver()
 		strip.Children(func() {
 			ui.Row(c).Height(tabStripH).AlignItems(ui.Stretch).Children(func() {
 				for i, t := range col.tabs {
@@ -49,6 +61,7 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 					}
 					drop(tab, t)
 					_, over := ui.DragOver[dragItem](tab)
+					over = over || tab.FileDragOver()
 					hovered := tab.Hovered()
 					switch {
 					case active:

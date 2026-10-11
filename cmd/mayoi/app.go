@@ -38,6 +38,9 @@ type host interface {
 	// newWindow opens dir in a window of its own, or brings the one that
 	// has it open to the front.
 	newWindow(dir string)
+	// openFolders opens folders as `mayoi <dir>` does: a window that
+	// shows nothing takes one, as may this one.
+	openFolders(dirs []string)
 	// recentChanged shows the recent folders anew, in the menus, once
 	// they change.
 	recentChanged()

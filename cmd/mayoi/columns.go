@@ -28,6 +28,9 @@ type column struct {
 	revealed int
 	// body is where the tab shown is, which a tab dragged is dropped on.
 	body ui.Handle
+	// filesOver is set while files dragged from another app are over the
+	// column, as the frame before found.
+	filesOver bool
 }
 
 // colTab is a tab of a column: an editor of a document, a viewer of an

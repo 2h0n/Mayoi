@@ -28,6 +28,8 @@ type fakeHost struct {
 	// asked to open in a window of their own.
 	others  []string
 	windows []string
+	// folders are those asked to open as `mayoi <dir>` opens them.
+	folders []string
 	// recentChanges counts the changes of the recent folders.
 	recentChanges int
 }
@@ -52,10 +54,11 @@ func (h *fakeHost) setAppearance(string)  {}
 func (h *fakeHost) showFolder(dir string) bool {
 	return slices.Contains(h.others, dir)
 }
-func (h *fakeHost) newWindow(dir string) { h.windows = append(h.windows, dir) }
-func (h *fakeHost) recentChanged()       { h.recentChanges++ }
-func (h *fakeHost) installCLI()          {}
-func (h *fakeHost) uninstallCLI()        {}
+func (h *fakeHost) newWindow(dir string)      { h.windows = append(h.windows, dir) }
+func (h *fakeHost) openFolders(dirs []string) { h.folders = append(h.folders, dirs...) }
+func (h *fakeHost) recentChanged()            { h.recentChanges++ }
+func (h *fakeHost) installCLI()               {}
+func (h *fakeHost) uninstallCLI()             {}
 
 // workspaceFixture makes a folder of a few files.
 func workspaceFixture(t testing.TB) string {
