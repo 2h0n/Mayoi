@@ -648,7 +648,7 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 	}
 	row.Children(func() {
 		name := filepath.Base(e.Path)
-		icon, col := fileIcon(p, name)
+		icon, col := entryIcon(p, e, name)
 		ui.Icon(c, icon).FontSize(14).TextColor(col)
 		label := ui.Text(c, name).FontSize(13).SingleLine().Shrink(0).TextColor(gitColor(p, letter))
 		if letter == 'D' {
@@ -659,8 +659,8 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 		}
 		ui.Spacer(c)
 		if hovered {
-			if letter != 'D' && a.smallButton(c, iconOpenFile, "Open File") {
-				*action = func() { a.openFile(e.Path, true) }
+			if letter != 'D' && a.smallButton(c, iconOpenFile, openLabel(e)) {
+				*action = func() { a.openPath(e.Path, true) }
 			}
 			switch r.group {
 			case groupStaged:
@@ -668,7 +668,7 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 					*action = func() { a.unstage(entryPaths(e, true)...) }
 				}
 			default:
-				if r.group != groupMerge && a.smallButton(c, iconUndo, "Discard Changes…") {
+				if r.group != groupMerge && !e.Submodule() && a.smallButton(c, iconUndo, "Discard Changes…") {
 					*action = func() { a.discard(e) }
 				}
 				if a.smallButton(c, iconPlus, "Stage Changes") {
@@ -850,8 +850,8 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 	if m.Item("Open Changes").Chosen() {
 		*action = func() { a.openChange(r, true) }
 	}
-	if m.Item("Open File").Disabled(e.Letter() == 'D' && r.group != groupStaged).Chosen() {
-		*action = func() { a.openFile(e.Path, true) }
+	if m.Item(openLabel(e)).Disabled(e.Letter() == 'D' && r.group != groupStaged).Chosen() {
+		*action = func() { a.openPath(e.Path, true) }
 	}
 	m.Separator()
 	if r.group == groupStaged {
@@ -862,7 +862,7 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 		if m.Item("Stage Changes").Chosen() {
 			*action = func() { a.stage(e.Path) }
 		}
-		if r.group != groupMerge && m.Item("Discard Changes…").Chosen() {
+		if r.group != groupMerge && !e.Submodule() && m.Item("Discard Changes…").Chosen() {
 			*action = func() { a.discard(e) }
 		}
 	}
@@ -991,12 +991,29 @@ func (a *app) chooseScmFile(f *diffFile) {
 func (a *app) openChange(r scmRow, focus bool) {
 	switch r.group {
 	case groupMerge:
-		a.openFile(r.e.Path, focus)
+		a.openPath(r.e.Path, focus)
 	case groupStaged:
 		a.showChanges(diffTarget{path: r.e.Path, base: diffStaged}, focus)
 	default:
 		a.showChanges(diffTarget{path: r.e.Path, base: diffIndex}, focus)
 	}
+}
+
+// openLabel is what opening a changed file is called: a submodule opens
+// as a folder.
+func openLabel(e git.Entry) string {
+	if e.Submodule() {
+		return "Open Folder"
+	}
+	return "Open File"
+}
+
+// entryIcon is the icon of a changed file, or of a submodule.
+func entryIcon(p *palette, e git.Entry, name string) (*ui.SVG, ui.Color) {
+	if e.Submodule() {
+		return iconFolder, p.accent
+	}
+	return fileIcon(p, name)
 }
 
 // toggleStaged stages a file of the view, or unstages it when staged.
@@ -1036,8 +1053,10 @@ func (a *app) stageAll() {
 
 // discard asks, then throws away the changes of files in the work tree
 // that the index does not have: a tracked file is as the index has it
-// again, and one Git does not track goes to the Trash.
+// again, and one Git does not track goes to the Trash. Submodules are
+// left as they are, as git restore leaves them.
 func (a *app) discard(es ...git.Entry) {
+	es = slices.DeleteFunc(slices.Clone(es), git.Entry.Submodule)
 	if len(es) == 0 {
 		return
 	}

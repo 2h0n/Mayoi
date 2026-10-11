@@ -24,9 +24,9 @@ const (
 
 // hunkActions returns what can be done to the changes of a file of a
 // diff, one change at a time: those of a file in both versions only, as
-// a file added or removed goes in or out whole.
+// a file added or removed goes in or out whole, as a submodule does.
 func hunkActions(f *diffFile) []hunkAction {
-	if !f.loaded || f.binary || !f.old.ok || !f.new.ok {
+	if !f.loaded || f.binary || !f.old.ok || !f.new.ok || f.entry.Submodule() {
 		return nil
 	}
 	switch {

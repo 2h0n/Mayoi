@@ -538,7 +538,7 @@ func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bo
 	pt.Icon(chevron, ui.Rect{X: x, Y: mid - 6, W: 12, H: 12}, p.muted)
 	x += 18
 	name := filepath.Base(f.path)
-	icon, iconCol := fileIcon(p, name)
+	icon, iconCol := entryIcon(p, f.entry, name)
 	pt.Icon(icon, ui.Rect{X: x, Y: mid - 7, W: 14, H: 14}, iconCol)
 	x += 20
 	rel := a.relOrPath(f.path)
@@ -856,15 +856,17 @@ func (a *app) fileButtons(c *ui.Context, v *diffView, f *diffFile, right, y floa
 	}
 	var bs []button
 	if f.letter != 'D' || f.base == diffStaged {
-		bs = append(bs, button{iconOpenFile, "Open File", func() { a.openFileAt(f.path, 0, true) }})
+		bs = append(bs, button{iconOpenFile, openLabel(e), func() { a.openFileAt(f.path, 0, true) }})
 	}
 	switch {
 	case f.base == diffCommit:
 	case f.base == diffStaged:
 		bs = append(bs, button{iconMinus, "Unstage Changes", func() { a.unstage(entryPaths(e, true)...) }})
 	default:
-		bs = append(bs, button{iconUndo, "Discard Changes…", func() { a.discard(e) }},
-			button{iconPlus, "Stage Changes", func() { a.stage(e.Path) }})
+		if !e.Submodule() {
+			bs = append(bs, button{iconUndo, "Discard Changes…", func() { a.discard(e) }})
+		}
+		bs = append(bs, button{iconPlus, "Stage Changes", func() { a.stage(e.Path) }})
 	}
 	if len(bs) == 0 {
 		return ui.Rect{}

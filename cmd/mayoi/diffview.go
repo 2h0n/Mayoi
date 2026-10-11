@@ -599,6 +599,7 @@ func (a *app) refreshDiffFile(v *diffView, f *diffFile) bool {
 	}
 	old, new := f.old, f.new
 	path, orig, base := f.path, f.entry.Orig, f.base
+	sub, dirty := f.entry.Submodule(), f.entry.Dirty()
 	var hash, parent string
 	if cm := v.commit; cm != nil {
 		hash = cm.hash
@@ -638,6 +639,12 @@ func (a *app) refreshDiffFile(v *diffView, f *diffFile) bool {
 		switch {
 		case doc != nil:
 			new.text, new.ok = snap.String(), true
+		case readDisk && sub && base != diffStaged && base != diffCommit:
+			var e error
+			new.text, new.ok, e = r.WorkSubproject(path, dirty)
+			if e != nil && err == nil {
+				err = e
+			}
 		case readDisk && base != diffStaged && base != diffCommit:
 			var e error
 			new.text, _, e = readWork(path)
@@ -1262,9 +1269,19 @@ func (a *app) pageDiff(v *diffView, dy float32) {
 	}
 }
 
+// openPath shows a file, or opens a folder, as a submodule is, as
+// `mayoi <dir>` opens it.
+func (a *app) openPath(path string, focus bool) {
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		a.host.openFolders([]string{path})
+		return
+	}
+	a.openFile(path, focus)
+}
+
 // openFileAt shows a file with the caret at the start of a line.
 func (a *app) openFileAt(path string, line int, focus bool) {
-	a.openFile(path, focus)
+	a.openPath(path, focus)
 	if d := a.activeEditor(); d != nil && d.path == path {
 		snap := d.buf.Snapshot()
 		line = min(max(line, 0), snap.LineCount()-1)

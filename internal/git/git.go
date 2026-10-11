@@ -107,7 +107,18 @@ type Entry struct {
 	Path string // absolute
 	Orig string // where a renamed file was, absolute
 	X, Y byte
+	// Sub is a submodule's state as git status says it: 'S', then 'C'
+	// when its commit moved, 'M' when its files changed and 'U' when it
+	// has files Git does not track, '.' for each that did not. It is ""
+	// for a file.
+	Sub string
 }
+
+// Submodule reports whether the entry is a submodule, not a file.
+func (e Entry) Submodule() bool { return e.Sub != "" }
+
+// Dirty reports whether a submodule's files differ from its commit.
+func (e Entry) Dirty() bool { return len(e.Sub) == 4 && (e.Sub[2] == 'M' || e.Sub[3] == 'U') }
 
 // Untracked reports whether Git does not track the file.
 func (e Entry) Untracked() bool { return e.X == '?' }
@@ -207,6 +218,9 @@ func parseStatus(r *Repo, out []byte) *Status {
 				continue
 			}
 			e := Entry{Path: r.Abs(f[n]), X: f[1][0], Y: f[1][1]}
+			if strings.HasPrefix(f[2], "S") {
+				e.Sub = f[2]
+			}
 			if rec[0] == '2' && i+1 < len(recs) {
 				i++
 				e.Orig = r.Abs(recs[i])
@@ -220,10 +234,15 @@ func parseStatus(r *Repo, out []byte) *Status {
 }
 
 // Show returns the text of path at rev: "HEAD", or "" for the index. ok
-// is false when it has no such file.
+// is false when it has no such file. A submodule's text is its commit, as
+// git diff says it.
 func (r *Repo) Show(rev, path string) (text string, ok bool, err error) {
 	out, err := r.run(nil, "show", rev+":"+r.Rel(path))
 	if err != nil {
+		// The commit of a submodule is in its own repository, not here.
+		if hash := r.gitlink(rev, path); hash != "" {
+			return subproject(hash, false), true, nil
+		}
 		var ge *Error
 		if errors.As(err, &ge) {
 			for _, s := range []string{"exists on disk, but not in", "does not exist in", "invalid object name", "bad revision"} {
@@ -235,6 +254,52 @@ func (r *Repo) Show(rev, path string) (text string, ok bool, err error) {
 		return "", false, err
 	}
 	return strings.ReplaceAll(string(out), "\r\n", "\n"), true, nil
+}
+
+// gitlink returns the commit a submodule at path is at in rev, "" when
+// path is not a submodule there.
+func (r *Repo) gitlink(rev, path string) string {
+	args := []string{"ls-tree", rev, "--", r.Rel(path)}
+	if rev == "" {
+		args = []string{"ls-files", "-s", "--", r.Rel(path)}
+	}
+	out, err := r.run(nil, args...)
+	if err != nil {
+		return ""
+	}
+	// "160000 commit <hash>\t<path>" of a tree, "160000 <hash> 0\t<path>"
+	// of the index.
+	f := strings.Fields(string(out))
+	switch {
+	case rev != "" && len(f) >= 3 && f[0] == "160000":
+		return f[2]
+	case rev == "" && len(f) >= 2 && f[0] == "160000":
+		return f[1]
+	}
+	return ""
+}
+
+// subproject is the text of a submodule at a commit, as git diff says it.
+func subproject(hash string, dirty bool) string {
+	if dirty {
+		hash += "-dirty"
+	}
+	return "Subproject commit " + hash + "\n"
+}
+
+// WorkSubproject returns the text of the submodule at path in the work
+// tree: the commit it has checked out, and whether its files differ from
+// it. ok is false when it is not checked out.
+func (r *Repo) WorkSubproject(path string, dirty bool) (text string, ok bool, err error) {
+	// Without its own .git, git in the folder would find this repository.
+	if _, err := os.Lstat(filepath.Join(path, ".git")); err != nil {
+		return "", false, nil
+	}
+	out, err := run(path, nil, "rev-parse", "--verify", "-q", "HEAD")
+	if err != nil {
+		return "", false, err
+	}
+	return subproject(strings.TrimSpace(string(out)), dirty), true, nil
 }
 
 func (r *Repo) rels(paths []string) []string {

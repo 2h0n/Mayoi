@@ -76,6 +76,43 @@ func TestStatus(t *testing.T) {
 	}
 }
 
+func TestSubmodule(t *testing.T) {
+	r, git := repo(t)
+	inner, _ := repo(t)
+	git("-c", "protocol.file.allow=always", "submodule", "add", "-q", inner.Root, "sub")
+	git("commit", "-q", "-m", "sub")
+	sub := filepath.Join(r.Root, "sub")
+	write(t, sub, "a.txt", "changed\n")
+	st, err := r.Status()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e Entry
+	for _, x := range st.Entries {
+		if x.Path == sub {
+			e = x
+		} else if x.Submodule() {
+			t.Errorf("%s is no submodule: %q", x.Path, x.Sub)
+		}
+	}
+	if e.Sub != "S.M." || !e.Submodule() || !e.Dirty() {
+		t.Fatalf("submodule entry %+v", e)
+	}
+	head := inner.Head()
+	for _, rev := range []string{"", "HEAD"} {
+		if text, ok, err := r.Show(rev, sub); !ok || err != nil || text != "Subproject commit "+head+"\n" {
+			t.Errorf("show %q: %q %v %v", rev, text, ok, err)
+		}
+	}
+	if text, ok, err := r.WorkSubproject(sub, e.Dirty()); !ok || err != nil || text != "Subproject commit "+head+"-dirty\n" {
+		t.Errorf("work tree: %q %v %v", text, ok, err)
+	}
+	os.RemoveAll(filepath.Join(sub, ".git"))
+	if _, ok, err := r.WorkSubproject(sub, false); ok || err != nil {
+		t.Errorf("not checked out: ok %v err %v", ok, err)
+	}
+}
+
 func TestStageUnstageDiscardCommit(t *testing.T) {
 	r, _ := repo(t)
 	a := filepath.Join(r.Root, "a.txt")
