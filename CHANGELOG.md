@@ -12,6 +12,8 @@ needs a `## <version>` section here, or its build fails.
   MySQL. Brewfiles highlight as Ruby and `.npmrc` as INI.
 - In The Matrix, the welcome page sits on a panel over the digital rain,
   so its words read.
+- Line numbers, comments and secondary text, such as the folders in
+  quick open, read more easily in the light and dark themes.
 
 ## 0.3.3
 

@@ -81,12 +81,12 @@ func darkPalette() *palette {
 		active:    ui.RGBA(139, 124, 246, 0.16),
 		text:      ui.Hex("#d6d6de"),
 		muted:     ui.Hex("#8c8c99"),
-		faint:     ui.Hex("#55555f"),
+		faint:     ui.Hex("#666672"),
 		accent:    ui.Hex("#8b7cf6"),
 		accentDim: ui.RGBA(139, 124, 246, 0.55),
 		line:      ui.RGBA(255, 255, 255, 0.035),
 		selection: ui.RGBA(139, 124, 246, 0.30),
-		gutter:    ui.Hex("#55555f"),
+		gutter:    ui.Hex("#62626e"),
 		gutterNow: ui.Hex("#b9b9c6"),
 		status:    ui.Hex("#131317"),
 		statusFg:  ui.Hex("#8c8c99"),
@@ -129,7 +129,7 @@ func darkPalette() *palette {
 	s[highlight.Function] = ui.Hex("#8fb4ff")
 	s[highlight.String] = ui.Hex("#a9d48f")
 	s[highlight.Number] = ui.Hex("#f2a679")
-	s[highlight.Comment] = ui.Hex("#686876")
+	s[highlight.Comment] = ui.Hex("#747481")
 	s[highlight.Operator] = ui.Hex("#a0a5b8")
 	s[highlight.Punctuation] = ui.Hex("#8a8e9e")
 	s[highlight.Constant] = ui.Hex("#f2a679")
@@ -153,12 +153,12 @@ func lightPalette() *palette {
 		active:         ui.RGBA(109, 91, 208, 0.12),
 		text:           ui.Hex("#2a2a33"),
 		muted:          ui.Hex("#6c6c79"),
-		faint:          ui.Hex("#a3a3ae"),
+		faint:          ui.Hex("#8e8e9a"),
 		accent:         ui.Hex("#6d5bd0"),
 		accentDim:      ui.RGBA(109, 91, 208, 0.5),
 		line:           ui.RGBA(0, 0, 0, 0.03),
 		selection:      ui.RGBA(109, 91, 208, 0.20),
-		gutter:         ui.Hex("#a2a2ad"),
+		gutter:         ui.Hex("#93939f"),
 		gutterNow:      ui.Hex("#4a4a55"),
 		status:         ui.Hex("#f4f4f7"),
 		statusFg:       ui.Hex("#6c6c79"),
@@ -196,7 +196,7 @@ func lightPalette() *palette {
 	s[highlight.Function] = ui.Hex("#2a5bd7")
 	s[highlight.String] = ui.Hex("#3d8a28")
 	s[highlight.Number] = ui.Hex("#c2571a")
-	s[highlight.Comment] = ui.Hex("#9898a5")
+	s[highlight.Comment] = ui.Hex("#868692")
 	s[highlight.Operator] = ui.Hex("#555a6b")
 	s[highlight.Punctuation] = ui.Hex("#6c6f80")
 	s[highlight.Constant] = ui.Hex("#c2571a")
