@@ -210,6 +210,8 @@ the files Git tracks, so build output stays out.
 
 - Type `:42` to go to line 42.
 - Type `@` to list the file's functions, types and headings.
+- Type `>`, or press ⇧⌘P, to run any command by name. Each shows its menu, its shortcut and a check when it is on,
+  and the commands run last come first.
 
 ## Find and replace
 

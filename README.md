@@ -19,7 +19,7 @@
 - **Vim mode:** normal, insert and visual modes, with motions, operators, text objects, counts and `.`
 - **Columns:** split the editor side by side and drag tabs between columns
 - **Explorer:** a live file tree that follows the disk and dims Git-ignored files
-- **Quick open:** fuzzy file search, go to line (`:42`) and go to symbol (`@`)
+- **Quick open:** fuzzy file search, go to line (`:42`), go to symbol (`@`) and a command palette (`>`, ⇧⌘P)
 - **Find and replace:** case, whole-word and regex matching, searched in the background in large files
 - **Git:** a source control view to stage, commit, amend, undo, pull and push, every change in one diff, folded
   around the changes, inline or side by side, recent commits with their own diffs, gutter marks that revert or
