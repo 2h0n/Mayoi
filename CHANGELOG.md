@@ -15,6 +15,8 @@ needs a `## <version>` section here, or its build fails.
   `scmAllBranches` setting.
 - A commit's menu checks it out, creates a branch or a tag there, and
   copies the name of its branches and tags.
+- The **⋯** menu of source control no longer ignores an item chosen with
+  the pointer past the sidebar, as **View as Tree** often was.
 - A folder closed, by closing its window, **File → Close Folder** or
   opening another folder in its window, opens again with its tabs,
   columns and the folders open in the Explorer. Opening

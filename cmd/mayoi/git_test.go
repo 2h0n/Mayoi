@@ -1265,3 +1265,51 @@ func TestHistoryBranchesAndTags(t *testing.T) {
 		t.Errorf("branch %q", a.git.status.Branch)
 	}
 }
+
+// The view's ⋯ menu takes an item chosen with the pointer off the sidebar,
+// where it leaves the menu: Refresh, shown only while the pointer is on
+// it, going does not lose the choice. The toggle of every branch shows
+// while it is on.
+func TestScmMenuChosenAway(t *testing.T) {
+	hs := newHarness(t, true)
+	hs.gitRepo()
+	a := hs.a
+	tt := hs.tt
+	a.run("view.scm")
+	hs.settleGit()
+	choose := func(item string) {
+		t.Helper()
+		r, ok := tt.Find("More Actions")
+		if !ok {
+			t.Fatalf("no menu button: %q", tt.Texts())
+		}
+		x, y := r.X+r.W/2, r.Y+r.H/2
+		tt.Move(x, y)
+		hs.settle()
+		tt.Press(x, y)
+		hs.settle()
+		tt.Release(x, y)
+		hs.settle()
+		tt.Move(600, 300)
+		hs.settle()
+		if err := tt.ChooseMenuItem(item); err != nil {
+			t.Fatalf("%v: %q", err, tt.Menu())
+		}
+		hs.settle()
+	}
+	for _, want := range []bool{true, false} {
+		choose("View as Tree")
+		if a.settings.ScmTree != want {
+			t.Errorf("tree %v, want %v", a.settings.ScmTree, want)
+		}
+		choose("Show All Branches")
+		hs.settleGit()
+		if a.settings.ScmAllBranches != want {
+			t.Errorf("all branches %v, want %v", a.settings.ScmAllBranches, want)
+		}
+		// Off the header, its toggle shows only while on.
+		if got := hs.tt.HasText("Show Current Branch Only"); got != want {
+			t.Errorf("toggle shown %v with all branches %v: %q", got, want, tt.Texts())
+		}
+	}
+}

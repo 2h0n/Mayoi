@@ -620,14 +620,27 @@ func (a *app) scmHeader(c *ui.Context, r scmRow, action *func()) {
 				if a.smallButton(c, iconPlus, "Stage All Merge Changes") {
 					*action = func() { a.stage(paths...) }
 				}
-			case groupCommits:
-				tip := "Show All Branches"
-				if a.settings.ScmAllBranches {
-					tip = "Show Current Branch Only"
-				}
-				if a.smallButton(c, iconBranch, tip) {
-					*action = a.toggleAllBranches
-				}
+			}
+		}
+		// The toggle of every branch stays, in the accent, while it is on.
+		if all := a.settings.ScmAllBranches; r.group == groupCommits && (hovered || all) {
+			tip := "Show All Branches"
+			if all {
+				tip = "Show Current Branch Only"
+			}
+			b := ui.ButtonBase(c.Key("commits:all")).Size(20, 20).Radius(4).Justify(ui.Center).AlignItems(ui.Center).
+				Label(tip).Tooltip(tip)
+			col := p.muted
+			if b.Hovered() {
+				b.Background(p.hover)
+				col = p.text
+			}
+			if all {
+				col = p.accent
+			}
+			b.Children(func() { ui.Icon(c, iconBranch).FontSize(13).TextColor(col) })
+			if b.Clicked() {
+				*action = a.toggleAllBranches
 			}
 		}
 		ui.Text(c, fmt.Sprint(r.count)).FontSize(10.5).TextColor(p.muted).Padding(0, 5).Radius(8).Background(p.hover)
@@ -1117,7 +1130,9 @@ func (a *app) scmTitleActions(c *ui.Context, hovered bool) {
 	if hovered && a.iconButton(c, iconRefresh, "Refresh", false).Clicked() {
 		a.gitChanged()
 	}
-	a.iconButton(c, iconMore, "More Actions", false).Menu(a.scmMenu)
+	// Keyed, for Refresh coming and going with the pointer not to move
+	// it: the item chosen goes to the menu of the button it opened from.
+	a.iconButton(c.Key("scm:more"), iconMore, "More Actions", false).Menu(a.scmMenu)
 }
 
 // scmMenu is the menu of the view's actions.

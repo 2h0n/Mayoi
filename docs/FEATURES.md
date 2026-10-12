@@ -123,7 +123,8 @@ that do not fit the sidebar's width fold into a count. **Show More Commits** rea
 author, hash and every branch and tag.
 
 The branch button in the COMMITS header, or **Show All Branches** in the **⋯** menu, shows every branch, of the remotes
-too, and every tag, not only the history of the branch checked out.
+too, and every tag, not only the history of the branch checked out. The button stays in the header, in the accent
+color, while it is on.
 
 Click a commit to see it, focused, in a tab of its own: its message, author, date, hash, branches and tags at the top,
 then each file it changed from its first parent, as the **Changes** tab shows them. Its menu checks it out (switching to
