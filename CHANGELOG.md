@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.5.0
 
 - **View → Theme → Claude**: Anthropic's ivory and warm near-black with
   Claude's orange. Clawd, Claude Code's little character, takes the logo's
