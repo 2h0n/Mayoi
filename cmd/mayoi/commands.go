@@ -49,6 +49,8 @@ func (a *app) commands() []command {
 		{"edit.replace", "Replace", "Alt+CmdOrCtrl+F", func() { a.openFind(true) }},
 		{"edit.findNext", "Find Next", "CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, 1) })},
 		{"edit.findPrev", "Find Previous", "Shift+CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, -1) })},
+		{"edit.findInFiles", "Find in Files", "Shift+CmdOrCtrl+F", func() { a.showSearch(false) }},
+		{"edit.replaceInFiles", "Replace in Files", "Shift+CmdOrCtrl+H", func() { a.showSearch(true) }},
 		{"sel.comment", "Toggle Line Comment", "CmdOrCtrl+/", a.editActive(toggleComment)},
 		{"sel.indent", "Indent Lines", "CmdOrCtrl+]", a.editActive(func(d *editor) { indentLines(d, false) })},
 		{"sel.outdent", "Outdent Lines", "CmdOrCtrl+[", a.editActive(func(d *editor) { indentLines(d, true) })},
@@ -72,6 +74,7 @@ func (a *app) commands() []command {
 		{"view.sidebar", "Toggle Sidebar", "CmdOrCtrl+B", a.toggleSidebar},
 		{"view.sidebarRight", "Sidebar on Right", "", a.toggleSidebarRight},
 		{"view.explorer", "Explorer", "Shift+CmdOrCtrl+E", a.showExplorer},
+		{"view.search", "Search", "", func() { a.showSearch(false) }},
 		{"view.scm", "Source Control", "Ctrl+Shift+G", a.showSourceControl},
 		{"git.commit", "Commit", "", func() { a.commit(false) }},
 		{"git.commitPush", "Commit & Push", "", func() { a.commit(true) }},
@@ -284,7 +287,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		{Label: "Edit", Submenu: []*mygo.MenuItem{
 			item("edit.undo"), item("edit.redo"), mygo.Separator(),
 			{Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste}, {Role: mygo.RoleSelectAll}, mygo.Separator(),
-			item("edit.find"), item("edit.replace"), item("edit.findNext"), item("edit.findPrev"),
+			item("edit.find"), item("edit.replace"), item("edit.findNext"), item("edit.findPrev"), mygo.Separator(),
+			item("edit.findInFiles"), item("edit.replaceInFiles"),
 		}},
 		{Label: "Selection", Submenu: []*mygo.MenuItem{
 			item("sel.line"), mygo.Separator(),
@@ -293,7 +297,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
-			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.scm"), mygo.Separator(),
+			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.search"), item("view.scm"), mygo.Separator(),
 			checkbox("view.wordWrap", a.settings.WordWrap), item("view.wordWrapTab"), item("view.togglePreview"),
 			checkbox("view.vim", a.settings.Vim), mygo.Separator(),
 			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),

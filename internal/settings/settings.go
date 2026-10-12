@@ -17,7 +17,7 @@ import (
 type Settings struct {
 	SidebarOpen bool `json:"sidebarOpen"`
 	// SidebarView is what the sidebar shows: "" the explorer, "git" the
-	// changes for source control.
+	// changes for source control, "search" search in the files.
 	SidebarView  string  `json:"sidebarView,omitempty"`
 	SidebarWidth float32 `json:"sidebarWidth"`
 	// SidebarRight puts the sidebar right of the editors, rather than left.

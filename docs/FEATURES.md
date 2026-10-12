@@ -218,6 +218,34 @@ the files Git tracks, so build output stays out.
 ⌘F finds and ⌥⌘F replaces, with options for match case, whole word and regular expressions (`$1` refers to a group). In
 large files, matches are found in the background as you type.
 
+## Search
+
+The button beside **EXPLORER** with a magnifying glass, ⇧⌘F or **Edit → Find in Files** searches every file of the
+folder, as quick open lists them, with options for match case, whole word and regular expressions. The selection, when
+it is on one line, becomes the query. Results come in as they are found, a line for each match under a header for its
+file; click a header to fold it, or **Collapse All** in the title. Click a match, or press Enter on it, to see it in the
+editor, selected. ↓ goes from the query to the results.
+
+- Files with unsaved edits are searched as they are in the editor, and the results follow a file as you type in it or
+  it changes on disk.
+- Binary files and files over 4 MB are passed by, and the search stops at 20,000 matches.
+- **⋯** shows **files to include** and **files to exclude**: patterns separated by commas, such as `*.go, web/**`.
+  `*` and `?` match within a name, `**` any folders, and `{ts,tsx}` either. A pattern without a slash, as `*.ts` or
+  `testdata`, matches a name anywhere; one with a slash matches from the folder's top. A folder's pattern takes the
+  files in it.
+
+### Replace
+
+The arrow beside the query (⇧⌘H, **Edit → Replace in Files**) shows the replacement. Each match then shows struck out,
+with what replaces it beside it. With regular expressions, `$1` refers to a group.
+
+- **Replace All**, beside the replacement, asks first, then replaces every match.
+- The button on a file's header replaces its matches, and the one on a match replaces it alone.
+- A file open in the editor changes as one step of its undo. A file not open is written at once, keeping its line
+  endings and permissions, and that cannot be undone, which Replace All says before it starts.
+- Matches are found again in the text as it is when you replace. A single match that moved since the search is left
+  alone, with a message to search again.
+
 ## Windows
 
 Each folder gets its own window.

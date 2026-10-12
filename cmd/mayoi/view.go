@@ -863,6 +863,7 @@ func (a *app) welcome(c *ui.Context) {
 						a.welcomeAction(c, iconFolderOpen, "Open Folder…", "⌘O", a.chooseFolder)
 					} else {
 						a.welcomeAction(c, iconSearch, "Quick Open…", "⌘P", func() { a.openQuick("") })
+						a.welcomeAction(c, iconSearch, "Find in Files", "⇧⌘F", func() { a.showSearch(false) })
 					}
 					a.welcomeAction(c, iconChevronRight, "Command Palette…", "⇧⌘P", func() { a.openQuick(">") })
 					a.welcomeAction(c, iconFilePlus, "New File", "⌘N", a.newFile)

@@ -117,6 +117,14 @@ A commit's tab is the same view in another mode. It lists the files the commit c
 `git diff-tree`, reads each side with `git show`, and puts a card of the commit's message before them. Its files never
 change, so it reads nothing again as the work tree does.
 
+**`search.go`.** Search in files reads the files of the quick-open index on a few goroutines, and an open document's
+text when it has unsaved edits. Each search has a number, and what an older one posts back is dropped, so typing never
+shows stale results. Found files come back every 60 ms and are kept sorted by path. A document edited, or a file the
+tree reports changed, is searched again alone and its results replaced. The folders of results are watched so a file
+changed on disk is noticed even when its folder is closed in the tree. Replacing finds the matches again in the text as
+it is, then edits an open document as one step of undo or writes a closed file in the background.
+`internal/workspace/glob.go` matches the files to include and to exclude.
+
 **`branchpicker.go`.** Switch Branch is a box like quick open's. It reads the branches, local and of the remotes, with
 `git for-each-ref` as it opens, the one committed to last first, and finds them with the same fuzzy matcher as files.
 

@@ -74,14 +74,20 @@ const asyncSearchBytes = 256 << 10
 
 // compile makes the regular expression of the query and its options.
 func (f *findState) compile() (*regexp.Regexp, error) {
-	expr := f.query
-	if !f.regex {
+	return compileQuery(f.query, f.matchCase, f.word, f.regex)
+}
+
+// compileQuery makes the regular expression of a query of find or
+// search and its options.
+func compileQuery(query string, matchCase, word, regex bool) (*regexp.Regexp, error) {
+	expr := query
+	if !regex {
 		expr = regexp.QuoteMeta(expr)
 	}
-	if f.word {
+	if word {
 		expr = `\b` + expr + `\b`
 	}
-	if !f.matchCase {
+	if !matchCase {
 		expr = "(?i)" + expr
 	}
 	return regexp.Compile("(?m)" + expr)
@@ -252,11 +258,16 @@ func (a *app) replaceAll(d *editor) {
 
 // replacement is the text a match is replaced with: as typed, or with
 // $1 and the like expanded for a regular expression.
-func (a *app) replacement() string {
-	if a.find.regex {
-		return a.find.with
+func (a *app) replacement() string { return replaceTemplate(a.find.with, a.find.regex) }
+
+// replaceTemplate is the template a match is replaced by, for
+// regexp.Expand and ReplaceAllString: with as typed, or with its $1 and
+// the like when it replaces matches of a regular expression.
+func replaceTemplate(with string, regex bool) string {
+	if regex {
+		return with
 	}
-	return strings.ReplaceAll(a.find.with, "$", "$$")
+	return strings.ReplaceAll(with, "$", "$$")
 }
 
 // matchRect is a match in view, in the content of the editor: its line,
@@ -312,17 +323,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 		f.reveal = false
 	}
 	toggle := func(icon *ui.SVG, label string, on *bool) {
-		b := ui.ButtonBase(c).Size(22, 20).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(label).Tooltip(label)
-		col := p.muted
-		if *on {
-			b.Background(p.active).Border(1, p.accentDim)
-			col = p.text
-		} else if b.Hovered() {
-			b.Background(p.hover)
-		}
-		b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(col) })
-		if b.Clicked() {
-			*on = !*on
+		if a.optionToggle(c, icon, label, on) {
 			f.stale = true
 		}
 	}
@@ -417,4 +418,24 @@ func (a *app) findView(c *ui.Context, d *editor) {
 	if box.OverlayShortcut(0, ui.KeyEscape) || box.Shortcut(0, ui.KeyEscape) {
 		a.closeFind()
 	}
+}
+
+// optionToggle is a button of an option of find or search, as Match
+// Case, shown pressed while *on is set. A click flips it, and reports so.
+func (a *app) optionToggle(c *ui.Context, icon *ui.SVG, label string, on *bool) bool {
+	p := a.pal
+	b := ui.ButtonBase(c.Key(label)).Size(22, 20).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(label).Tooltip(label)
+	col := p.muted
+	if *on {
+		b.Background(p.active).Border(1, p.accentDim)
+		col = p.text
+	} else if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(col) })
+	if b.Clicked() {
+		*on = !*on
+		return true
+	}
+	return false
 }

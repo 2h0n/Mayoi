@@ -133,6 +133,7 @@ type app struct {
 	branches branchPicker   // the box that switches branches
 	recents  recentPicker   // the box of the recent folders
 	find     findState
+	inFiles  searchState // search in the files, of the sidebar
 	prompt   *prompt
 	confirm  *confirm
 	// dialog is the dialog shown, which came in as it showed, and
@@ -158,7 +159,7 @@ const (
 
 func newApp(h host, s *settings.Settings, w *settings.Window) *app {
 	a := &app{host: h, settings: s, window: w, fileRow: -1}
-	a.scm.row = -1
+	a.scm.row, a.inFiles.row = -1, -1
 	a.files.List.Selected = &a.fileRow
 	a.cols = []*column{a.newColumn()}
 	return a
@@ -247,6 +248,7 @@ func (a *app) openFolder(dir string) {
 	a.index, a.indexStale = nil, true
 	a.ignored, a.ignoredStale = nil, true
 	a.git = gitState{}
+	a.resetSearch()
 	a.window.Folder = dir
 	a.settings.AddRecent(dir)
 	a.host.recentChanged()
@@ -289,6 +291,7 @@ func (a *app) closeFolder() {
 			a.tree.Close()
 		}
 		a.root, a.tree, a.index, a.git = "", nil, nil, gitState{}
+		a.resetSearch()
 		a.closed = nil
 		a.window.Folder = ""
 		a.settings.Changed()
@@ -360,6 +363,7 @@ func (a *app) saveAll() {
 func (a *app) diskChanged(changed, removed []string) {
 	a.indexStale, a.ignoredStale = true, true
 	a.diffsOnDisk(append(changed, removed...))
+	a.searchAgain(append(changed, removed...))
 	// An image shows the file's new picture, or that it is gone.
 	for _, v := range a.imageViewers() {
 		switch {
@@ -499,6 +503,7 @@ func (a *app) windowTitle() string {
 func (a *app) tick() {
 	a.refreshIgnored()
 	a.refreshGit()
+	a.searchTick()
 	if t := a.windowTitle(); t != a.title {
 		a.title = t
 		a.host.setTitle(t)

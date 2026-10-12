@@ -15,21 +15,33 @@ func (a *app) sidebar(c *ui.Context) {
 	p := a.pal
 	sb := ui.Column(c).Fill().Background(p.chrome)
 	hovered := sb.Hovered()
-	scm := a.settings.SidebarView == "git" && a.root != ""
+	view := a.settings.SidebarView
+	if a.root == "" {
+		view = ""
+	}
+	scm, search := view == "git", view == "search"
 	sb.Children(func() {
 		ui.Row(c).Height(34).Padding(0, 6, 0, 8).Gap(2).AlignItems(ui.Center).Children(func() {
 			if a.root != "" {
-				a.sidebarSwitch(c, iconFiles, "Explorer (⇧⌘E)", !scm, 0, a.showExplorer)
+				a.sidebarSwitch(c, iconFiles, "Explorer (⇧⌘E)", !scm && !search, 0, a.showExplorer)
+				a.sidebarSwitch(c, iconSearch, "Search (⇧⌘F)", search, 0, func() { a.showSearch(false) })
 				a.sidebarSwitch(c, iconBranch, "Source Control (⌃⇧G)", scm, a.changeCount(), a.showSourceControl)
 			}
 			title := "EXPLORER"
-			if scm {
+			switch {
+			case scm:
 				title = "SOURCE CONTROL"
+			case search:
+				title = "SEARCH"
 			}
 			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Grow(1).
 				Padding(0, 0, 0, 6).SingleLine()
 			if scm {
 				a.scmTitleActions(c, hovered)
+				return
+			}
+			if search {
+				a.searchTitleActions(c, hovered)
 				return
 			}
 			if a.root == "" || !hovered && !a.files.List.FocusWithin(c) {
@@ -55,6 +67,10 @@ func (a *app) sidebar(c *ui.Context) {
 		}
 		if scm {
 			a.scmView(c)
+			return
+		}
+		if search {
+			a.searchView(c)
 			return
 		}
 		ui.Row(c).Height(24).Padding(0, 16).Gap(6).AlignItems(ui.Center).Children(func() {

@@ -21,6 +21,8 @@
 - **Explorer:** a live file tree that follows the disk and dims Git-ignored files
 - **Quick open:** fuzzy file search, go to line (`:42`), go to symbol (`@`) and a command palette (`>`, ⇧⌘P)
 - **Find and replace:** case, whole-word and regex matching, searched in the background in large files
+- **Search:** find and replace across the folder's files (⇧⌘F, ⇧⌘H), with files to include and exclude, and a
+  preview of each replacement
 - **Git:** a source control view to stage, commit, amend, undo, pull and push, every change in one diff, folded
   around the changes, inline or side by side, recent commits with their own diffs, gutter marks that revert or
   stage a change, branches and blame
@@ -88,6 +90,7 @@ Local builds stay signed ad hoc; only the workflow signs with the Developer ID. 
 |---|---|
 | ⌘P / ⇧⌘O / ⌃G | Quick open / go to symbol / go to line |
 | ⌘F / ⌥⌘F / ⌘G | Find / replace / next match |
+| ⇧⌘F / ⇧⌘H | Find in files / replace in files |
 | ⌘S / ⇧⌘S / ⌥⌘S | Save / save as / save all |
 | ⌘O / ⌥⌘O | Open folder / open folder in a new window |
 | ⌘N / ⌘W / ⌘1…9 / ⌃Tab | New file / close tab / go to tab / next tab |
