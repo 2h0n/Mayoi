@@ -72,6 +72,9 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 					if tab.Pressed() && (!active || !focused) {
 						a.activate(col, i, true)
 					}
+					if tab.DoubleClicked() {
+						a.keepTab(t)
+					}
 					if active && col.revealed != t.id {
 						// Bring the tab shown into view, once as it is chosen.
 						tab.ScrollIntoView()
@@ -103,6 +106,10 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 						}
 						ui.Icon(c, icon).FontSize(14).TextColor(tint)
 						name := ui.Text(c, t.name()).FontSize(12.5).SingleLine().MaxWidth(220)
+						if t.transient {
+							// A preview, which the next file chosen replaces.
+							name.Italic()
+						}
 						switch {
 						case t.ed != nil && t.ed.diskGone, t.view != nil && t.view.diskGone:
 							name.TextColor(p.danger).Strikethrough()

@@ -41,6 +41,10 @@ type colTab struct {
 	view *viewer
 	diff *diffView
 	term *session
+	// transient marks the preview tab of its column, as a file is chosen
+	// in the Explorer or in search's results: the next file chosen
+	// replaces it, until it is edited or kept.
+	transient bool
 }
 
 func (t *colTab) name() string {
@@ -198,6 +202,7 @@ func (a *app) openFileIn(col *column, at int, path string, focus bool) {
 	if i := a.docIndex(path); i >= 0 {
 		doc = a.docs[i]
 		if at := col.showing(doc); at >= 0 {
+			a.keepTab(col.tabs[at])
 			a.activate(col, at, focus)
 			return
 		}
@@ -219,14 +224,79 @@ func (a *app) openFileIn(col *column, at int, path string, focus bool) {
 		}
 	}
 	at = min(max(at, 0), len(col.tabs))
-	a.addTab(col, at, &colTab{ed: newEditor(doc)})
+	a.addTab(col, at, &colTab{ed: newEditor(doc), transient: a.opening})
 	a.activate(col, at, focus)
+}
+
+// showingFile returns the place of the tab of the column that shows the
+// file path, as text or as an image, -1 when none does.
+func (col *column) showingFile(path string) int {
+	return slices.IndexFunc(col.tabs, func(t *colTab) bool {
+		return t.term == nil && t.diff == nil && t.path() == path
+	})
+}
+
+// previewFile shows a file in the preview tab of the column that has the
+// keyboard, without giving it the keyboard: in the tab that shows it
+// already, else in place of the preview tab, else in a new one.
+func (a *app) previewFile(path string) {
+	col := a.column()
+	if i := col.showingFile(path); i >= 0 {
+		a.activate(col, i, false)
+		return
+	}
+	old := slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.transient })
+	if old >= 0 && col.tabs[old].ed != nil && col.tabs[old].ed.dirty() {
+		// Edited since the frame began: it stays.
+		a.keepTab(col.tabs[old])
+		old = -1
+	}
+	at := col.active + 1
+	if old >= 0 {
+		at = old
+	}
+	n := len(col.tabs)
+	a.opening = true
+	a.openFileIn(col, at, path, false)
+	a.opening = false
+	if len(col.tabs) == n {
+		return // it could not be read
+	}
+	if old >= 0 {
+		// The new tab went in before it.
+		a.dropTab(col.tabs[old+1])
+	}
+	a.rememberTabs()
+}
+
+// keepTab makes a preview tab a tab of its own, which the next file
+// previewed leaves open.
+func (a *app) keepTab(t *colTab) {
+	if !t.transient {
+		return
+	}
+	t.transient = false
+	a.addRecent(t.path())
+	a.rememberTabs()
+}
+
+// keepEdited keeps the preview tabs whose documents were edited. It runs
+// once a frame.
+func (a *app) keepEdited() {
+	for _, col := range a.cols {
+		for _, t := range col.tabs {
+			if t.transient && t.ed != nil && t.ed.dirty() {
+				a.keepTab(t)
+			}
+		}
+	}
 }
 
 // openImage shows an image file in a tab of a column, opening one at
 // place at unless the column has one.
 func (a *app) openImage(col *column, at int, path string, focus bool) {
 	if at := col.showingImage(path); at >= 0 {
+		a.keepTab(col.tabs[at])
 		a.activate(col, at, focus)
 		return
 	}
@@ -240,7 +310,7 @@ func (a *app) openImage(col *column, at int, path string, focus bool) {
 		a.tree.Watch(path)
 	}
 	at = min(max(at, 0), len(col.tabs))
-	a.addTab(col, at, &colTab{view: v})
+	a.addTab(col, at, &colTab{view: v, transient: a.opening})
 	a.activate(col, at, focus)
 }
 
@@ -267,17 +337,25 @@ func (a *app) activate(col *column, i int, focus bool) {
 		a.col = at
 	}
 	t := col.tabs[i]
-	if p := t.path(); p != "" && a.tree != nil {
-		a.recent = slices.Insert(slices.DeleteFunc(a.recent, func(r string) bool { return r == p }), 0, p)
-		if len(a.recent) > 30 {
-			a.recent = a.recent[:30]
-		}
+	if !t.transient {
+		a.addRecent(t.path())
 	}
 	if focus {
 		a.focusTab(t)
 	}
 	a.find.stale = true
 	a.rememberTabs()
+}
+
+// addRecent puts a file first among the recent files quick open lists.
+func (a *app) addRecent(p string) {
+	if p == "" || a.tree == nil {
+		return
+	}
+	a.recent = slices.Insert(slices.DeleteFunc(a.recent, func(r string) bool { return r == p }), 0, p)
+	if len(a.recent) > 30 {
+		a.recent = a.recent[:30]
+	}
 }
 
 // focusTab gives the keyboard to a tab's editor, its viewer, or its
@@ -513,6 +591,10 @@ func (a *app) moveTab(t *colTab, to *column, at int) {
 	if from == nil || slices.Index(a.cols, to) < 0 {
 		return
 	}
+	if from != to {
+		// A tab dragged to another column is kept.
+		t.transient = false
+	}
 	if from != to && t.term == nil {
 		var j int
 		switch {
@@ -580,7 +662,7 @@ func (a *app) rememberTabs() {
 			case t.diff != nil:
 				cs.Tabs = append(cs.Tabs, settings.Tab{Diff: "all", Layout: t.diff.layout.key()})
 			case t.path() != "":
-				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil})
+				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil, Transient: t.transient})
 			default:
 				continue
 			}
@@ -637,7 +719,9 @@ func (a *app) restoreTabs() {
 				}
 			case ts.File != "":
 				if _, err := os.Stat(ts.File); err == nil {
+					a.opening = ts.Transient
 					a.openFile(ts.File, false)
+					a.opening = false
 					if t := col.tab(); ts.Preview && len(col.tabs) > n && t.ed != nil && isSVG(t.ed.document) {
 						a.setPreview(t.ed, true)
 					}

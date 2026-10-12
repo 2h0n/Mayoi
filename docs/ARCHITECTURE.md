@@ -30,6 +30,11 @@ show during a drag.
 document as one tab shows it, with its own selection, scroll position and paint caches. A column holds tabs, each of
 which is an editor or a terminal.
 
+A column has at most one preview tab, marked `transient`. The Explorer and search open files with `previewFile`,
+which shows a file in the tab that has it, else in the preview tab's place, dropping the document it showed unless
+another tab does, else in a new one. Opening a file the usual way, an edit, a double click on the tab and a drag to
+another column keep the tab, and only kept tabs go among quick open's recent files.
+
 Typing is credited to the editor that has the keyboard, and the selections of the document's other editors move with
 the text. A text area scrolls to its caret when its text changes. So an editor without the keyboard parks the area's
 caret in view, keeps its own selection, and stays where it was scrolled.

@@ -124,6 +124,9 @@ type Tab struct {
 	Terminal bool   `json:"terminal,omitempty"`
 	// Preview is set for an SVG shown as a picture rather than as text.
 	Preview bool `json:"preview,omitempty"`
+	// Transient is set for the preview tab of its column, which the next
+	// file previewed replaces.
+	Transient bool `json:"transient,omitempty"`
 	// Diff is set for the changes of File rather than the file: "head",
 	// "index" or "staged", what they are against. With no File, it is
 	// the changes of every file, against that. Layout is the diff's, as

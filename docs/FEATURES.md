@@ -11,6 +11,11 @@ color, and a folder with changes inside gets a dot.
 Tabs, line numbers, a highlighted caret line, and Chroma syntax highlighting. Files changed on disk reload unless you
 have unsaved edits.
 
+A file clicked in the Explorer, or chosen in search's results, opens in a preview tab, its name in italics: the next
+file chosen takes its place, so looking through files leaves one tab. Editing it, double-clicking it or its tab,
+pressing Enter on it, or dragging it to another column keeps it open. A file already in a tab shows there. Each column
+has its own preview tab, which comes back as one at the next start.
+
 ⇧⌘T reopens the last tab you closed, in its column and place, with its caret and scroll position. Press it again for
 the one before. Files and terminals both come back, a terminal as a new shell in the folder it started in. Opening or
 closing a folder forgets the tabs closed.
@@ -223,9 +228,10 @@ large files, matches are found in the background as you type.
 The button beside **EXPLORER** with a magnifying glass, ⇧⌘F or **Edit → Find in Files** searches every file of the
 folder, as quick open lists them, with options for match case, whole word and regular expressions. The selection, when
 it is on one line, becomes the query. Results come in as they are found, a line for each match under a header for its
-file, with its line number; click a header to fold it, or **Collapse All** in the title. Click a match, or press Enter on
-it, to see it in the editor, selected. ↓ goes from the query to the results, where ↓ and ↑ move from match to match;
-↑ on the first match, or Escape, goes back to the query. A thin bar under the title moves while a search runs.
+file, with its line number; click a header to fold it, or **Collapse All** in the title. Click a match, or move to it, and
+the editor shows it, selected, in the preview tab, while the keyboard stays in the results; Enter or a double click
+keeps it open in a tab and moves the keyboard to it. ↓ goes from the query to the results, where ↓ and ↑ move from
+match to match; ↑ on the first match, or Escape, goes back to the query. A thin bar under the title moves while a search runs.
 
 - Files with unsaved edits are searched as they are in the editor, and the results follow a file as you type in it or
   it changes on disk.

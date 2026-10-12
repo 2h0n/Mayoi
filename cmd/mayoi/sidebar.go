@@ -285,7 +285,7 @@ func (a *app) fileTree(c *ui.Context) {
 				a.files.Open.Add(clicked)
 			}
 		} else {
-			a.openFile(clicked, false)
+			a.previewFile(clicked)
 		}
 	}
 }

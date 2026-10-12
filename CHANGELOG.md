@@ -24,6 +24,12 @@ needs a `## <version>` section here, or its build fails.
   the query. Each match shows its line number, matches stand out more,
   a bar moves while searching, and searches ignoring case are about
   twice as fast.
+- **Preview tabs**: a file clicked in the Explorer or chosen in search's
+  results opens in a tab with its name in italics, which the next file
+  chosen replaces. Editing it, double-clicking it or its tab, or Enter
+  keeps it. Moving through search's results with ↓ and ↑, or clicking
+  one, shows each match in the editor while the keyboard stays in the
+  results, and the match clicked becomes the one chosen.
 - **File → Open Settings** (⌘,) opens `settings.json`, and saving it
   applies the fonts, theme, auto save, word wrap, vim mode and the other
   preferences in every window at once, rather than at the next start.

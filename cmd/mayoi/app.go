@@ -93,6 +93,8 @@ type app struct {
 	recent     []string // the files shown last, latest first
 	indexing   bool
 	indexStale bool
+	// opening is set while a file opens as a preview tab.
+	opening bool
 
 	// docs are the documents open, each in a tab or several; cols the
 	// columns of the editor area, and col the one that has the keyboard,
@@ -511,6 +513,7 @@ func (a *app) tick() {
 	a.refreshIgnored()
 	a.refreshGit()
 	a.searchTick()
+	a.keepEdited()
 	if t := a.windowTitle(); t != a.title {
 		a.title = t
 		a.host.setTitle(t)

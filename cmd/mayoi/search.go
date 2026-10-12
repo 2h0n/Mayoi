@@ -568,9 +568,15 @@ func (a *app) searchRows() []searchRow {
 	return rows
 }
 
-// openMatch shows a match in the editor, selected.
-func (a *app) openMatch(f *searchFile, m searchMatch, focus bool) {
-	a.openFile(f.path, focus)
+// openMatch shows a match in the editor, selected: in the column's
+// preview tab, the keyboard staying in the results, or with keep in a tab
+// of its own with the keyboard.
+func (a *app) openMatch(f *searchFile, m searchMatch, keep bool) {
+	if keep {
+		a.openFile(f.path, true)
+	} else {
+		a.previewFile(f.path)
+	}
 	d := a.activeEditor()
 	if d == nil || d.path != f.path {
 		return
@@ -812,6 +818,7 @@ func (a *app) searchView(c *ui.Context) {
 				if in.Shortcut(0, ui.KeyDown) && len(s.files) > 0 {
 					s.row = min(1, len(a.searchRows())-1)
 					s.toList = true
+					a.previewRow()
 				}
 				if !s.replacing {
 					return
@@ -960,12 +967,28 @@ func (a *app) searchResults(c *ui.Context) {
 	if action != nil {
 		action()
 	}
-	if s.row >= 0 && s.row < len(rows) && out.Submitted() {
-		if r := rows[s.row]; r.match >= 0 {
-			f := files[r.file]
-			a.openMatch(f, f.matches[r.match], true)
-		}
+	switch {
+	case s.row < 0 || s.row >= len(rows) || rows[s.row].match < 0:
+	case out.Submitted():
+		// Enter, or a double click.
+		r := rows[s.row]
+		a.openMatch(files[r.file], files[r.file].matches[r.match], true)
+	case out.Changed():
+		// A click, or the arrow keys: the editor follows.
+		a.previewRow()
 	}
+}
+
+// previewRow shows the match of the row chosen in the results in the
+// preview tab.
+func (a *app) previewRow() {
+	s := &a.inFiles
+	rows := a.searchRows()
+	if s.row < 0 || s.row >= len(rows) || rows[s.row].match < 0 {
+		return
+	}
+	f := s.files[rows[s.row].file]
+	a.openMatch(f, f.matches[rows[s.row].match], false)
 }
 
 // searchHint is what the view shows before a query: what it does, and
@@ -1032,12 +1055,12 @@ func (a *app) searchHeader(c *ui.Context, f *searchFile, action *func()) {
 }
 
 // searchMatchRow is the row of a match: its line, with the match marked,
-// and what replaces it while replacing. A click shows it in the editor.
+// and what replaces it while replacing. A click chooses it in the list,
+// which shows it in the editor.
 func (a *app) searchMatchRow(c *ui.Context, f *searchFile, m searchMatch, action *func()) {
 	s := &a.inFiles
 	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, 30)
 	hovered := row.Hovered()
-	clicked := row.Clicked()
 	row.Children(func() {
 		ui.RichText(c, a.matchPreview(m)...).FontSize(12.5).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 		if hovered && s.replacing {
@@ -1049,9 +1072,6 @@ func (a *app) searchMatchRow(c *ui.Context, f *searchFile, m searchMatch, action
 			ui.Text(c, strconv.Itoa(m.line+1)).FontSize(10.5).TextColor(a.pal.faint).SingleLine().Shrink(0).Padding(0, 4, 0, 0)
 		}
 	})
-	if clicked && *action == nil {
-		*action = func() { a.openMatch(f, m, false) }
-	}
 }
 
 // previewLead is how many characters of its line a match's row shows
