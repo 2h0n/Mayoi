@@ -208,7 +208,8 @@ func (a *app) quickCommands(c *ui.Context, query string) {
 					ui.Scroll(c.Key("quick-commands")).MaxHeight(380).Padding(6).Children(func() {
 						for i, m := range q.results {
 							e := entries[m.Index]
-							row := ui.ButtonBase(c.Key("cmd:"+e.id)).Padding(5, 10).Gap(10).Radius(6).
+							// As tall with keys as without.
+							row := ui.ButtonBase(c.Key("cmd:"+e.id)).MinHeight(30).Padding(5, 10).Gap(10).Radius(6).
 								Justify(ui.Start).AlignItems(ui.Center).Label(e.title)
 							switch {
 							case i == q.sel:
