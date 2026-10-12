@@ -84,6 +84,9 @@ type Prefs struct {
 	// ScmTree lists the changes in source control in a tree of their
 	// folders, rather than by path.
 	ScmTree bool `json:"scmTree,omitempty"`
+	// ScmAllBranches has the commits of source control show every branch
+	// and tag, not only the history of the branch checked out.
+	ScmAllBranches bool `json:"scmAllBranches,omitempty"`
 	// Blame shows who last changed the caret's line, and when, after it.
 	Blame bool `json:"blame"`
 	// Vim edits with vim's keys: the editors start in normal mode.

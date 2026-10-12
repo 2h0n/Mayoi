@@ -115,13 +115,20 @@ tree, with a count of them. Files are grouped as merge changes, staged changes, 
 
 ### Commits
 
-Under the changes, **COMMITS** lists the last 50 commits of the branch, newest first, with how long ago each was made.
-A filled dot and an arrow mark the commits not pushed yet, and **Show More Commits** reads 50 more. Point at a commit to
-see its author and hash.
+Under the changes, **COMMITS** lists the last 50 commits of the branch, newest first, on a graph of their branches: a
+branch merged in runs in a lane and color of its own beside the one it joined. Each commit shows its author's initials,
+its branches and tags, and how long ago it was made. A ring marks HEAD, a small hollow dot a merge, and an arrow the
+commits not pushed yet. A local branch and its remote's at the same commit share one badge, as `main ⇄ origin`; badges
+that do not fit the sidebar's width fold into a count. **Show More Commits** reads 50 more. Point at a commit to see its
+author, hash and every branch and tag.
 
-Click a commit to see it, focused, in a tab of its own: its message, author, date and hash at the top, then each file
-it changed from its first parent, as the **Changes** tab shows them. Its menu copies the hash or the message, and the
-newest commit's menu can undo it.
+The branch button in the COMMITS header, or **Show All Branches** in the **⋯** menu, shows every branch, of the remotes
+too, and every tag, not only the history of the branch checked out.
+
+Click a commit to see it, focused, in a tab of its own: its message, author, date, hash, branches and tags at the top,
+then each file it changed from its first parent, as the **Changes** tab shows them. Its menu checks it out (switching to
+its branch when it has one, or detaching HEAD at it once asked), creates a branch or a tag there, copies the hash, the
+message or the name of a branch or tag, and on HEAD undoes it.
 
 ### Diffs
 
@@ -292,7 +299,7 @@ it quit. Closing the last window quits the app.
 ## Settings
 
 **File → Open Settings** (⌘,) opens `settings.json` in a tab. Saving it applies its preferences in every window at once:
-the fonts, `theme`, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `blame`, `vim` and `sidebarRight`. Mayoi
+the fonts, `theme`, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `scmAllBranches`, `blame`, `vim` and `sidebarRight`. Mayoi
 keeps the windows, tabs and layout in the same file itself, and an edit of those waits for the next start. A file that
 does not parse is left alone until it does.
 

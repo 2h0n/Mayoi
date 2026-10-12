@@ -488,6 +488,37 @@ func (r *Repo) Remotes() ([]string, error) {
 	return strings.Fields(string(out)), nil
 }
 
+// Checkout checks out a commit, detaching HEAD at it.
+func (r *Repo) Checkout(rev string) error {
+	_, err := r.run(nil, "switch", "--detach", rev)
+	return err
+}
+
+// CreateBranch makes a branch at a commit, without checking it out.
+func (r *Repo) CreateBranch(name, at string) error {
+	_, err := r.run(nil, "branch", name, at)
+	return err
+}
+
+// CreateTag tags a commit: annotated with message, lightweight without.
+func (r *Repo) CreateTag(name, at, message string) error {
+	args := []string{"tag", name, at}
+	if message != "" {
+		args = []string{"tag", "-a", "-m", message, name, at}
+	}
+	_, err := r.run(nil, args...)
+	return err
+}
+
+// Tags returns the names of the tags.
+func (r *Repo) Tags() ([]string, error) {
+	out, err := r.run(nil, "tag", "--list")
+	if err != nil {
+		return nil, err
+	}
+	return strings.Fields(string(out)), nil
+}
+
 // Switch checks out a branch, making it first when create is set.
 func (r *Repo) Switch(branch string, create bool) error {
 	args := []string{"switch", branch}
@@ -550,6 +581,58 @@ type Commit struct {
 	Time    time.Time
 	Subject string
 	Body    string // the message after the subject, trimmed
+	Refs    []Ref  // the branches and tags at the commit
+}
+
+// RefKind is what a ref names.
+type RefKind int
+
+const (
+	RefBranch RefKind = iota // a local branch
+	RefRemote                // a branch of a remote, as "origin/main"
+	RefTag
+	RefHead // HEAD, detached at the commit
+)
+
+// Ref is a branch or tag at a commit: Head is set for the branch checked
+// out.
+type Ref struct {
+	Name string
+	Kind RefKind
+	Head bool
+}
+
+// parseRefs reads the refs git's %D prints with --decorate=full, as
+// "HEAD -> refs/heads/main, tag: refs/tags/v1, refs/remotes/origin/main",
+// leaving out the HEADs of remotes.
+func parseRefs(s string) []Ref {
+	var refs []Ref
+	for _, f := range strings.Split(s, ", ") {
+		f = strings.TrimSpace(f)
+		head := false
+		if rest, ok := strings.CutPrefix(f, "HEAD -> "); ok {
+			f, head = rest, true
+		}
+		f = strings.TrimPrefix(f, "tag: ")
+		var r Ref
+		switch {
+		case f == "HEAD":
+			r = Ref{Name: "HEAD", Kind: RefHead}
+		case strings.HasPrefix(f, "refs/heads/"):
+			r = Ref{Name: strings.TrimPrefix(f, "refs/heads/"), Kind: RefBranch, Head: head}
+		case strings.HasPrefix(f, "refs/remotes/"):
+			r = Ref{Name: strings.TrimPrefix(f, "refs/remotes/"), Kind: RefRemote}
+			if strings.HasSuffix(r.Name, "/HEAD") {
+				continue
+			}
+		case strings.HasPrefix(f, "refs/tags/"):
+			r = Ref{Name: strings.TrimPrefix(f, "refs/tags/"), Kind: RefTag}
+		default:
+			continue
+		}
+		refs = append(refs, r)
+	}
+	return refs
 }
 
 // Short returns the first 7 characters of the commit's hash.
@@ -557,28 +640,33 @@ func (c Commit) Short() string { return ShortHash(c.Hash) }
 
 // commitFormat is how Log and CommitInfo have git print a commit: its
 // fields, separated by unit separators.
-const commitFormat = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%b"
+const commitFormat = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s%x1f%D%x1f%b"
 
 func parseCommit(rec string) (Commit, bool) {
-	f := strings.SplitN(strings.TrimLeft(rec, "\n"), "\x1f", 7)
-	if len(f) < 7 || f[0] == "" {
+	f := strings.SplitN(strings.TrimLeft(rec, "\n"), "\x1f", 8)
+	if len(f) < 8 || f[0] == "" {
 		return Commit{}, false
 	}
 	c := Commit{Hash: f[0], Parents: strings.Fields(f[1]), Author: f[2], Email: f[3], Subject: f[5],
-		Body: strings.TrimSpace(f[6])}
+		Refs: parseRefs(f[6]), Body: strings.TrimSpace(f[7])}
 	if s, err := strconv.ParseInt(f[4], 10, 64); err == nil {
 		c.Time = time.Unix(s, 0)
 	}
 	return c, true
 }
 
-// Log returns the last n commits of HEAD's history, newest first: none
-// before the first commit.
-func (r *Repo) Log(n int) ([]Commit, error) {
+// Log returns the last n commits of HEAD's history, or of every branch
+// and tag when all is set, newest first and each after the commits made
+// on it: none before the first commit.
+func (r *Repo) Log(n int, all bool) ([]Commit, error) {
 	if _, err := r.run(nil, "rev-parse", "--verify", "-q", "HEAD"); err != nil {
 		return nil, nil
 	}
-	out, err := r.run(nil, "log", "-z", "-n", strconv.Itoa(n), commitFormat, "HEAD", "--")
+	args := []string{"log", "-z", "--date-order", "--decorate=full", "-n", strconv.Itoa(n), commitFormat, "HEAD"}
+	if all {
+		args = append(args, "--branches", "--remotes", "--tags")
+	}
+	out, err := r.run(nil, append(args, "--")...)
 	if err != nil {
 		return nil, err
 	}
@@ -611,7 +699,7 @@ func (r *Repo) Unpushed(n int) map[string]bool {
 
 // CommitInfo returns the commit rev names.
 func (r *Repo) CommitInfo(rev string) (Commit, error) {
-	out, err := r.run(nil, "show", "-s", commitFormat, rev, "--")
+	out, err := r.run(nil, "show", "-s", "--decorate=full", commitFormat, rev, "--")
 	if err != nil {
 		return Commit{}, err
 	}

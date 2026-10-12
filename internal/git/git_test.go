@@ -267,7 +267,7 @@ func TestLogAndCommitFiles(t *testing.T) {
 	git("mv", "b.txt", "bb.txt")
 	git("add", ".")
 	git("commit", "-q", "-m", "second\n\nWith a body\nof two lines.")
-	cs, err := r.Log(10)
+	cs, err := r.Log(10, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,7 +326,7 @@ func TestLogBeforeTheFirstCommit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cs, err := r.Log(10); err != nil || len(cs) != 0 {
+	if cs, err := r.Log(10, false); err != nil || len(cs) != 0 {
 		t.Errorf("log %v %v", cs, err)
 	}
 }
@@ -388,5 +388,61 @@ func TestUndoCommitInAShallowClone(t *testing.T) {
 	}
 	if s.Head() != head || head == "" {
 		t.Errorf("HEAD %q, was %q", s.Head(), head)
+	}
+}
+
+func TestLogRefs(t *testing.T) {
+	r, git := repo(t)
+	git("tag", "v1")
+	git("branch", "side")
+	git("switch", "-q", "side")
+	write(t, r.Root, "c.txt", "sea\n")
+	git("add", ".")
+	git("commit", "-q", "-m", "on side")
+	git("switch", "-q", "main")
+	if err := r.CreateTag("v2", "HEAD", "Version two"); err != nil {
+		t.Fatal(err)
+	}
+	cs, err := r.Log(10, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cs) != 1 {
+		t.Fatalf("log of HEAD %+v", cs)
+	}
+	want := []Ref{{Name: "main", Kind: RefBranch, Head: true}, {Name: "v1", Kind: RefTag}, {Name: "v2", Kind: RefTag}}
+	got := slices.Clone(cs[0].Refs)
+	slices.SortFunc(got, func(x, y Ref) int { return strings.Compare(x.Name, y.Name) })
+	if !slices.Equal(got, want) {
+		t.Errorf("refs %+v, want %+v", got, want)
+	}
+	// Every branch: side's commit first, after it the one it was made on.
+	cs, _ = r.Log(10, true)
+	if len(cs) != 2 || cs[0].Subject != "on side" || !slices.Equal(cs[0].Refs, []Ref{{Name: "side", Kind: RefBranch}}) {
+		t.Fatalf("log of all %+v", cs)
+	}
+	if err := r.Checkout(cs[0].Hash); err != nil {
+		t.Fatal(err)
+	}
+	info, _ := r.CommitInfo("HEAD")
+	if len(info.Refs) != 2 || info.Refs[0] != (Ref{Name: "HEAD", Kind: RefHead}) {
+		t.Errorf("detached refs %+v", info.Refs)
+	}
+	if err := r.CreateBranch("third", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if tags, _ := r.Tags(); !slices.Equal(tags, []string{"v1", "v2"}) {
+		t.Errorf("tags %v", tags)
+	}
+}
+
+func TestParseRefs(t *testing.T) {
+	got := parseRefs("HEAD -> refs/heads/main, tag: refs/tags/v0.2.1, refs/remotes/origin/main, refs/remotes/origin/HEAD")
+	want := []Ref{{Name: "main", Kind: RefBranch, Head: true}, {Name: "v0.2.1", Kind: RefTag}, {Name: "origin/main", Kind: RefRemote}}
+	if !slices.Equal(got, want) {
+		t.Errorf("refs %+v, want %+v", got, want)
+	}
+	if got := parseRefs(""); got != nil {
+		t.Errorf("no refs %+v", got)
 	}
 }

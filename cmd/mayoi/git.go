@@ -42,6 +42,10 @@ type gitState struct {
 	// meta is when the files Git changes as HEAD moves last changed, and
 	// checked when the app last looked.
 	meta, checked time.Time
+	// refsMeta is when the refs last changed, and refsGen counts the
+	// changes, for the history to be read again.
+	refsMeta time.Time
+	refsGen  int
 
 	// busy names the command running in the background, as "Pushing…",
 	// which the status bar shows; "" while none. pending counts the
@@ -62,6 +66,12 @@ type gitState struct {
 	historyN       int
 	historyGen     int
 	loadingHistory bool
+	// graph is the lanes of history, laid out for the read graphOf
+	// counts.
+	graph   []graphRow
+	graphOf int
+	// tags are the names of the tags, read with the history.
+	tags []string
 }
 
 // historyPage is how many commits the history reads at first, and more
@@ -104,11 +114,18 @@ func (a *app) refreshGit() {
 	}
 	if time.Since(g.checked) >= 1500*time.Millisecond {
 		g.checked = time.Now()
-		if t := gitMeta(g.repo); !t.Equal(g.meta) {
+		t, refs := gitMeta(g.repo)
+		if !t.Equal(g.meta) {
 			if !g.meta.IsZero() {
 				a.gitChanged()
 			}
 			g.meta = t
+		}
+		if !refs.Equal(g.refsMeta) {
+			if !g.refsMeta.IsZero() {
+				g.refsGen++
+			}
+			g.refsMeta = refs
 		}
 	}
 	a.refreshHistory()
@@ -154,7 +171,8 @@ func (a *app) historyKey() string {
 	if st == nil {
 		return ""
 	}
-	return fmt.Sprintf("%s|%s|%d|%d|%d|%d", st.Head, st.Upstream, st.Ahead, st.Behind, max(g.historyN, historyPage), len(g.remotes))
+	return fmt.Sprintf("%s|%s|%d|%d|%d|%d|%t|%d", st.Head, st.Upstream, st.Ahead, st.Behind, max(g.historyN, historyPage),
+		len(g.remotes), a.settings.ScmAllBranches, g.refsGen)
 }
 
 // refreshHistory reads the last commits again in the background when HEAD
@@ -172,13 +190,14 @@ func (a *app) refreshHistory() {
 	}
 	g.loadingHistory = true
 	// Without a remote nothing is pushed or not: no commit is marked.
-	r, remotes := g.repo, len(g.remotes) > 0
+	r, remotes, all := g.repo, len(g.remotes) > 0, a.settings.ScmAllBranches
 	go func() {
-		cs, err := r.Log(n)
+		cs, err := r.Log(n, all)
 		var unpushed map[string]bool
 		if remotes {
 			unpushed = r.Unpushed(n)
 		}
+		tags, _ := r.Tags()
 		a.post(func() {
 			g.loadingHistory = false
 			if g.repo != r {
@@ -188,25 +207,38 @@ func (a *app) refreshHistory() {
 			if err != nil {
 				return
 			}
-			g.history, g.unpushed = cs, unpushed
+			g.history, g.unpushed, g.tags = cs, unpushed, tags
 			g.historyGen++
 		})
 	}()
 }
 
 // gitMeta returns when the files that HEAD moving changes last changed:
-// the index, HEAD and its log, and what a fetch writes.
-func gitMeta(r *git.Repo) time.Time {
-	var t time.Time
+// the index, HEAD and its log, and what a fetch writes; and when the refs
+// did, as a branch or tag is made, moved or deleted.
+func gitMeta(r *git.Repo) (head, refs time.Time) {
 	for _, p := range []string{
 		filepath.Join(r.Dir, "index"), filepath.Join(r.Dir, "HEAD"), filepath.Join(r.Dir, "logs", "HEAD"),
 		filepath.Join(r.Common, "FETCH_HEAD"),
 	} {
-		if info, err := os.Stat(p); err == nil && info.ModTime().After(t) {
-			t = info.ModTime()
+		if info, err := os.Stat(p); err == nil && info.ModTime().After(head) {
+			head = info.ModTime()
 		}
 	}
-	return t
+	later := func(p string) {
+		if info, err := os.Stat(p); err == nil && info.ModTime().After(refs) {
+			refs = info.ModTime()
+		}
+	}
+	later(filepath.Join(r.Common, "packed-refs"))
+	// A ref written goes in by a rename, which changes its folder's time.
+	filepath.WalkDir(filepath.Join(r.Common, "refs"), func(p string, d os.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			later(p)
+		}
+		return nil
+	})
+	return head, refs
 }
 
 // setStatus takes a status read, and the folders above its files. A
@@ -374,13 +406,80 @@ func (a *app) push() {
 // once the documents are saved: Git keeps the changes of the work tree
 // when they do not clash with the branch's.
 func (a *app) switchBranch(branch string, create bool) {
-	for _, d := range a.docs {
-		if d.dirty() && d.path != "" && a.git.repo != nil && a.git.repo.Contains(d.path) {
-			a.fail("Save the changes of %s before switching branches.", d.name())
-			return
-		}
+	if !a.docsSaved("switching branches") {
+		return
 	}
 	a.gitDo("Switching to "+branch+"…", func(r *git.Repo) error { return r.Switch(branch, create) }, nil)
+}
+
+// docsSaved reports whether the documents of the work tree are saved,
+// saying which is not when one is not, before what doing names.
+func (a *app) docsSaved(doing string) bool {
+	for _, d := range a.docs {
+		if d.dirty() && d.path != "" && a.git.repo != nil && a.git.repo.Contains(d.path) {
+			a.fail("Save the changes of %s before %s.", d.name(), doing)
+			return false
+		}
+	}
+	return true
+}
+
+// checkOutCommit checks out a commit of the history: its branch when it
+// has one local branch, or else the commit itself, once asked, as that
+// detaches HEAD.
+func (a *app) checkOutCommit(cm git.Commit) {
+	var branches []string
+	for _, r := range cm.Refs {
+		if r.Kind == git.RefBranch {
+			branches = append(branches, r.Name)
+		}
+	}
+	if len(branches) == 1 {
+		a.switchBranch(branches[0], false)
+		return
+	}
+	a.confirm = &confirm{title: "Check out " + cm.Short() + "?", ok: "Check Out",
+		message: "HEAD will be detached at the commit: commits made there belong to no branch until you create one.",
+		run: func() {
+			if !a.docsSaved("checking out a commit") {
+				return
+			}
+			hash := cm.Hash
+			a.gitDo("Checking out "+cm.Short()+"…", func(r *git.Repo) error { return r.Checkout(hash) }, nil)
+		}}
+}
+
+// askRefAt asks for the name of a branch, or a tag, to make at a commit
+// of the history, without checking it out.
+func (a *app) askRefAt(cm git.Commit, tag bool) {
+	g := &a.git
+	if g.repo == nil {
+		return
+	}
+	what, title, names := "branch", "Create Branch…", g.branches
+	if tag {
+		what, title, names = "tag", "Create Tag…", g.tags
+	}
+	hash := cm.Hash
+	a.prompt = &prompt{title: title, hint: "at " + cm.Short() + " " + ellipsize(cm.Subject, 32), done: func(name string) string {
+		name = strings.TrimSpace(name)
+		if name == "" || strings.ContainsAny(name, " ~^:?*[\\") {
+			return "Enter a " + what + " name without spaces."
+		}
+		if slices.Contains(names, name) {
+			return "A " + what + " with that name exists."
+		}
+		a.gitDo("Creating "+what+" "+name+"…", func(r *git.Repo) error {
+			if tag {
+				return r.CreateTag(name, hash, "")
+			}
+			return r.CreateBranch(name, hash)
+		}, func() {
+			g.refsGen++
+			a.tell(note{message: fmt.Sprintf("Created %s %s at %s", what, name, git.ShortHash(hash))})
+		})
+		return ""
+	}}
 }
 
 // askNewBranch asks for the name of a branch to make and check out.

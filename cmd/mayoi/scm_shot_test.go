@@ -158,6 +158,15 @@ func TestShotCommits(t *testing.T) {
 		git("remote", "add", "origin", remote)
 		os.WriteFile(hs.path("main.go"), []byte("package main\n\nimport \"fmt\"\n\n// main says hi.\nfunc main() {\n\tfmt.Println(\"hi, mayoi\")\n}\n"), 0o644)
 		git("commit", "-qam", "Say hi rather than hello")
+		git("tag", "v0.1.0")
+		git("switch", "-q", "-c", "polish/greeting")
+		os.WriteFile(hs.path("web/style.css"), []byte("body { color: #444; }\n"), 0o644)
+		git("commit", "-qam", "Soften the text color")
+		git("switch", "-q", "main")
+		os.WriteFile(hs.path("main.go"), []byte("package main\n\nimport \"fmt\"\n\n// main says hi.\nfunc main() {\n\tfmt.Println(\"hi, mayoi!\")\n}\n"), 0o644)
+		git("commit", "-qam", "Greet with more cheer")
+		git("merge", "-q", "--no-ff", "-m", "Merge branch 'polish/greeting'", "polish/greeting")
+		git("tag", "v0.2.0")
 		git("push", "-q", "-u", "origin", "main")
 		os.WriteFile(hs.path("internal/a/a.go"), []byte("package a\n\n// Answer is the answer.\nconst Answer = 42\n"), 0o644)
 		git("mv", "README.md", "README.markdown")
@@ -167,7 +176,7 @@ func TestShotCommits(t *testing.T) {
 		a.run("view.scm")
 		hs.settleGit()
 		cs := a.git.history
-		if len(cs) != 3 {
+		if len(cs) != 6 {
 			t.Fatalf("history %d", len(cs))
 		}
 		a.showCommit(cs[0], false)

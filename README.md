@@ -24,8 +24,8 @@
 - **Search:** find and replace across the folder's files (⇧⌘F, ⇧⌘H), with files to include and exclude, and a
   preview of each replacement
 - **Git:** a source control view to stage, commit, amend, undo, pull and push, every change in one diff, folded
-  around the changes, inline or side by side, recent commits with their own diffs, gutter marks that revert or
-  stage a change, branches and blame
+  around the changes, inline or side by side, a graph of the commits with their branches and tags, each with its own
+  diff, gutter marks that revert or stage a change, branches and blame
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the bottom panel or in a tab
 - **Image viewer:** PNG, JPEG, GIF, WebP and BMP, plus a live SVG preview
 - **Auto save,** light, dark, The Matrix and Claude themes, one window per folder, and a `mayoi` shell command

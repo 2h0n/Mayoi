@@ -12,6 +12,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	gitpkg "mayoi/internal/git"
 	"mayoi/internal/linediff"
 )
 
@@ -46,6 +47,7 @@ func (hs *harness) gitRepo() func(args ...string) string {
 // settleGit draws frames until the status read in the background is in.
 func (hs *harness) settleGit() {
 	hs.a.gitChanged()
+	hs.a.git.checked = time.Time{} // look at the refs now
 	for range 200 {
 		hs.settle()
 		if g := &hs.a.git; g.looked && !g.running && !g.stale && g.busy == "" && g.pending == 0 &&
@@ -1199,5 +1201,67 @@ func TestBranchPicker(t *testing.T) {
 	hs.settle()
 	if b.open {
 		t.Errorf("still open")
+	}
+}
+
+// The commits show their branches and tags, every branch's once asked,
+// and a tag made at one shows on it.
+func TestHistoryBranchesAndTags(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a := hs.a
+	git("tag", "v1")
+	git("switch", "-q", "-c", "side")
+	os.WriteFile(hs.path("main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644)
+	git("commit", "-qam", "On the side")
+	git("switch", "-q", "main")
+	a.run("view.scm")
+	hs.settleGit()
+	// Past the branch, the tag folds into a count at the sidebar's width.
+	if len(a.git.history) != 1 || len(a.git.history[0].Refs) != 2 || !hs.tt.HasText("+1") || hs.tt.HasText("On the side") {
+		t.Fatalf("history of main %+v: %q", a.git.history, hs.tt.Texts())
+	}
+	a.toggleAllBranches()
+	hs.settleGit()
+	if len(a.git.history) != 2 || !hs.tt.HasText("On the side") || !hs.tt.HasText("side") {
+		t.Fatalf("history of all %+v: %q", a.git.history, hs.tt.Texts())
+	}
+	if g := a.historyGraph(); len(g) != 2 || g[0].lane != 0 || g[1].lane != 0 || len(g[0].below) != 1 {
+		t.Errorf("graph %+v", g)
+	}
+	side := a.git.history[0]
+	a.askRefAt(side, true)
+	if msg := a.prompt.done("v1"); msg == "" {
+		t.Error("a tag of a name taken was made")
+	}
+	a.prompt.done("v2")
+	a.prompt = nil
+	hs.settleGit()
+	if refs := a.git.history[0].Refs; !slices.Contains(refs, gitpkg.Ref{Name: "v2", Kind: gitpkg.RefTag}) {
+		t.Errorf("refs %+v", refs)
+	}
+	a.askRefAt(side, false)
+	a.prompt.done("third")
+	a.prompt = nil
+	hs.settleGit()
+	if refs := a.git.history[0].Refs; !slices.ContainsFunc(refs, func(r gitpkg.Ref) bool { return r.Name == "third" }) {
+		t.Errorf("refs %+v", refs)
+	}
+	// A commit of two branches is checked out detached, once asked.
+	a.checkOutCommit(a.git.history[0])
+	if a.confirm == nil {
+		t.Fatal("not asked")
+	}
+	a.confirm.run()
+	a.confirm = nil
+	hs.settleGit()
+	if st := a.git.status; st.Branch != "" || st.Head != side.Hash {
+		t.Errorf("status %+v", st)
+	}
+	// One of a single branch switches to it.
+	a.checkOutCommit(a.git.history[1])
+	hs.settleGit()
+	if a.git.status.Branch != "main" {
+		t.Errorf("branch %q", a.git.status.Branch)
 	}
 }

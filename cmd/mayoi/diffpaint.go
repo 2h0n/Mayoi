@@ -691,6 +691,28 @@ func (a *app) paintCommitCard(pt *ui.Painter, cm *commitDiff, r ui.Rect, files i
 		pt.Fill(ui.Rect{X: at, Y: mid - 9, W: hw + 12, H: 18}, p.accent.Alpha(0.1), 5)
 		pt.RichText(at+6, mid-hh/2, 0, hash)
 		at += hw + 12
+		for _, b := range refBadges(info.Refs) {
+			fg, bg := p.accent, p.accent.Alpha(0.14)
+			switch b.Kind {
+			case git.RefRemote:
+				fg, bg = mix(p.accent, p.muted, 0.4), p.accent.Alpha(0.07)
+			case git.RefTag:
+				fg, bg = p.text, p.hover
+			}
+			weight := 500
+			if b.Head || b.Kind == git.RefHead {
+				weight = 700
+			}
+			span := ui.Span{Text: b.label(), Size: headerFontSize - 0.5, Weight: weight, Color: fg}
+			if b.Kind == git.RefTag {
+				span.Text = "◆ " + span.Text
+			}
+			bw, bh := pt.MeasureText(0, span)
+			at += 6
+			pt.Fill(ui.Rect{X: at, Y: mid - 9, W: bw + 12, H: 18}, bg, 5)
+			pt.RichText(at+6, mid-bh/2, 0, span)
+			at += bw + 12
+		}
 		if len(info.Parents) > 1 {
 			at += uiText(pt, at, y, lineH, "  ·  merge of "+plural(len(info.Parents), "parent"), headerFontSize, 400, p.muted)
 		}

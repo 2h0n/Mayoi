@@ -330,7 +330,7 @@ func (a *app) scmView(c *ui.Context) {
 		case r.header:
 			a.scmHeader(c, r, &action)
 		case r.commit != nil:
-			a.scmCommit(c, r, i+1 >= len(rows) || rows[i+1].commit == nil, &action)
+			a.scmCommit(c, r, &action)
 		case r.more:
 			a.scmMore(c, &action)
 		case r.dir != "":
@@ -620,6 +620,14 @@ func (a *app) scmHeader(c *ui.Context, r scmRow, action *func()) {
 				if a.smallButton(c, iconPlus, "Stage All Merge Changes") {
 					*action = func() { a.stage(paths...) }
 				}
+			case groupCommits:
+				tip := "Show All Branches"
+				if a.settings.ScmAllBranches {
+					tip = "Show Current Branch Only"
+				}
+				if a.smallButton(c, iconBranch, tip) {
+					*action = a.toggleAllBranches
+				}
 			}
 		}
 		ui.Text(c, fmt.Sprint(r.count)).FontSize(10.5).TextColor(p.muted).Padding(0, 5).Radius(8).Background(p.hover)
@@ -684,68 +692,73 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 	}
 }
 
-// scmCommit is the row of a commit of the history: a dot on the line of
-// the history, filled for a commit not pushed yet, its subject, and how
-// long ago it was made. A click shows its changes.
-func (a *app) scmCommit(c *ui.Context, r scmRow, last bool, action *func()) {
+// scmCommit is the row of a commit of the history: its lanes of the
+// graph, who made it, its branches and tags, its subject, and how long
+// ago it was made. A click shows its changes.
+func (a *app) scmCommit(c *ui.Context, r scmRow, action *func()) {
 	p := a.pal
 	cm := r.commit
 	g := &a.git
 	unpushed := g.unpushed[cm.Hash]
+	head := g.status != nil && g.status.Head == cm.Hash
+	badges := refBadges(cm.Refs)
 	tip := fmt.Sprintf("%s\n%s · %s · %s", cm.Subject, cm.Author, ago(cm.Time, time.Now()), cm.Short())
 	if unpushed {
 		tip += " · not pushed"
 	}
+	if len(cm.Parents) > 1 {
+		tip += " · merge"
+	}
+	if len(badges) > 0 {
+		names := make([]string, len(badges))
+		for i, b := range badges {
+			names[i] = b.label()
+		}
+		tip += "\n" + strings.Join(names, ", ")
+	}
 	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 4, 0, 6).Tooltip(tip)
 	clicked := row.Clicked()
-	row.ContextMenu(func(m *ui.Menu) {
-		if m.Item("Open Changes").Chosen() {
-			*action = func() { a.showCommit(*cm, true) }
-		}
-		m.Separator()
-		if m.Item("Copy Commit Hash").Chosen() {
-			a.services.WriteClipboard(cm.Hash)
-		}
-		if m.Item("Copy Commit Message").Chosen() {
-			msg := cm.Subject
-			if cm.Body != "" {
-				msg += "\n\n" + cm.Body
-			}
-			a.services.WriteClipboard(msg)
-		}
-		if r.at == 0 {
-			m.Separator()
-			if m.Item("Undo Last Commit").Disabled(g.busy != "").Chosen() {
-				*action = a.undoCommit
-			}
-		}
-	})
-	first := r.at == 0
+	row.ContextMenu(func(m *ui.Menu) { a.scmCommitMenu(m, cm, head, action) })
+	graph := a.historyGraph()
+	var gr *graphRow
+	if r.at < len(graph) {
+		gr = &graph[r.at]
+	}
+	lanes := min(graphLanes(graph), graphMaxLanes)
 	row.Children(func() {
-		ui.Box(c).Size(12, 22).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
-			cx, cy := b.X+b.W/2, b.Y+b.H/2
-			top, bottom := b.Y, b.Y+b.H
-			if first {
-				top = cy
-			}
-			if last {
-				bottom = cy
-			}
-			pt.Fill(ui.Rect{X: cx - 0.75, Y: top, W: 1.5, H: bottom - top}, p.border.Mix(p.muted, 0.35), 0)
-			dot := ui.Rect{X: cx - 4, Y: cy - 4, W: 8, H: 8}
-			switch {
-			case unpushed:
-				pt.Fill(dot, p.accent, 4)
-			default:
-				pt.Fill(dot, p.chrome, 4)
-				pt.Stroke(dot, p.muted, 4, 1.5)
+		ui.Box(c).Size(graphLaneW*float32(lanes-1)+12, 22).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
+			if gr != nil {
+				a.paintGraphRow(pt, b, gr, cm, head)
 			}
 		})
+		author := avatarColor(p, cm.Email+cm.Author)
+		ui.Box(c).Size(15, 15).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
+			pt.Fill(b, author.Alpha(0.22), b.W/2)
+			ini := ui.Span{Text: initials(cm.Author), Size: 7, Weight: 700, Color: author}
+			iw, ih := pt.MeasureText(0, ini)
+			pt.RichText(b.X+(b.W-iw)/2, b.Y+(b.H-ih)/2, 0, ini)
+		})
+		lane := p.accent
+		if gr != nil {
+			lane = graphColor(p, gr.color)
+		}
+		shown := a.badgesShown()
+		for i, bd := range badges {
+			if i == shown && len(badges) > shown {
+				ui.Text(c, fmt.Sprintf("+%d", len(badges)-i)).FontSize(10.5).TextColor(p.muted).Padding(0, 4).
+					Height(16).Radius(4).Background(p.hover).Shrink(0)
+				break
+			}
+			a.refBadge(c, bd, lane)
+		}
 		col := p.text
-		if !unpushed && !first {
+		switch {
+		case len(cm.Parents) > 1:
+			col = p.muted
+		case !unpushed && !head:
 			col = mix(p.text, p.muted, 0.35)
 		}
-		ui.Text(c, cm.Subject).FontSize(12.5).TextColor(col).SingleLine().Shrink(1)
+		ui.Text(c, cm.Subject).FontSize(12.5).TextColor(col).SingleLine().Shrink(1).MinWidth(24)
 		ui.Spacer(c)
 		if unpushed {
 			ui.Icon(c, iconArrowUp).FontSize(11).TextColor(p.accent).Shrink(0)
@@ -755,6 +768,224 @@ func (a *app) scmCommit(c *ui.Context, r scmRow, last bool, action *func()) {
 	if clicked && *action == nil {
 		*action = func() { a.showCommit(*cm, true) }
 	}
+}
+
+// graphLaneW is how far apart the lanes of the history's graph are, and
+// graphMaxLanes how many it shows: those past it run along its edge.
+const (
+	graphLaneW    = 10
+	graphMaxLanes = 6
+)
+
+// badgesShown is how many branches and tags a commit's row shows before
+// it counts the rest: more as the sidebar widens.
+func (a *app) badgesShown() int {
+	return min(max(1+int((a.settings.SidebarWidth-240)/90), 1), 3)
+}
+
+// historyGraph returns the lanes of the history, laid out once for each
+// read of it.
+func (a *app) historyGraph() []graphRow {
+	g := &a.git
+	if g.graph == nil || g.graphOf != g.historyGen {
+		g.graph, g.graphOf = layoutGraph(g.history), g.historyGen
+	}
+	return g.graph
+}
+
+// graphColor is the color of a lane of the graph: the accent, then
+// the terminal's yellow, green, red, magenta and cyan.
+func graphColor(p *palette, i int) ui.Color {
+	cols := [...]ui.Color{p.accent, p.ansi[3], p.ansi[2], p.ansi[1], p.ansi[5], p.ansi[6]}
+	return cols[i%len(cols)]
+}
+
+// paintGraphRow paints a row's lanes in b: those that lead to the commit
+// down to its dot, those to its parents from it, and the rest straight
+// through; then the dot, a ring for HEAD and a hollow one for a merge.
+func (a *app) paintGraphRow(pt *ui.Painter, b ui.Rect, gr *graphRow, cm *git.Commit, head bool) {
+	p := a.pal
+	x := func(i int) float32 { return b.X + 6 + graphLaneW*float32(min(i, graphMaxLanes-1)) }
+	top, mid, bottom := b.Y, b.Y+b.H/2, b.Y+b.H
+	line := func(x1, y1, x2, y2 float32, col ui.Color) {
+		var path ui.Path
+		path.MoveTo(x1, y1)
+		if x1 == x2 {
+			path.LineTo(x2, y2)
+		} else {
+			ym := (y1 + y2) / 2
+			path.CubeTo(x1, ym, x2, ym, x2, y2)
+		}
+		pt.StrokePath(&path, 1.5, col)
+	}
+	for i, l := range gr.above {
+		if l.hash == "" {
+			continue
+		}
+		if l.hash == cm.Hash {
+			line(x(i), top, x(gr.lane), mid, graphColor(p, l.color))
+		} else {
+			line(x(i), top, x(i), mid, graphColor(p, l.color))
+		}
+	}
+	for i, l := range gr.below {
+		if l.hash == "" {
+			continue
+		}
+		through := i != gr.lane && i < len(gr.above) && gr.above[i].hash == l.hash
+		if through || !gr.from[i] {
+			line(x(i), mid, x(i), bottom, graphColor(p, l.color))
+		}
+		if gr.from[i] {
+			line(x(gr.lane), mid, x(i), bottom, graphColor(p, l.color))
+		}
+	}
+	col := graphColor(p, gr.color)
+	cx := x(gr.lane)
+	switch {
+	case head:
+		dot := ui.Rect{X: cx - 5, Y: mid - 5, W: 10, H: 10}
+		pt.Fill(dot, p.chrome, 5)
+		pt.Stroke(dot, col, 5, 2)
+	case gr.merge:
+		dot := ui.Rect{X: cx - 3.5, Y: mid - 3.5, W: 7, H: 7}
+		pt.Fill(dot, p.chrome, 3.5)
+		pt.Stroke(dot, col, 3.5, 1.5)
+	default:
+		pt.Fill(ui.Rect{X: cx - 4, Y: mid - 4, W: 8, H: 8}, col, 4)
+	}
+}
+
+// refBadge is a branch or tag a commit's row shows: a branch of a remote
+// at the same commit as the local one of its name goes in the local's,
+// its remotes listed.
+type refBadge struct {
+	git.Ref
+	remotes []string
+}
+
+// label is what a badge says, as "main ⇄ origin".
+func (b refBadge) label() string {
+	if len(b.remotes) == 0 {
+		return b.Name
+	}
+	return b.Name + " ⇄ " + strings.Join(b.remotes, ", ")
+}
+
+// refBadges returns the badges of a commit's refs: HEAD when detached,
+// the branch checked out, the other branches, those of remotes, then
+// the tags.
+func refBadges(refs []git.Ref) []refBadge {
+	local := map[string]int{}
+	var out []refBadge
+	rank := func(r git.Ref) int {
+		switch {
+		case r.Kind == git.RefHead:
+			return 0
+		case r.Head:
+			return 1
+		case r.Kind == git.RefBranch:
+			return 2
+		case r.Kind == git.RefRemote:
+			return 3
+		}
+		return 4
+	}
+	sorted := slices.Clone(refs)
+	slices.SortStableFunc(sorted, func(x, y git.Ref) int { return rank(x) - rank(y) })
+	for _, r := range sorted {
+		if r.Kind == git.RefRemote {
+			if remote, name, ok := strings.Cut(r.Name, "/"); ok {
+				if i, ok := local[name]; ok {
+					out[i].remotes = append(out[i].remotes, remote)
+					continue
+				}
+			}
+		}
+		if r.Kind == git.RefBranch {
+			local[r.Name] = len(out)
+		}
+		out = append(out, refBadge{Ref: r})
+	}
+	return out
+}
+
+// refBadge shows a branch or tag of a commit's row, in its lane's color:
+// a branch of a remote fainter, and a tag in the plain colors.
+func (a *app) refBadge(c *ui.Context, b refBadge, lane ui.Color) {
+	p := a.pal
+	fg, bg, icon := lane, lane.Alpha(0.16), iconBranch
+	switch b.Kind {
+	case git.RefRemote:
+		fg, bg = mix(lane, p.muted, 0.4), lane.Alpha(0.08)
+	case git.RefTag:
+		fg, bg, icon = p.text, p.hover, iconTag
+	case git.RefHead:
+		icon = nil
+	}
+	weight := 500
+	if b.Head || b.Kind == git.RefHead {
+		weight = 700
+	}
+	ui.Row(c).Gap(3).AlignItems(ui.Center).Height(16).Padding(0, 5, 0, 4).Radius(4).Background(bg).
+		MaxWidth(110).Shrink(0).Children(func() {
+		if icon != nil {
+			ui.Icon(c, icon).FontSize(10).TextColor(fg).Shrink(0)
+		}
+		ui.Text(c, b.label()).FontSize(11).FontWeight(weight).TextColor(fg).SingleLine().Shrink(1)
+	})
+}
+
+// scmCommitMenu is the menu of a commit of the history.
+func (a *app) scmCommitMenu(m *ui.Menu, cm *git.Commit, head bool, action *func()) {
+	g := &a.git
+	busy := g.busy != ""
+	if m.Item("Open Changes").Chosen() {
+		*action = func() { a.showCommit(*cm, true) }
+	}
+	m.Separator()
+	if m.Item("Check Out…").Disabled(busy || head).Chosen() {
+		*action = func() { a.checkOutCommit(*cm) }
+	}
+	if m.Item("Create Branch Here…").Disabled(busy).Chosen() {
+		*action = func() { a.askRefAt(*cm, false) }
+	}
+	if m.Item("Create Tag Here…").Disabled(busy).Chosen() {
+		*action = func() { a.askRefAt(*cm, true) }
+	}
+	m.Separator()
+	if m.Item("Copy Commit Hash").Chosen() {
+		a.services.WriteClipboard(cm.Hash)
+	}
+	if m.Item("Copy Commit Message").Chosen() {
+		msg := cm.Subject
+		if cm.Body != "" {
+			msg += "\n\n" + cm.Body
+		}
+		a.services.WriteClipboard(msg)
+	}
+	for _, r := range cm.Refs {
+		if r.Kind == git.RefHead {
+			continue
+		}
+		name := r.Name
+		if m.Item(fmt.Sprintf("Copy “%s”", name)).Chosen() {
+			a.services.WriteClipboard(name)
+		}
+	}
+	if head {
+		m.Separator()
+		if m.Item("Undo Last Commit").Disabled(busy).Chosen() {
+			*action = a.undoCommit
+		}
+	}
+}
+
+// toggleAllBranches has the commits show every branch and tag, or only
+// the branch checked out.
+func (a *app) toggleAllBranches() {
+	a.settings.ScmAllBranches = !a.settings.ScmAllBranches
+	a.settings.Changed()
 }
 
 // scmMore is the row after the commits of the history, which reads more.
@@ -937,8 +1168,14 @@ func (a *app) scmMenu(m *ui.Menu) {
 			a.settings.Changed()
 		})
 	}
+	if m.Item("Show All Branches").Checked(a.settings.ScmAllBranches).Chosen() {
+		a.post(a.toggleAllBranches)
+	}
 	if m.Item("Refresh").Chosen() {
-		a.post(a.gitChanged)
+		a.post(func() {
+			a.git.refsGen++
+			a.gitChanged()
+		})
 	}
 }
 

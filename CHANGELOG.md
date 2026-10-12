@@ -3,6 +3,19 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **COMMITS** in source control draws the history as a graph, each branch
+  in a lane and color of its own, and shows each commit's author, branches
+  and tags; a branch and its remote's at the same commit share a badge.
+  HEAD has a ring and a merge a hollow dot. The commit's tab shows its
+  branches and tags too.
+- **Show All Branches**, from the COMMITS header or the **⋯** menu, shows
+  every branch and tag, not only the branch checked out. It is the
+  `scmAllBranches` setting.
+- A commit's menu checks it out, creates a branch or a tag there, and
+  copies the name of its branches and tags.
+
 ## 0.5.0
 
 - **View → Theme → Claude**: Anthropic's ivory and warm near-black with
