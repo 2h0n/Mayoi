@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.4.0
 
 - **Go → Command Palette…** (⇧⌘P), or `>` typed in quick open, runs any
   command by name. Each row shows its menu and its shortcut, and a check
