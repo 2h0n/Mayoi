@@ -23,28 +23,38 @@ type session struct {
 }
 
 // termTheme is the terminal's colors for a palette: its background the
-// editor's, so that the panel and the editor are of a piece.
+// panel's, so that the panel and the editor are of a piece.
 func termTheme(p *palette) *terminal.Theme {
-	th := &terminal.Theme{
+	return &terminal.Theme{
 		Foreground: p.text, Background: p.panel,
 		Cursor: p.accent, Selection: p.selection,
+		Palette: p.ansi,
 	}
-	if p.dark {
-		th.Palette = [16]ui.Color{
-			ui.Hex("#2a2a33"), ui.Hex("#f0718b"), ui.Hex("#a9d48f"), ui.Hex("#e8c482"),
-			ui.Hex("#8fb4ff"), ui.Hex("#b99cf7"), ui.Hex("#7dcfe0"), ui.Hex("#d6d6de"),
-			ui.Hex("#5a5a66"), ui.Hex("#ff8fa5"), ui.Hex("#bfe6a5"), ui.Hex("#f5d699"),
-			ui.Hex("#a9c6ff"), ui.Hex("#cdb5fa"), ui.Hex("#9ee0ee"), ui.Hex("#ffffff"),
-		}
-	} else {
-		th.Palette = [16]ui.Color{
-			ui.Hex("#2a2a33"), ui.Hex("#c8264f"), ui.Hex("#3d8a28"), ui.Hex("#a86a0c"),
-			ui.Hex("#2a5bd7"), ui.Hex("#7c3bd6"), ui.Hex("#0b7c99"), ui.Hex("#a3a3ae"),
-			ui.Hex("#6c6c79"), ui.Hex("#e0405f"), ui.Hex("#4fa63a"), ui.Hex("#c4862a"),
-			ui.Hex("#4a78e8"), ui.Hex("#9558e8"), ui.Hex("#1a9cbd"), ui.Hex("#d6d6de"),
-		}
+}
+
+// termThemes are the terminal's colors in a light window and in a dark
+// one, for the appearance of the settings.
+func (a *app) termThemes() (light, dark *terminal.Theme) {
+	ap := a.settings.Appearance
+	return termTheme(paletteFor(ap, false)), termTheme(paletteFor(ap, true))
+}
+
+// themeTerminals gives the terminals the colors of the appearance, once
+// it changes to or from a theme of Mayoi's own, as the light and dark
+// ones follow the window themselves.
+func (a *app) themeTerminals() {
+	ap := a.settings.Appearance
+	if ap != appearanceMatrix {
+		ap = ""
 	}
-	return th
+	if ap == a.termAppearance {
+		return
+	}
+	a.termAppearance = ap
+	light, dark := a.termThemes()
+	for _, s := range a.terms {
+		s.term.SetTheme(light, dark)
+	}
 }
 
 // workDir is where a terminal starts: the workspace, or the home
@@ -61,11 +71,12 @@ func (a *app) workDir() string {
 func (a *app) startTerminal(dir string) *session {
 	a.nextTerm++
 	s := &session{id: a.nextTerm, dir: dir, title: shellName()}
+	light, dark := a.termThemes()
 	term, err := terminal.New(terminal.Options{
 		Dir:       dir,
 		Font:      termFont(a.settings),
-		Theme:     termTheme(palettes[0]),
-		DarkTheme: termTheme(palettes[1]),
+		Theme:     light,
+		DarkTheme: dark,
 		Cursor:    terminal.CursorBar,
 		OnTitle: func(title string) {
 			a.post(func() { s.title = title })

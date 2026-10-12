@@ -145,5 +145,7 @@ batched together. This package also holds the file index and the fuzzy matcher f
 
 ## Theme
 
-**`theme.go`.** The light and dark palettes for the window, the code and the terminal. It also styles what floats over
+**`theme.go`.** The palettes for the window, the code and the terminal: light, dark, and The Matrix, a dark theme of
+Mayoi's own that the `appearance` setting names and that makes the native window dark. `rain.go` paints The Matrix's
+digital rain behind the welcome page, worked out from the time alone, a step every 70 ms. It also styles what floats over
 the window, dialogs and the boxes over an editor, and fades them in as they show.

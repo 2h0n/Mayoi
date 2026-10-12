@@ -5,6 +5,11 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- **View → Theme** (formerly Appearance) adds The Matrix: phosphor green on
+  black, the whole window in the code's font, file icons in greens, and
+  red and amber kept for what is removed, failed or changed. The terminal
+  takes its colors, and digital rain falls behind the welcome page while
+  the window has the keyboard.
 - Clicking a file or a commit in source control focuses its changes, so
   `]` `[` go from change to change and `.` `,` from file to file at once.
 

@@ -58,7 +58,7 @@ func TestSelectionShape(t *testing.T) {
 
 // The colors given to the text area are as few as color the same runes.
 func TestColorRangesMerge(t *testing.T) {
-	p := palettes[1]
+	p := darkPal
 	src := "x := 1 + 2 // a b\n"
 	hl := highlight.New(highlight.Lexer("a.go"), nil)
 	buf := ui.NewTextBuffer(src)

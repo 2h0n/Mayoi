@@ -45,7 +45,8 @@ type Settings struct {
 	// Vim edits with vim's keys: the editors start in normal mode.
 	Vim     bool `json:"vim,omitempty"`
 	WrapGen int  `json:"-"`
-	// Appearance is "light", "dark", or "" to follow the system.
+	// Appearance is "light", "dark", "matrix" for The Matrix, or "" to
+	// follow the system.
 	Appearance string   `json:"appearance,omitempty"`
 	Recent     []string `json:"recent"`
 	// Windows are the windows open, the one focused last first.

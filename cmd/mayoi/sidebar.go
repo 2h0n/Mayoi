@@ -88,7 +88,7 @@ func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, 
 				label = "99+"
 			}
 			ui.Text(c, label).Absolute().Top(-2).Right(-3).FontSize(9).FontWeight(600).Padding(0, 3).Radius(6).
-				MinWidth(13).TextAlign(ui.Center).Background(p.fill).TextColor(ui.Hex("#ffffff"))
+				MinWidth(13).TextAlign(ui.Center).Background(p.fill).TextColor(p.fillText)
 		}
 	})
 	if b.Clicked() {

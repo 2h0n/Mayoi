@@ -84,7 +84,12 @@ func (h *desktop) reveal(path string)      { mygo.Shell.ShowItemInFolder(path) }
 func (h *desktop) setTitle(title string)   { h.win.SetTitle(title) }
 func (h *desktop) closeWindow()            { h.win.Close() }
 func (h *desktop) setAppearance(appearance string) {
-	mygo.Theme.SetSource(mygo.ThemeSource(appearance))
+	mygo.Theme.SetSource(themeSource(appearance))
+	// From dark to The Matrix the native appearance stays, so the other
+	// windows would not draw anew.
+	for _, w := range h.m.wins {
+		w.a.invalidate()
+	}
 }
 
 func (h *desktop) showFolder(dir string) bool {
@@ -213,7 +218,7 @@ func main() {
 	mygo.App.OnQuit(func() { m.s.Flush() })
 	mygo.App.WhenReady(func() {
 		m.s = settings.Load(settingsPath())
-		mygo.Theme.SetSource(mygo.ThemeSource(m.s.Appearance))
+		mygo.Theme.SetSource(themeSource(m.s.Appearance))
 		wd, _ := os.Getwd()
 		m.ready = true
 		m.launch(append(m.pending, argPaths(os.Args[1:], wd)...))
@@ -524,11 +529,15 @@ func (m *mayoi) openWindow(st *settings.Window) *desktop {
 			m.wins = slices.Insert(slices.Delete(m.wins, i, i+1), 0, h)
 		}
 		m.s.Focused(st)
+		a.post(func() { a.blurred = false })
 		a.post(a.gitChanged)
 		// The File menu's recent folders leave out this one's.
 		m.refreshMenu()
 	})
-	win.OnBlur(func() { a.post(a.autoSaveAll) })
+	win.OnBlur(func() {
+		a.post(func() { a.blurred = true })
+		a.post(a.autoSaveAll)
+	})
 	// Files dropped where nothing takes them, as on the explorer, open in
 	// the column that has the keyboard.
 	win.OnFileDrop(func(e *mygo.FileDropEvent) {

@@ -113,6 +113,7 @@ func (a *app) commands() []command {
 		{"view.appearance.system", "System", "", func() { a.setAppearance("") }},
 		{"view.appearance.light", "Light", "", func() { a.setAppearance("light") }},
 		{"view.appearance.dark", "Dark", "", func() { a.setAppearance("dark") }},
+		{"view.appearance.matrix", "The Matrix", "", func() { a.setAppearance(appearanceMatrix) }},
 	}
 }
 
@@ -182,8 +183,8 @@ func (a *app) moveTerminal() {
 	}
 }
 
-// setAppearance makes the window light, dark, or follow the system for
-// "".
+// setAppearance makes the windows light, dark, The Matrix for "matrix",
+// or follow the system for "".
 func (a *app) setAppearance(appearance string) {
 	a.settings.Appearance = appearance
 	a.settings.Changed()
@@ -298,8 +299,9 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),
 			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"), mygo.Separator(),
 			item("view.zoomIn"), item("view.zoomOut"), item("view.zoomReset"), mygo.Separator(),
-			{Label: "Appearance", Submenu: []*mygo.MenuItem{
+			{Label: "Theme", Submenu: []*mygo.MenuItem{
 				radio("view.appearance.system", ""), radio("view.appearance.light", "light"), radio("view.appearance.dark", "dark"),
+				mygo.Separator(), radio("view.appearance.matrix", appearanceMatrix),
 			}}, mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},

@@ -41,7 +41,8 @@ func (a *app) view(c *ui.Context) {
 		a.start()
 	}
 	a.drain()
-	a.pal = applyTheme(c)
+	a.pal = a.applyTheme(c)
+	a.themeTerminals()
 	p := a.pal
 	if f := a.settings; a.font.charW == 0 || a.font.size != f.FontSize || a.font.family != f.FontFamily {
 		a.font = newCodeFont(f.FontFamily, f.FontSize)
@@ -834,7 +835,12 @@ func (a *app) welcome(c *ui.Context) {
 	p := a.pal
 	// Centered in the view, and scrolled when the window is too short.
 	view := a.welcomeView.Bounds(c)
-	ui.Scroll(c.Key("welcome")).Bind(&a.welcomeView).Fill().Background(p.editor).Children(func() {
+	page := ui.Scroll(c.Key("welcome")).Bind(&a.welcomeView).Fill().Background(p.editor)
+	if a.settings.Appearance == appearanceMatrix {
+		still := a.blurred || c.Preferences().ReduceMotion
+		page.Draw(func(pt *ui.Painter, r ui.Rect) { a.drawRain(pt, r, still) })
+	}
+	page.Children(func() {
 		ui.Column(c).FillWidth().MinHeight(view.H).Center().Padding(40, 24, 64).Children(func() {
 			ui.Column(c).Width(380).MaxWidthPercent(100).Gap(32).Children(func() {
 				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {

@@ -130,7 +130,15 @@ func fileIcon(p *palette, name string) (*ui.SVG, ui.Color) {
 	return iconFile, p.muted
 }
 
+// langColor is the color of a language's icon, as it is in a dark
+// window and in a light one. A mono palette has a shade of its own for
+// it, as bright as the dark one.
 func langColor(p *palette, dark, light string) ui.Color {
+	if p.mono {
+		c := ui.Hex(dark)
+		luma := (0.299*float32(c.R) + 0.587*float32(c.G) + 0.114*float32(c.B)) / 255
+		return p.muted.Mix(p.accent, luma)
+	}
 	if p.dark {
 		return ui.Hex(dark)
 	}
