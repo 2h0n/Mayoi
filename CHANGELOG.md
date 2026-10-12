@@ -8,6 +8,8 @@ needs a `## <version>` section here, or its build fails.
 - **Go → Command Palette…** (⇧⌘P), or `>` typed in quick open, runs any
   command by name. Each row shows its menu and its shortcut, and a check
   when it is on; the commands run last come first.
+- The status bar no longer calls `go.mod` AMPL or every `.sql` file
+  MySQL. Brewfiles highlight as Ruby and `.npmrc` as INI.
 
 ## 0.3.3
 

@@ -287,3 +287,18 @@ func TestHighlighterLexesTheViewFirst(t *testing.T) {
 		t.Error("tokens differ from lexing all")
 	}
 }
+
+func TestLanguageNames(t *testing.T) {
+	for name, want := range map[string]string{
+		"go.mod":   "Plain Text",
+		"main.go":  "Go",
+		"q.sql":    "SQL",
+		"Brewfile": "Ruby",
+		".npmrc":   "INI",
+		"Makefile": "Makefile",
+	} {
+		if got := DisplayName(Lexer(name)); got != want {
+			t.Errorf("%s is %s, want %s", name, got, want)
+		}
+	}
+}

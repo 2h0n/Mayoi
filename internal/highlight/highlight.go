@@ -69,6 +69,19 @@ const MaxLineRunes = 4000
 // Lexer returns the lexer of a file by its name, nil for plain text.
 func Lexer(path string) chroma.Lexer {
 	name := filepath.Base(path)
+	// Names Chroma gets wrong, or does not know: go.mod is not AMPL, and
+	// .sql is any SQL, not MySQL's.
+	switch strings.ToLower(name) {
+	case "go.mod", "go.work", "go.sum":
+		return nil
+	case "brewfile":
+		return chroma.Coalesce(lexers.Get("ruby"))
+	case ".npmrc":
+		return chroma.Coalesce(lexers.Get("ini"))
+	}
+	if strings.EqualFold(filepath.Ext(name), ".sql") {
+		return chroma.Coalesce(lexers.Get("sql"))
+	}
 	l := lexers.Match(name)
 	if l == nil {
 		switch strings.ToLower(name) {
