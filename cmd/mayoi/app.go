@@ -30,9 +30,9 @@ type host interface {
 	reveal(path string)
 	setTitle(title string)
 	closeWindow()
-	// setAppearance makes the windows light, dark, The Matrix for
-	// "matrix", Claude for "claude", or follow the system for "".
-	setAppearance(appearance string)
+	// setTheme gives the windows a theme and an appearance of the
+	// settings.
+	setTheme(theme, appearance string)
 	// showFolder brings the other window that has dir open to the front,
 	// and reports whether there is one.
 	showFolder(dir string) bool
@@ -115,9 +115,9 @@ type app struct {
 	terms     []*session
 	panelTerm *session
 	nextTerm  int
-	// termAppearance is the theme of Mayoi's own the terminals have the
-	// colors of, "" for none.
-	termAppearance string
+	// termTheme is the theme of the settings the terminals have the colors
+	// of.
+	termTheme string
 	// termFont is the font the terminals have.
 	termFont terminal.Font
 

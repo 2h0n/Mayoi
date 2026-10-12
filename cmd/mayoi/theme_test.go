@@ -12,19 +12,19 @@ import (
 // matrixHarness is a dark window in The Matrix.
 func matrixHarness(t testing.TB) *harness {
 	hs := newHarness(t, true)
-	hs.a.setAppearance(appearanceMatrix)
+	hs.a.setTheme(themeMatrix)
 	hs.settle()
 	return hs
 }
 
-func TestMatrixAppearance(t *testing.T) {
-	if paletteFor(appearanceMatrix, false) != matrixPal || paletteFor(appearanceMatrix, true) != matrixPal {
+func TestMatrixTheme(t *testing.T) {
+	if paletteFor(themeMatrix, false) != matrixPal || paletteFor(themeMatrix, true) != matrixPal {
 		t.Error("The Matrix does not follow the window's light or dark")
 	}
 	if paletteFor("", false) != lightPal || paletteFor("dark", true) != darkPal {
 		t.Error("light and dark windows have the wrong palettes")
 	}
-	if themeSource(appearanceMatrix) != mygo.ThemeDark || themeSource("light") != mygo.ThemeLight {
+	if themeSource(themeMatrix, "light") != mygo.ThemeDark || themeSource("", "light") != mygo.ThemeLight {
 		t.Error("the native window is not dark under The Matrix")
 	}
 	hs := matrixHarness(t)
@@ -32,7 +32,7 @@ func TestMatrixAppearance(t *testing.T) {
 	if a.pal != matrixPal {
 		t.Fatal("the window is not in The Matrix")
 	}
-	if a.termAppearance != appearanceMatrix {
+	if a.termTheme != themeMatrix {
 		t.Error("the terminals do not have The Matrix's colors")
 	}
 	if th := termTheme(matrixPal); th.Background != matrixPal.panel || th.Palette != matrixPal.ansi {
@@ -42,9 +42,9 @@ func TestMatrixAppearance(t *testing.T) {
 	if _, c := fileIcon(a.pal, "main.go"); c != langColor(matrixPal, "#00add8", "") || c.G < c.R || c.G < c.B {
 		t.Errorf("a Go file's icon is %v, not a green", c)
 	}
-	a.setAppearance("dark")
+	a.setTheme("")
 	hs.settle()
-	if a.pal != darkPal || a.termAppearance != "" {
+	if a.pal != darkPal || a.termTheme != "" {
 		t.Error("the window does not leave The Matrix")
 	}
 }
@@ -76,7 +76,7 @@ func TestMatrixRainStopsWhenBlurred(t *testing.T) {
 		t.Error("the rain does not fall again with the keyboard back")
 	}
 	// Out of The Matrix, there is none.
-	a.setAppearance("dark")
+	a.setTheme("")
 	a.rain.moving = false
 	hs.settle()
 	if a.rain.moving {
@@ -117,28 +117,27 @@ func TestShotMatrix(t *testing.T) {
 // claudeHarness is a window, dark or not, in Claude.
 func claudeHarness(t testing.TB, dark bool) *harness {
 	hs := newHarness(t, dark)
-	hs.a.setAppearance(appearanceClaude)
+	hs.a.setTheme(themeClaude)
 	hs.settle()
 	return hs
 }
 
-func TestClaudeAppearance(t *testing.T) {
-	if paletteFor(appearanceClaude, false) != claudeLightPal || paletteFor(appearanceClaude, true) != claudeDarkPal {
+func TestClaudeTheme(t *testing.T) {
+	if paletteFor(themeClaude, false) != claudeLightPal || paletteFor(themeClaude, true) != claudeDarkPal {
 		t.Error("Claude does not follow the window's light or dark")
 	}
-	if themeSource(appearanceClaude) != mygo.ThemeSystem {
-		t.Error("the native window does not follow the system under Claude")
-	}
-	if !ownTheme(appearanceClaude) || !ownTheme(appearanceMatrix) || ownTheme("dark") || ownTheme("") {
-		t.Error("ownTheme is wrong")
+	// Claude is light, dark or the system's, as the appearance is.
+	if themeSource(themeClaude, "light") != mygo.ThemeLight || themeSource(themeClaude, "dark") != mygo.ThemeDark ||
+		themeSource(themeClaude, "") != themeSource("", "") {
+		t.Error("the native window does not follow the appearance under Claude")
 	}
 	for _, dark := range []bool{false, true} {
 		hs := claudeHarness(t, dark)
 		a := hs.a
-		if a.pal != paletteFor(appearanceClaude, dark) || a.pal.dark != dark {
+		if a.pal != paletteFor(themeClaude, dark) || a.pal.dark != dark {
 			t.Fatalf("the window (dark %v) is not in Claude", dark)
 		}
-		if a.termAppearance != appearanceClaude {
+		if a.termTheme != themeClaude {
 			t.Error("the terminals do not have Claude's colors")
 		}
 		light, darkTh := a.termThemes()
@@ -149,9 +148,14 @@ func TestClaudeAppearance(t *testing.T) {
 		if _, c := fileIcon(a.pal, "main.go"); c == langColor(matrixPal, "#00add8", "") {
 			t.Error("a Go file's icon is a mono shade")
 		}
-		a.setAppearance("")
+		// Choosing an appearance keeps the theme.
+		a.setAppearance("light")
+		if a.settings.Theme != themeClaude {
+			t.Error("choosing Light leaves Claude")
+		}
+		a.setTheme("")
 		hs.settle()
-		if a.termAppearance != "" || a.pal == claudeLightPal || a.pal == claudeDarkPal {
+		if a.termTheme != "" || a.pal == claudeLightPal || a.pal == claudeDarkPal {
 			t.Error("the window does not leave Claude")
 		}
 	}
@@ -210,7 +214,7 @@ func TestClawdMoves(t *testing.T) {
 		t.Error("Clawd does not move again with the keyboard back")
 	}
 	// Out of Claude, there is none.
-	a.setAppearance("dark")
+	a.setTheme("")
 	a.clawd.moving = false
 	hs.settle()
 	if a.clawd.moving {
@@ -241,5 +245,42 @@ func TestShotClaude(t *testing.T) {
 		a.togglePanel()
 		hs.settle()
 		hs.shot(name + "-editor")
+	}
+}
+
+// The appearances are greyed out in the menu under The Matrix, which is
+// always dark, and the themes and appearances are checked apart.
+func TestThemeMenu(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	find := func(label string) *mygo.MenuItem {
+		var walk func(items []*mygo.MenuItem) *mygo.MenuItem
+		walk = func(items []*mygo.MenuItem) *mygo.MenuItem {
+			for _, it := range items {
+				if it.Label == label {
+					return it
+				}
+				if r := walk(it.Submenu); r != nil {
+					return r
+				}
+			}
+			return nil
+		}
+		return walk(a.menu(false, func(string, *mygo.Window) {}).Items())
+	}
+	a.setTheme(themeClaude)
+	a.setAppearance("light")
+	if l, c := find("Light"), find("Claude"); l == nil || c == nil || !l.Checked || !c.Checked || l.Disabled {
+		t.Fatalf("Light and Claude are not both checked: %+v %+v", l, c)
+	}
+	if !a.commandOn("view.theme.claude") || !a.commandOn("view.appearance.light") || a.commandOn("view.theme.mayoi") {
+		t.Error("the palette does not check Claude and Light")
+	}
+	a.setTheme(themeMatrix)
+	if l := find("Light"); !l.Disabled || !l.Checked {
+		t.Error("Light is not greyed out, and kept, under The Matrix")
+	}
+	if find("Mayoi").Checked || !find("The Matrix").Checked {
+		t.Error("The Matrix is not the theme checked")
 	}
 }

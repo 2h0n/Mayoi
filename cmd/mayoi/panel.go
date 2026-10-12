@@ -34,24 +34,19 @@ func termTheme(p *palette) *terminal.Theme {
 }
 
 // termThemes are the terminal's colors in a light window and in a dark
-// one, for the appearance of the settings.
+// one, for the theme of the settings.
 func (a *app) termThemes() (light, dark *terminal.Theme) {
-	ap := a.settings.Appearance
-	return termTheme(paletteFor(ap, false)), termTheme(paletteFor(ap, true))
+	th := a.settings.Theme
+	return termTheme(paletteFor(th, false)), termTheme(paletteFor(th, true))
 }
 
-// themeTerminals gives the terminals the colors of the appearance, once
-// it changes to or from a theme of Mayoi's own, as the light and dark
-// ones follow the window themselves.
+// themeTerminals gives the terminals the colors of the theme, once it
+// changes, as they follow the window's light and dark themselves.
 func (a *app) themeTerminals() {
-	ap := a.settings.Appearance
-	if !ownTheme(ap) {
-		ap = ""
-	}
-	if ap == a.termAppearance {
+	if a.settings.Theme == a.termTheme {
 		return
 	}
-	a.termAppearance = ap
+	a.termTheme = a.settings.Theme
 	light, dark := a.termThemes()
 	for _, s := range a.terms {
 		s.term.SetTheme(light, dark)

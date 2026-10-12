@@ -271,12 +271,13 @@ The command returns immediately, and starts Mayoi if it isn't running.
 
 ## Appearance and persistence
 
-Mayoi follows the system's light or dark mode, or the theme chosen in **View → Theme**: Light, Dark, The Matrix, or Claude.
+**View → Theme** picks a theme, Mayoi, The Matrix or Claude, and apart from it whether the window follows the system's
+light or dark mode or is always Light or Dark. Light and Dark are greyed out under The Matrix, which is always dark.
 The Matrix is phosphor green on black, with the whole window in the code's font, file icons in greens, and red and amber
 kept for what is removed, failed or changed. Digital rain falls behind the welcome page while the window has the
 keyboard, and holds still without it or when the system asks for reduced motion. Claude is Anthropic's ivory and warm
-near-black with Claude's orange, light or dark as the system is. Clawd, Claude Code's character, sits on the welcome
-page and at the start of the status bar: it blinks now and then, and hops while a Git command or a search of the files
+near-black with Claude's orange, in a light and a dark kind. Clawd, Claude Code's character, takes the logo's place on
+the welcome page and sits at the start of the status bar: it blinks now and then, and hops while a Git command or a search of the files
 runs, and holds still as the rain does. **View → Sidebar on Right**
 moves the sidebar to the right of the editors. It remembers the sidebar's side, the sidebar and panel sizes, and every
 window with its folder, frame, columns and tabs. Started without a folder, Mayoi reopens the windows that were open when
@@ -285,7 +286,7 @@ it quit. Closing the last window quits the app.
 ## Settings
 
 **File → Open Settings** (⌘,) opens `settings.json` in a tab. Saving it applies its preferences in every window at once:
-the fonts, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `blame`, `vim` and `sidebarRight`. Mayoi
+the fonts, `theme`, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `blame`, `vim` and `sidebarRight`. Mayoi
 keeps the windows, tabs and layout in the same file itself, and an edit of those waits for the next start. A file that
 does not parse is left alone until it does.
 

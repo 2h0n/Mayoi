@@ -118,8 +118,9 @@ func (a *app) commands() []command {
 		{"view.appearance.system", "System", "", func() { a.setAppearance("") }},
 		{"view.appearance.light", "Light", "", func() { a.setAppearance("light") }},
 		{"view.appearance.dark", "Dark", "", func() { a.setAppearance("dark") }},
-		{"view.appearance.matrix", "The Matrix", "", func() { a.setAppearance(appearanceMatrix) }},
-		{"view.appearance.claude", "Claude", "", func() { a.setAppearance(appearanceClaude) }},
+		{"view.theme.mayoi", "Mayoi", "", func() { a.setTheme("") }},
+		{"view.theme.matrix", "The Matrix", "", func() { a.setTheme(themeMatrix) }},
+		{"view.theme.claude", "Claude", "", func() { a.setTheme(themeClaude) }},
 	}
 }
 
@@ -189,13 +190,23 @@ func (a *app) moveTerminal() {
 	}
 }
 
-// setAppearance makes the windows light, dark, The Matrix for "matrix",
-// Claude for "claude",
-// or follow the system for "".
+// setAppearance makes the windows light, dark, or follow the system for
+// "", in their theme: The Matrix stays dark.
 func (a *app) setAppearance(appearance string) {
 	a.settings.Appearance = appearance
+	a.themeChanged()
+}
+
+// setTheme gives the windows Mayoi's own theme for "", The Matrix for
+// "matrix" or Claude for "claude", in their appearance.
+func (a *app) setTheme(theme string) {
+	a.settings.Theme = theme
+	a.themeChanged()
+}
+
+func (a *app) themeChanged() {
 	a.settings.Changed()
-	a.host.setAppearance(appearance)
+	a.host.setTheme(a.settings.Theme, a.settings.Appearance)
 }
 
 // openSettings opens the settings file in a tab, as they are now. The
@@ -245,11 +256,19 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		it.Type, it.Checked = mygo.MenuItemCheckbox, checked
 		return it
 	}
-	radio := func(id, appearance string) *mygo.MenuItem {
+	radio := func(id string, checked bool) *mygo.MenuItem {
 		it := item(id)
-		it.Type, it.Checked = mygo.MenuItemRadio, a.settings.Appearance == appearance
+		it.Type, it.Checked = mygo.MenuItemRadio, checked
 		return it
 	}
+	// The appearances, which The Matrix, always dark, has no choice of,
+	// and the themes.
+	appearance := func(id, ap string) *mygo.MenuItem {
+		it := radio(id, a.settings.Appearance == ap)
+		it.Disabled = a.settings.Theme == themeMatrix
+		return it
+	}
+	theme := func(id, th string) *mygo.MenuItem { return radio(id, a.settings.Theme == th) }
 	// The recent folders but the window's, and the box of them all.
 	var recent []*mygo.MenuItem
 	for _, dir := range a.settings.RecentExcept(a.root) {
@@ -315,9 +334,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"), mygo.Separator(),
 			item("view.zoomIn"), item("view.zoomOut"), item("view.zoomReset"), mygo.Separator(),
 			{Label: "Theme", Submenu: []*mygo.MenuItem{
-				radio("view.appearance.system", ""), radio("view.appearance.light", "light"), radio("view.appearance.dark", "dark"),
-				mygo.Separator(), radio("view.appearance.matrix", appearanceMatrix),
-				radio("view.appearance.claude", appearanceClaude),
+				appearance("view.appearance.system", ""), appearance("view.appearance.light", "light"), appearance("view.appearance.dark", "dark"),
+				mygo.Separator(), theme("view.theme.mayoi", ""), theme("view.theme.matrix", themeMatrix), theme("view.theme.claude", themeClaude),
 			}}, mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},

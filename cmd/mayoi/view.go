@@ -684,7 +684,7 @@ func (a *app) statusBar(c *ui.Context) {
 			b.Children(func() { text(label) })
 			b.Menu(build)
 		}
-		if a.settings.Appearance == appearanceClaude {
+		if a.settings.Theme == themeClaude {
 			a.statusClawd(c)
 		}
 		if b := a.branch(); b != "" {
@@ -702,7 +702,7 @@ func (a *app) statusBar(c *ui.Context) {
 		if busy := a.git.busy; busy != "" {
 			ui.Row(c.Key("status:busy")).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
 				// In Claude, Clawd hops for it instead.
-				if a.settings.Appearance != appearanceClaude {
+				if a.settings.Theme != themeClaude {
 					ui.Spinner(c).Size(11, 11)
 				}
 				text(busy)
@@ -844,32 +844,34 @@ func (a *app) welcome(c *ui.Context) {
 	// Centered in the view, and scrolled when the window is too short.
 	view := a.welcomeView.Bounds(c)
 	page := ui.Scroll(c.Key("welcome")).Bind(&a.welcomeView).Fill().Background(p.editor)
-	if a.settings.Appearance == appearanceMatrix {
+	if a.settings.Theme == themeMatrix {
 		still := a.blurred || c.Preferences().ReduceMotion
 		page.Draw(func(pt *ui.Painter, r ui.Rect) { a.drawRain(pt, r, still) })
 	}
 	page.Children(func() {
 		ui.Column(c).FillWidth().MinHeight(view.H).Center().Padding(40, 24, 64).Children(func() {
 			content := ui.Column(c).Width(380).MaxWidthPercent(100).Gap(32)
-			if a.settings.Appearance == appearanceMatrix {
+			if a.settings.Theme == themeMatrix {
 				// Over the rain, which would run through the words.
 				content.Width(380+2*24).Padding(24).Radius(12).Background(p.editor.Alpha(0.88)).Border(1, p.border)
 			}
 			content.Children(func() {
-				if a.settings.Appearance == appearanceClaude {
-					const cell = 4
-					w, h := clawdSize(cell)
-					still := a.clawdStill(c)
-					bg := p.editor
-					ui.Row(c.Key("welcome:clawd")).Size(w, h).Tooltip(a.clawdTip()).Draw(func(pt *ui.Painter, r ui.Rect) {
-						a.drawClawd(pt, r, cell, bg, still)
-					})
-				}
 				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-					// Clipped to the icon's squircle: 185 of its 824 DIPs.
-					ui.Column(c).Size(52, 52).Radius(52.0 * 185 / 824).Clip().Children(func() {
-						ui.Image(c, logo()).Size(52, 52)
-					})
+					if a.settings.Theme == themeClaude {
+						// Clawd in the logo's place.
+						const cell = 4
+						w, h := clawdSize(cell)
+						still := a.clawdStill(c)
+						bg := p.editor
+						ui.Row(c.Key("welcome:clawd")).Size(w, h).Tooltip(a.clawdTip()).Draw(func(pt *ui.Painter, r ui.Rect) {
+							a.drawClawd(pt, r, cell, bg, still)
+						})
+					} else {
+						// Clipped to the icon's squircle: 185 of its 824 DIPs.
+						ui.Column(c).Size(52, 52).Radius(52.0 * 185 / 824).Clip().Children(func() {
+							ui.Image(c, logo()).Size(52, 52)
+						})
+					}
 					ui.Column(c).Gap(3).Children(func() {
 						ui.Text(c, "Mayoi").FontSize(26).FontWeight(600).LetterSpacing(-0.3).TextColor(p.text)
 						ui.Text(c, "迷い · a small, quick code editor").FontSize(13).TextColor(p.muted)

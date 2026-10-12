@@ -441,28 +441,22 @@ var (
 	claudeDarkPal  = claudeDarkPalette().derive()
 )
 
-// The Appearances of Mayoi's own themes: The Matrix, which is dark, and
-// Claude, which follows the system's light or dark.
+// The Themes of the settings beside Mayoi's own, "": The Matrix, which is
+// always dark, and Claude, light or dark as the Appearance is.
 const (
-	appearanceMatrix = "matrix"
-	appearanceClaude = "claude"
+	themeMatrix = "matrix"
+	themeClaude = "claude"
 )
 
-// ownTheme reports whether an appearance of the settings is a theme of
-// Mayoi's own, rather than light, dark or the system's.
-func ownTheme(appearance string) bool {
-	return appearance == appearanceMatrix || appearance == appearanceClaude
-}
-
-// paletteFor returns the palette of an appearance of the settings, in a
-// window that is dark or not.
-func paletteFor(appearance string, dark bool) *palette {
+// paletteFor returns the palette of a theme of the settings, in a window
+// that is dark or not.
+func paletteFor(theme string, dark bool) *palette {
 	switch {
-	case appearance == appearanceMatrix:
+	case theme == themeMatrix:
 		return matrixPal
-	case appearance == appearanceClaude && dark:
+	case theme == themeClaude && dark:
 		return claudeDarkPal
-	case appearance == appearanceClaude:
+	case theme == themeClaude:
 		return claudeLightPal
 	case dark:
 		return darkPal
@@ -470,15 +464,12 @@ func paletteFor(appearance string, dark bool) *palette {
 	return lightPal
 }
 
-// themeSource is the light or dark appearance of the native window for an
-// appearance of the settings: The Matrix is dark, and Claude follows the
-// system.
-func themeSource(appearance string) mygo.ThemeSource {
-	switch appearance {
-	case appearanceMatrix:
+// themeSource is the light or dark appearance of the native window for a
+// theme and an appearance of the settings: The Matrix is dark, and the
+// other themes are as the appearance is, the system's for "".
+func themeSource(theme, appearance string) mygo.ThemeSource {
+	if theme == themeMatrix {
 		return mygo.ThemeDark
-	case appearanceClaude:
-		return mygo.ThemeSystem
 	}
 	return mygo.ThemeSource(appearance)
 }
@@ -491,11 +482,11 @@ func (p *palette) derive() *palette {
 	return p
 }
 
-// applyTheme sets the window's theme from the palette of its appearance,
+// applyTheme sets the window's theme from the palette of its theme,
 // and returns that palette.
 func (a *app) applyTheme(c *ui.Context) *palette {
 	t := *c.Theme()
-	p := paletteFor(a.settings.Appearance, t.Dark)
+	p := paletteFor(a.settings.Theme, t.Dark)
 	t.Dark = p.dark
 	t.Background = p.editor
 	// Every state of the accent, or a hovered button would turn the

@@ -45,7 +45,7 @@ func (a *app) paletteEntries() []paletteEntry {
 			continue
 		}
 		group := commandGroups[cmd.id[:strings.IndexByte(cmd.id, '.')]]
-		if strings.HasPrefix(cmd.id, "view.appearance.") {
+		if strings.HasPrefix(cmd.id, "view.appearance.") || strings.HasPrefix(cmd.id, "view.theme.") {
 			group = "Theme"
 		}
 		title := group + ": " + cmd.label
@@ -76,9 +76,14 @@ func (a *app) commandOn(id string) bool {
 		return s.Blame
 	case "view.appearance.system":
 		return s.Appearance == ""
+	case "view.theme.mayoi":
+		return s.Theme == ""
 	}
-	if theme, ok := strings.CutPrefix(id, "view.appearance."); ok {
-		return s.Appearance == theme
+	if ap, ok := strings.CutPrefix(id, "view.appearance."); ok {
+		return s.Appearance == ap
+	}
+	if theme, ok := strings.CutPrefix(id, "view.theme."); ok {
+		return s.Theme == theme
 	}
 	return false
 }

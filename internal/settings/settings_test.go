@@ -158,3 +158,14 @@ func TestWatchTheFile(t *testing.T) {
 		t.Fatal("no change seen")
 	}
 }
+
+// The themes were appearances once: a file of then keeps its theme.
+func TestMigrateTheme(t *testing.T) {
+	for _, theme := range []string{"matrix", "claude"} {
+		path := filepath.Join(t.TempDir(), "settings.json")
+		os.WriteFile(path, []byte(`{"appearance":"`+theme+`"}`), 0o644)
+		if s := Load(path); s.Theme != theme || s.Appearance != "" {
+			t.Errorf("theme %q, appearance %q", s.Theme, s.Appearance)
+		}
+	}
+}

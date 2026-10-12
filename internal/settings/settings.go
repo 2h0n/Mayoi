@@ -88,10 +88,11 @@ type Prefs struct {
 	Blame bool `json:"blame"`
 	// Vim edits with vim's keys: the editors start in normal mode.
 	Vim bool `json:"vim,omitempty"`
-	// Appearance is "light", "dark", "matrix" for The Matrix, "claude" for
-	// Claude, which follows the system's light or dark, or "" to follow the
-	// system.
+	// Appearance is "light", "dark", or "" to follow the system.
 	Appearance string `json:"appearance,omitempty"`
+	// Theme is "matrix" for The Matrix, which is always dark, "claude" for
+	// Claude, light or dark as Appearance is, or "" for Mayoi's own.
+	Theme string `json:"theme,omitempty"`
 	// SidebarRight puts the sidebar right of the editors, rather than left.
 	SidebarRight bool `json:"sidebarRight,omitempty"`
 }
@@ -179,6 +180,10 @@ func (s *Settings) normalize() {
 	}
 	if s.DiffSplit {
 		s.DiffLayout, s.DiffSplit = "split", false
+	}
+	// The themes were appearances once.
+	if s.Appearance == "matrix" || s.Appearance == "claude" {
+		s.Theme, s.Appearance = s.Appearance, ""
 	}
 }
 

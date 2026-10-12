@@ -52,7 +52,7 @@ func (h *fakeHost) trash(path string) error {
 func (h *fakeHost) reveal(path string)    { h.revealed = append(h.revealed, path) }
 func (h *fakeHost) setTitle(title string) { h.title = title }
 func (h *fakeHost) closeWindow()          { h.closed = true }
-func (h *fakeHost) setAppearance(string)  {}
+func (h *fakeHost) setTheme(_, _ string)  {}
 func (h *fakeHost) showFolder(dir string) bool {
 	return slices.Contains(h.others, dir)
 }

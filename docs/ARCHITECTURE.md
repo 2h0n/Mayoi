@@ -159,9 +159,9 @@ batched together. This package also holds the file index and the fuzzy matcher f
 
 ## Theme
 
-**`theme.go`.** The palettes for the window, the code and the terminal: light, dark, and the themes of
-Mayoi's own that the `appearance` setting names: The Matrix, which makes the native window dark, and Claude, which has a
-light and a dark palette and follows the system. `rain.go` paints The Matrix's digital rain behind the welcome page,
+**`theme.go`.** The palettes for the window, the code and the terminal: Mayoi's own light and
+dark, and the other themes that the `theme` setting names: The Matrix, which makes the native window dark whatever the
+`appearance` setting is, and Claude, which has a light and a dark palette and is as the appearance is. `rain.go` paints The Matrix's digital rain behind the welcome page,
 worked out from the time alone, a step every 70 ms. `clawd.go` paints Claude's character from cells, its pose also
 worked out from the time, asking for a frame only when the pose next changes. It also styles what floats over
 the window, dialogs and the boxes over an editor, and fades them in as they show.

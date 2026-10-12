@@ -6,9 +6,14 @@ needs a `## <version>` section here, or its build fails.
 ## Unreleased
 
 - **View → Theme → Claude**: Anthropic's ivory and warm near-black with
-  Claude's orange, light or dark as the system is. Clawd, Claude Code's
-  little character, sits on the welcome page and in the status bar,
-  blinking now and then, and hops while Git or search works.
+  Claude's orange. Clawd, Claude Code's little character, takes the logo's
+  place on the welcome page and sits in the status bar, blinking now and
+  then, and hops while Git or search works.
+- **View → Theme** picks the theme (Mayoi, The Matrix or Claude) and,
+  apart from it, System, Light or Dark, so Claude can be light or dark
+  whatever the system is. They are the `theme` and `appearance` settings;
+  a settings file with `"appearance": "matrix"` keeps The Matrix. Light
+  and Dark are greyed out under The Matrix, which is always dark.
 - **Search** in the sidebar (⇧⌘F) finds text in every file of the folder,
   with match case, whole word and regular expressions, and files to
   include and exclude. ⇧⌘H replaces across files, all at once, a file at

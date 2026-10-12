@@ -83,13 +83,15 @@ func (h *desktop) trash(path string) error { return mygo.Shell.TrashItem(path) }
 func (h *desktop) reveal(path string)      { mygo.Shell.ShowItemInFolder(path) }
 func (h *desktop) setTitle(title string)   { h.win.SetTitle(title) }
 func (h *desktop) closeWindow()            { h.win.Close() }
-func (h *desktop) setAppearance(appearance string) {
-	mygo.Theme.SetSource(themeSource(appearance))
-	// From dark to The Matrix or Claude the native appearance stays, so the other
-	// windows would not draw anew.
+func (h *desktop) setTheme(theme, appearance string) {
+	mygo.Theme.SetSource(themeSource(theme, appearance))
+	// From one theme to another the native appearance may stay, so the
+	// other windows would not draw anew.
 	for _, w := range h.m.wins {
 		w.a.invalidate()
 	}
+	// The appearances are greyed out under The Matrix.
+	h.m.refreshMenu()
 }
 
 func (h *desktop) showFolder(dir string) bool {
@@ -224,7 +226,7 @@ func main() {
 	mygo.App.OnQuit(func() { m.s.Flush() })
 	mygo.App.WhenReady(func() {
 		m.s = settings.Load(settingsPath())
-		mygo.Theme.SetSource(themeSource(m.s.Appearance))
+		mygo.Theme.SetSource(themeSource(m.s.Theme, m.s.Appearance))
 		if stop, err := m.s.Watch(func(p settings.Prefs) { mygo.RunOnMain(func() { m.reload(p) }) }); err == nil {
 			mygo.App.OnQuit(stop)
 		}
@@ -413,8 +415,8 @@ func (m *mayoi) of(st *settings.Window) *desktop {
 // changed as Mayoi runs.
 func (m *mayoi) reload(p settings.Prefs) {
 	old := m.s.SetPrefs(p)
-	if p.Appearance != old.Appearance {
-		mygo.Theme.SetSource(themeSource(p.Appearance))
+	if p.Appearance != old.Appearance || p.Theme != old.Theme {
+		mygo.Theme.SetSource(themeSource(p.Theme, p.Appearance))
 	}
 	for _, w := range m.wins {
 		if p.AutoSave && !old.AutoSave {
