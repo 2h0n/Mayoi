@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.5.1
 
 - **COMMITS** in source control draws the history as a graph, each branch
   in a lane and color of its own, and shows each commit's author, branches
