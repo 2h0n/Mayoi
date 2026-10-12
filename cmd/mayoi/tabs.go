@@ -154,7 +154,9 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 		})
 	})
 	if closing != nil {
-		a.closeTab(closing, nil)
+		// After the frame, which is still drawing the columns: the column
+		// may go with its last tab.
+		a.post(func() { a.closeTab(closing, nil) })
 	}
 }
 

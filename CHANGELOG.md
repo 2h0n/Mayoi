@@ -28,6 +28,8 @@ needs a `## <version>` section here, or its build fails.
 - The windows, tabs, recent folders and layout move from `settings.json`
   to `state.json` beside it, so `settings.json` holds only the
   preferences.
+- Closing the last tab of a column with another after it no longer
+  crashes Mayoi.
 
 ## 0.5.0
 

@@ -5,6 +5,7 @@ import (
 	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -523,4 +524,55 @@ func TestDraggingTerminals(t *testing.T) {
 		t.Fatalf("a document dropped on the panel: %d tabs", len(a.cols[0].tabs))
 	}
 	a.closeTerminals()
+}
+
+// Closing the last tab of a column that another follows takes the column
+// away, without the frame drawing the columns tripping on it: by its
+// cross, and by Close in its menu.
+func TestCloseLastTabOfColumn(t *testing.T) {
+	for _, menu := range []bool{false, true} {
+		hs := newHarness(t, true)
+		a, tt := hs.a, hs.tt
+		a.openFile(hs.path("main.go"), true)
+		hs.settle()
+		a.splitRight()
+		hs.settle()
+		a.openFile(hs.path("go.mod"), true)
+		hs.settle()
+		a.splitRight()
+		hs.settle()
+		a.openFile(hs.path("README.md"), true)
+		hs.settle()
+		if len(a.cols) != 3 {
+			t.Fatalf("%d columns", len(a.cols))
+		}
+		// main.go shows in the first column only once its copies are gone.
+		left, mid := a.cols[0], a.cols[1]
+		for len(left.tabs) > 1 {
+			a.closeTab(left.tabs[1], nil)
+		}
+		for len(mid.tabs) > 1 {
+			a.closeTab(mid.tabs[0], nil)
+		}
+		hs.settle()
+		name := mid.tab().name()
+		if menu {
+			x, y := hs.tabCenter(name)
+			tt.RightClickAt(x, y)
+			hs.settle()
+			if err := tt.ChooseMenuItem("Close"); err != nil {
+				t.Fatalf("%v: %q", err, tt.Menu())
+			}
+		} else if err := tt.Click("Close " + name); err != nil {
+			t.Fatal(err)
+		}
+		hs.settle()
+		hs.settle()
+		if len(a.cols) != 2 || slices.Contains(a.cols, mid) || a.cols[0] != left {
+			t.Errorf("menu %v: %d columns after closing %s", menu, len(a.cols), name)
+		}
+		if a.col < 0 || a.col >= len(a.cols) {
+			t.Errorf("menu %v: column %d of %d has the keyboard", menu, a.col, len(a.cols))
+		}
+	}
 }

@@ -331,8 +331,14 @@ func (a *app) columns(c *ui.Context) {
 	for _, col := range a.cols {
 		total += col.weight
 	}
+	// The columns as the frame began: one an action of the frame takes
+	// away, from its tab strip as it draws, is let be till the next.
+	cols := slices.Clone(a.cols)
 	ui.Row(c.Key("columns")).Bind(&a.colsView).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
-		for i, col := range a.cols {
+		for i, col := range cols {
+			if !slices.Contains(a.cols, col) {
+				continue
+			}
 			box := ui.Column(c.Key(col.id)).Basis(0).Grow(col.weight).MinWidth(0)
 			if i > 0 {
 				box.BorderWidth(0, 0, 0, 1).BorderColor(p.border)
@@ -342,7 +348,7 @@ func (a *app) columns(c *ui.Context) {
 				if i == 0 || width <= 0 {
 					return
 				}
-				prev := a.cols[i-1]
+				prev := cols[i-1]
 				a.splitter(c, edgeLeft, func(d float32) {
 					least := minColumnW / width * total
 					by := d / width * total
