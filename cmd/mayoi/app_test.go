@@ -24,6 +24,8 @@ type fakeHost struct {
 	title   string
 	closed  bool
 	trashed []string
+	// revealed are the paths asked to show in the Finder.
+	revealed []string
 	// others are the folders other windows have open, and windows those
 	// asked to open in a window of their own.
 	others  []string
@@ -47,7 +49,7 @@ func (h *fakeHost) trash(path string) error {
 	h.trashed = append(h.trashed, path)
 	return os.RemoveAll(path)
 }
-func (h *fakeHost) reveal(string)         {}
+func (h *fakeHost) reveal(path string)    { h.revealed = append(h.revealed, path) }
 func (h *fakeHost) setTitle(title string) { h.title = title }
 func (h *fakeHost) closeWindow()          { h.closed = true }
 func (h *fakeHost) setAppearance(string)  {}

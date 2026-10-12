@@ -18,6 +18,9 @@ needs a `## <version>` section here, or its build fails.
   `terminalFontSize` for a terminal font of its own.
 - Zooming the text resizes the terminals of every window, not only the
   window's own.
+- **Reveal in Explorer** in a tab's menu shows the Explorer, chooses the
+  file and scrolls to it, and the menu has **Reveal in Finder** too. The
+  Explorer scrolls to the file shown as tabs change.
 - The welcome page titles its sections as the sidebar titles its views.
 - A diff says that a file has no changes in its text, or is binary, in
   the window's font rather than as a line of code.

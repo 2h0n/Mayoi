@@ -150,13 +150,13 @@ func (a *app) fileTree(c *ui.Context) {
 	if activePath != a.treeSynced {
 		a.treeSynced = activePath
 		a.revealInTree(activePath)
-		a.selectInTree = activePath
 	}
 	if a.selectInTree != "" {
 		for i := range a.files.Rows() {
 			if a.files.Item(i) == a.selectInTree {
 				a.fileRow = i
 				a.selectInTree = ""
+				a.files.List.ScrollIntoView(i)
 			}
 		}
 	}
@@ -303,11 +303,13 @@ func (a *app) targetDir() string {
 	return a.root
 }
 
-// revealInTree opens the folders above a file and chooses it.
+// revealInTree opens the folders above a file, and chooses it and scrolls
+// to it once the tree lists it.
 func (a *app) revealInTree(path string) {
 	if a.tree == nil || !strings.HasPrefix(path, a.root+string(filepath.Separator)) {
 		return
 	}
+	a.selectInTree = path
 	for d := filepath.Dir(path); d != a.root && len(d) > len(a.root); d = filepath.Dir(d) {
 		a.files.Open.Add(d)
 		a.tree.Load(d)
