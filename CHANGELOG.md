@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.3.3
 
 - **View → Theme** (formerly Appearance) adds The Matrix: phosphor green on
   black, the whole window in the code's font, file icons in greens, and
