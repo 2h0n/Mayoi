@@ -909,7 +909,8 @@ func (a *app) welcome(c *ui.Context) {
 func (a *app) welcomeSection(c *ui.Context, title string, rows func()) {
 	p := a.pal
 	ui.Column(c).Gap(2).Children(func() {
-		ui.Text(c, title).FontSize(12).FontWeight(600).TextColor(p.muted).Padding(0, 10, 6)
+		// As the sidebar titles its views.
+		ui.Text(c, strings.ToUpper(title)).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Padding(0, 10, 6)
 		rows()
 	})
 }

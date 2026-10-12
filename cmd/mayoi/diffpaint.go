@@ -298,7 +298,8 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				case rowSection:
 					a.paintSection(pt, file.base, v.sections[btoi(file.base == diffStaged)], full)
 				case rowNote:
-					txt(vx+l.textX, y, row.label, p.faint)
+					// Said of the file, not a line of it: in the window's font.
+					uiText(pt, vx+l.textX, y, lineH, row.label, 12.5, 400, p.faint)
 				case rowHunk:
 					pt.Fill(full, p.text.Alpha(0.035), 0)
 					rail(vx, y, h, neutral)

@@ -3,6 +3,12 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- The welcome page titles its sections as the sidebar titles its views.
+- A diff says that a file has no changes in its text, or is binary, in
+  the window's font rather than as a line of code.
+
 ## 0.4.0
 
 - **Go → Command Palette…** (⇧⌘P), or `>` typed in quick open, runs any
