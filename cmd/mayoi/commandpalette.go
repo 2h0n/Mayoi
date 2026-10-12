@@ -24,6 +24,16 @@ var commandGroups = map[string]string{
 	"file": "File", "edit": "Edit", "sel": "Selection", "go": "Go", "view": "View", "git": "Git",
 }
 
+// viewKeys are the keys of the commands that the editor or the view
+// takes itself, which their menu items leave out, for the palette to show.
+var viewKeys = map[string]string{
+	"edit.undo": "CmdOrCtrl+Z", "edit.redo": "Shift+CmdOrCtrl+Z",
+	"sel.moveUp": "Alt+Up", "sel.moveDown": "Alt+Down",
+	"sel.copyUp": "Shift+Alt+Up", "sel.copyDown": "Shift+Alt+Down",
+	"sel.lineBelow": "CmdOrCtrl+Enter", "sel.lineAbove": "Shift+CmdOrCtrl+Enter",
+	"file.openRecent": "Ctrl+R",
+}
+
 // paletteEntries are the commands the palette runs, by title, made once
 // for the window: the commands do not change.
 func (a *app) paletteEntries() []paletteEntry {
@@ -39,7 +49,11 @@ func (a *app) paletteEntries() []paletteEntry {
 			group = "Theme"
 		}
 		title := group + ": " + cmd.label
-		a.palette = append(a.palette, paletteEntry{id: cmd.id, title: title, group: len(group) + 2, caps: accelCaps(cmd.accel, runtime.GOOS == "darwin")})
+		accel := cmd.accel
+		if accel == "" {
+			accel = viewKeys[cmd.id]
+		}
+		a.palette = append(a.palette, paletteEntry{id: cmd.id, title: title, group: len(group) + 2, caps: accelCaps(accel, runtime.GOOS == "darwin")})
 	}
 	slices.SortStableFunc(a.palette, func(x, y paletteEntry) int { return strings.Compare(x.title, y.title) })
 	return a.palette
