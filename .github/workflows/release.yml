@@ -22,13 +22,15 @@ jobs:
           version="$(jq -r .version mygo.json)"
           test "$GITHUB_REF_NAME" = "v$version" || { echo "::error::tag $GITHUB_REF_NAME, but mygo.json has $version"; exit 1; }
           grep -q "^## $version\$" CHANGELOG.md || { echo "::error::CHANGELOG.md has no ## $version section"; exit 1; }
+      # The notes of the release are the version's section of CHANGELOG.md.
       - name: Create the draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            scripts/release-notes.sh "${GITHUB_REF_NAME#v}" > "$RUNNER_TEMP/notes.md"
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --draft --verify-tag --title "Mayoi ${GITHUB_REF_NAME#v}" --generate-notes
+              --draft --verify-tag --title "Mayoi ${GITHUB_REF_NAME#v}" --notes-file "$RUNNER_TEMP/notes.md"
           fi
 
   build:

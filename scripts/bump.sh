@@ -6,13 +6,14 @@
 #
 # The "## Unreleased" section of CHANGELOG.md becomes "## <version>" in the
 # same commit, unless a "## <version>" section is there already: the update
-# window shows it, and the release fails without it. Pre-release versions
-# such as 1.2.0-beta.1 are refused, as Mayoi has no beta channel yet.
+# window shows it, it is the notes of the GitHub release, and the release
+# fails without it. Pre-release versions such as 1.2.0-beta.1 are refused,
+# as Mayoi has no beta channel yet.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 if [ $# -ne 1 ]; then
-    sed -n '2,10s/^# \{0,1\}//p' "$0" >&2
+    sed -n '2,11s/^# \{0,1\}//p' "$0" >&2
     exit 1
 fi
 
@@ -113,6 +114,10 @@ fi
 git commit --quiet -m "$TAG" $FILES
 git tag "$TAG"
 git --no-pager log -1 --stat --format='%h %s' "$TAG"
+echo
+echo "==> notes of the release, from CHANGELOG.md:"
+scripts/release-notes.sh "$VERSION"
+echo
 
 read -r -p "Push main and $TAG to origin, which publishes the release? [y/N] " answer || echo
 if [[ "$answer" != [yY]* ]]; then
