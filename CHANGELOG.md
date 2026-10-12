@@ -10,6 +10,11 @@ needs a `## <version>` section here, or its build fails.
   include and exclude. ⇧⌘H replaces across files, all at once, a file at
   a time or a match at a time, showing each replacement first. Open files
   change as a step of undo.
+- Search's results: ↓ and ↑ walk every match, past the file headers, as
+  far as the list scrolls; ↑ from the first match and Escape go back to
+  the query. Each match shows its line number, matches stand out more,
+  a bar moves while searching, and searches ignoring case are about
+  twice as fast.
 - **File → Open Settings** (⌘,) opens `settings.json`, and saving it
   applies the fonts, theme, auto save, word wrap, vim mode and the other
   preferences in every window at once, rather than at the next start.

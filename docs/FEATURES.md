@@ -223,8 +223,9 @@ large files, matches are found in the background as you type.
 The button beside **EXPLORER** with a magnifying glass, ⇧⌘F or **Edit → Find in Files** searches every file of the
 folder, as quick open lists them, with options for match case, whole word and regular expressions. The selection, when
 it is on one line, becomes the query. Results come in as they are found, a line for each match under a header for its
-file; click a header to fold it, or **Collapse All** in the title. Click a match, or press Enter on it, to see it in the
-editor, selected. ↓ goes from the query to the results.
+file, with its line number; click a header to fold it, or **Collapse All** in the title. Click a match, or press Enter on
+it, to see it in the editor, selected. ↓ goes from the query to the results, where ↓ and ↑ move from match to match;
+↑ on the first match, or Escape, goes back to the query. A thin bar under the title moves while a search runs.
 
 - Files with unsaved edits are searched as they are in the editor, and the results follow a file as you type in it or
   it changes on disk.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"slices"
 	"strings"
@@ -292,4 +293,116 @@ func mustRead(t *testing.T, path string) string {
 		t.Fatal(err)
 	}
 	return string(data)
+}
+
+// Down and Up walk the results past their headers, as far as they go and
+// with the list scrolled, and Up from the first match goes to the query.
+func TestSearchViewWalkResults(t *testing.T) {
+	hs := newHarness(t, true)
+	a, tt := hs.a, hs.tt
+	for i := range 6 {
+		var b strings.Builder
+		for j := range 8 {
+			fmt.Fprintf(&b, "line %d needle %d\n", j, i)
+		}
+		os.WriteFile(hs.path(fmt.Sprintf("n%d.txt", i)), []byte(b.String()), 0o644)
+	}
+	a.indexStale = true
+	hs.searchFor("needle")
+	s := &a.inFiles
+	rows := a.searchRows()
+	if s.count != 48 || len(rows) != 54 {
+		t.Fatalf("%d matches in %d rows", s.count, len(rows))
+	}
+	var want []int // the rows of the matches
+	for i, r := range rows {
+		if r.match >= 0 {
+			want = append(want, i)
+		}
+	}
+	tt.Key(0, ui.KeyDown)
+	hs.settle()
+	for i, row := range want {
+		if s.row != row {
+			t.Fatalf("after %d Downs, row %d; want %d", i+1, s.row, row)
+		}
+		tt.Key(0, ui.KeyDown)
+		hs.settle()
+	}
+	if s.row != want[len(want)-1] {
+		t.Errorf("Down past the end moved to %d", s.row)
+	}
+	for i := len(want) - 2; i >= 0; i-- {
+		tt.Key(0, ui.KeyUp)
+		hs.settle()
+		if s.row != want[i] {
+			t.Fatalf("Up to row %d; want %d", s.row, want[i])
+		}
+	}
+	tt.Key(0, ui.KeyUp)
+	hs.settle()
+	if !tt.Focused("Search") {
+		t.Error("Up from the first match kept the keyboard in the results")
+	}
+	// Down from the query again starts at the first match.
+	tt.Key(0, ui.KeyDown)
+	hs.settle()
+	tt.Key(0, ui.KeyDown)
+	hs.settle()
+	if s.row != want[1] {
+		t.Errorf("row %d after going back to the results; want %d", s.row, want[1])
+	}
+	// Escape goes back to the query too.
+	tt.Key(0, ui.KeyEscape)
+	hs.settle()
+	if !tt.Focused("Search") {
+		t.Error("Escape kept the keyboard in the results")
+	}
+}
+
+// A query ignoring case finds what its expression finds, without it.
+func TestFoldQueryMatchesAsRegexp(t *testing.T) {
+	texts := []string{
+		"", "aaa", "AaAa", "Error errorf ERRORF", "the Kelvin kelvin", "miſs mis",
+		"héllo HELLO héllo", "a\nB\na b", "erroR_err err",
+	}
+	queries := []string{"a", "aa", "errorf", "err", "kelvin", "s", "hello", "a b", "b"}
+	for _, word := range []bool{false, true} {
+		for _, q := range queries {
+			re, _ := compileQuery(q, false, word, false)
+			fq := foldQueryOf(q, false, word, false)
+			for _, text := range texts {
+				want := re.FindAllStringIndex(text, -1)
+				got, ok := fq.matches(text, -1)
+				if !ok {
+					continue
+				}
+				if fmt.Sprint(got) != fmt.Sprint(want) && !(len(got) == 0 && len(want) == 0) {
+					t.Errorf("%q in %q, word %v: %v; want %v", q, text, word, got, want)
+				}
+			}
+		}
+	}
+	if q := foldQueryOf("é", false, false, false); q.needle != "" {
+		t.Error("folds a query beyond ASCII")
+	}
+}
+
+// The files searched at once find no more than maxSearchMatches in all.
+func TestSearchStopsAtMost(t *testing.T) {
+	hs := newHarness(t, true)
+	line := strings.Repeat("needle ", 10) + "\n"
+	for i := range 30 {
+		os.WriteFile(hs.path(fmt.Sprintf("n%02d.txt", i)), []byte(strings.Repeat(line, 100)), 0o644)
+	}
+	hs.a.indexStale = true
+	hs.searchFor("needle")
+	s := &hs.a.inFiles
+	n := 0
+	for _, f := range s.files {
+		n += len(f.matches)
+	}
+	if !s.stopped || s.count != maxSearchMatches || n != maxSearchMatches {
+		t.Errorf("stopped %v with %d matches, %d in the files", s.stopped, s.count, n)
+	}
 }

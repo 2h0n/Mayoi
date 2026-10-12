@@ -3,14 +3,17 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -64,6 +67,9 @@ type searchState struct {
 	input ui.Handle
 	list  ui.ListState
 	row   int
+	// toList moves the keyboard to the results once the list is built,
+	// which Focus asks of it.
+	toList bool
 
 	// key is the query and options the results are of, or that a search
 	// waits to start for; typedAt is when they changed, and waiting is set
@@ -75,6 +81,7 @@ type searchState struct {
 	// searches, so that what an old one finds is dropped, and cancel stops
 	// the one under way.
 	re      *regexp.Regexp
+	fold    foldQuery
 	gen     int
 	cancel  *atomic.Bool
 	running bool
@@ -165,7 +172,7 @@ func (a *app) startSearch() {
 		s.waiting, s.running = true, true
 		return
 	}
-	s.re = re
+	s.re, s.fold = re, foldQueryOf(s.query, s.matchCase, s.word, s.regex)
 	s.includes, s.excludes = workspace.ParseGlobs(s.include), workspace.ParseGlobs(s.exclude)
 	var rels []string
 	for _, rel := range a.index {
@@ -187,7 +194,7 @@ func (a *app) startSearch() {
 	}
 	cancel := &atomic.Bool{}
 	s.cancel, s.running = cancel, true
-	a.runSearch(s.gen, re, rels, texts, cancel, false)
+	a.runSearch(s.gen, re, s.fold, rels, texts, cancel, false)
 }
 
 // wants reports whether search looks in a file, by the files to include
@@ -209,7 +216,7 @@ func (a *app) relOf(path string) (string, bool) {
 // those open, several at a time, and hands what it finds to the main
 // thread as it goes. A search again of a few files, partial, gives each
 // file it looked in, matches or not, which replace those of the results.
-func (a *app) runSearch(gen int, re *regexp.Regexp, rels []string, texts map[string]string, cancel *atomic.Bool, partial bool) {
+func (a *app) runSearch(gen int, re *regexp.Regexp, fold foldQuery, rels []string, texts map[string]string, cancel *atomic.Bool, partial bool) {
 	root := a.root
 	go func() {
 		var (
@@ -241,7 +248,7 @@ func (a *app) runSearch(gen int, re *regexp.Regexp, rels []string, texts map[str
 						cancel.Store(true)
 						return
 					}
-					f := searchFileText(root, rels[i], texts, re, max(limit, 1), partial)
+					f := searchFileText(root, rels[i], texts, re, fold, max(limit, 1), partial)
 					if f == nil {
 						continue
 					}
@@ -271,8 +278,9 @@ func (a *app) runSearch(gen int, re *regexp.Regexp, rels []string, texts map[str
 
 // searchFileText finds re in a file, or in its text in texts: nil when
 // it finds nothing, unless partial, or when it cannot read the file, as
-// one too large or binary. It may run on any goroutine.
-func searchFileText(root, rel string, texts map[string]string, re *regexp.Regexp, limit int, partial bool) *searchFile {
+// one too large or binary. fold, when it is of a query, finds its
+// matches as re does, quicker. It may run on any goroutine.
+func searchFileText(root, rel string, texts map[string]string, re *regexp.Regexp, fold foldQuery, limit int, partial bool) *searchFile {
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	f := &searchFile{path: path, rel: rel}
 	text, ok := texts[rel]
@@ -280,7 +288,11 @@ func searchFileText(root, rel string, texts map[string]string, re *regexp.Regexp
 		text, ok = readSearchText(path)
 	}
 	if ok {
-		f.matches = findMatches(text, re, limit)
+		locs, folded := fold.matches(text, limit)
+		if !folded {
+			locs = re.FindAllStringIndex(text, limit)
+		}
+		f.matches = matchesAt(text, locs)
 	}
 	if len(f.matches) == 0 && !partial {
 		return nil
@@ -289,14 +301,27 @@ func searchFileText(root, rel string, texts map[string]string, re *regexp.Regexp
 }
 
 // readSearchText reads a file's text, its lines ended by "\n", false for
-// a file too large, binary, or not to be read.
+// a file too large, binary, or not to be read. It opens the file once and
+// asks the open file for its size, which costs half the system calls of
+// a stat by path then a read: most of a search's time.
 func readSearchText(path string) (string, bool) {
-	info, err := os.Stat(path)
+	// Not to wait on a FIFO, which the index may list through a link.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	info, err := f.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Size() > maxSearchBytes {
 		return "", false
 	}
-	data, err := os.ReadFile(path)
-	if err != nil || isBinary(data) {
+	data := make([]byte, info.Size())
+	n, err := io.ReadFull(f, data)
+	if err != nil && err != io.ErrUnexpectedEOF {
+		return "", false
+	}
+	data = data[:n]
+	if isBinary(data) {
 		return "", false
 	}
 	if bytes.Contains(data, []byte("\r\n")) {
@@ -305,12 +330,78 @@ func readSearchText(path string) (string, bool) {
 	return string(data), true
 }
 
-// findMatches finds up to limit matches of re in text, with where they
-// are and what shows of their lines.
-func findMatches(text string, re *regexp.Regexp, limit int) []searchMatch {
+// foldQuery is a query ignoring case, which finds its matches without
+// regular expressions where it can: Go's ignoring case find no text
+// quickly, and most of the files hold no match.
+type foldQuery struct {
+	needle string // in lower case; "" for a query that does not fold
+	words  bool   // whole words, which it leaves to the expression
+}
+
+// foldQueryOf returns the foldQuery of a query, of none but one ignoring
+// case of ASCII text alone, which folds so simply.
+func foldQueryOf(query string, matchCase, word, regex bool) foldQuery {
+	if matchCase || regex || query == "" {
+		return foldQuery{}
+	}
+	for i := range len(query) {
+		if query[i] >= utf8.RuneSelf {
+			return foldQuery{}
+		}
+	}
+	return foldQuery{strings.ToLower(query), word}
+}
+
+// foldBufs are buffers for texts in lower case, one a goroutine at a time.
+var foldBufs = sync.Pool{New: func() any { return new([]byte) }}
+
+// matches finds up to limit matches of q in text, as its expression
+// does: true when it found them, false when the expression must, as for
+// whole words, or for a text with the runes beyond ASCII that fold to
+// ASCII letters. A text without q's needle has no matches.
+func (q foldQuery) matches(text string, limit int) ([][]int, bool) {
+	fold := q.needle
+	if fold == "" {
+		return nil, false
+	}
+	// The Kelvin sign and the long s fold to k and s, as (?i) folds them.
+	if strings.ContainsAny(fold, "ks") && strings.ContainsAny(text, "\u212a\u017f") {
+		return nil, false
+	}
+	bp := foldBufs.Get().(*[]byte)
+	defer foldBufs.Put(bp)
+	lower := append((*bp)[:0], text...)
+	for i, b := range lower {
+		if 'A' <= b && b <= 'Z' {
+			lower[i] = b + 'a' - 'A'
+		}
+	}
+	*bp = lower
+	needle := []byte(fold)
+	if !bytes.Contains(lower, needle) {
+		return nil, true
+	}
+	if q.words {
+		return nil, false
+	}
+	var locs [][]int
+	for at := 0; len(locs) < limit || limit < 0; {
+		i := bytes.Index(lower[at:], needle)
+		if i < 0 {
+			break
+		}
+		locs = append(locs, []int{at + i, at + i + len(needle)})
+		at += i + len(needle)
+	}
+	return locs, true
+}
+
+// matchesAt are the matches of text at locs, the byte offsets of their
+// starts and ends, in order, with what shows of their lines.
+func matchesAt(text string, locs [][]int) []searchMatch {
 	var out []searchMatch
 	line, lineStart, at := 0, 0, 0 // the line of byte at, and where it starts
-	for _, m := range re.FindAllStringIndex(text, limit) {
+	for _, m := range locs {
 		if m[0] == m[1] {
 			continue // empty matches, as of ^ or a*
 		}
@@ -352,9 +443,15 @@ func (a *app) takeResults(gen int, files []*searchFile, done, stopped bool) {
 	}
 	for _, f := range files {
 		i, ok := slices.BinarySearchFunc(s.files, f.rel, func(e *searchFile, rel string) int { return strings.Compare(e.rel, rel) })
+		if ok {
+			s.count -= len(s.files[i].matches)
+		}
+		// The files searched at once may find more than all may.
+		if room := max(maxSearchMatches-s.count, 0); len(f.matches) > room {
+			f.matches, stopped = f.matches[:room], true
+		}
 		switch {
 		case ok:
-			s.count -= len(s.files[i].matches)
 			if len(f.matches) == 0 {
 				s.files = slices.Delete(s.files, i, i+1)
 			} else {
@@ -418,7 +515,7 @@ func (a *app) searchAgain(paths []string) {
 		rels = append(rels, rel)
 	}
 	if len(rels) > 0 {
-		a.runSearch(s.gen, s.re, rels, texts, &atomic.Bool{}, true)
+		a.runSearch(s.gen, s.re, s.fold, rels, texts, &atomic.Bool{}, true)
 	}
 }
 
@@ -683,7 +780,12 @@ func (a *app) searchView(c *ui.Context) {
 		s.key, s.typedAt, s.waiting = k, time.Now(), true
 		time.AfterFunc(searchPause, a.invalidate)
 	}
-	ui.Column(c).Padding(2, 12, 6, 6).Gap(5).Children(func() {
+	if s.query != "" && (s.running || s.waiting) {
+		ui.Progress(c.Key("search-activity"), -1).Height(2).Radius(0).Label("Searching")
+	} else {
+		ui.Box(c.Key("search-activity")).Height(2)
+	}
+	ui.Column(c).Padding(0, 12, 6, 6).Gap(5).Children(func() {
 		ui.Row(c).Gap(2).AlignItems(ui.Stretch).Children(func() {
 			arrow := iconChevronRight
 			if s.replacing {
@@ -709,7 +811,7 @@ func (a *app) searchView(c *ui.Context) {
 				}
 				if in.Shortcut(0, ui.KeyDown) && len(s.files) > 0 {
 					s.row = min(1, len(a.searchRows())-1)
-					s.list.Focus(c)
+					s.toList = true
 				}
 				if !s.replacing {
 					return
@@ -804,6 +906,9 @@ func (a *app) searchResults(c *ui.Context) {
 	s := &a.inFiles
 	rows, files := a.searchRows(), s.files
 	if len(rows) == 0 {
+		if s.query == "" {
+			a.searchHint(c)
+		}
 		return
 	}
 	s.list.Selected = &s.row
@@ -830,9 +935,15 @@ func (a *app) searchResults(c *ui.Context) {
 	quiet.Accent, quiet.AccentText, quiet.SurfaceHover = p.active, p.text, p.hover
 	c.SetTheme(&quiet)
 	var action func()
+	first := firstMatchRow(rows)
 	out := ui.List(c.Key("search"), &s.list, len(rows), func(i int) {
 		r := rows[i]
 		f := files[r.file]
+		// Up from the first match goes back to the query; the row asks
+		// for it before the list does.
+		if i == first && s.row == first && s.list.Shortcut(c, 0, ui.KeyUp) {
+			action = func() { s.input.Focus() }
+		}
 		if r.match < 0 {
 			a.searchHeader(c, f, &action)
 		} else {
@@ -840,6 +951,12 @@ func (a *app) searchResults(c *ui.Context) {
 		}
 	}).Grow(1).Padding(0, 6, 8, 6)
 	c.SetTheme(base)
+	if s.toList && s.list.Focus(c) {
+		s.toList = false
+	}
+	if s.list.Shortcut(c, 0, ui.KeyEscape) {
+		s.input.Focus()
+	}
 	if action != nil {
 		action()
 	}
@@ -849,6 +966,32 @@ func (a *app) searchResults(c *ui.Context) {
 			a.openMatch(f, f.matches[r.match], true)
 		}
 	}
+}
+
+// searchHint is what the view shows before a query: what it does, and
+// its keys.
+func (a *app) searchHint(c *ui.Context) {
+	p := a.pal
+	ui.Column(c).Padding(10, 14, 0, 26).Gap(6).Children(func() {
+		ui.Text(c, "Find text in the folder's files.").FontSize(12).TextColor(p.muted)
+		for _, k := range [][2]string{{"↓", "Go to the results"}, {"⏎", "Open the match"}, {"⇧⌘H", "Replace"}} {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, k[0]).FontSize(11).TextColor(p.muted).Padding(0, 5).Radius(4).Background(p.hover).MinWidth(22).
+					TextAlign(ui.Center)
+				ui.Text(c, k[1]).FontSize(11.5).TextColor(p.faint)
+			})
+		}
+	})
+}
+
+// firstMatchRow is the row of the first match, -1 for none.
+func firstMatchRow(rows []searchRow) int {
+	for i, r := range rows {
+		if r.match >= 0 {
+			return i
+		}
+	}
+	return -1
 }
 
 // searchHeader is the row of a file of the results: a click folds it.
@@ -897,8 +1040,13 @@ func (a *app) searchMatchRow(c *ui.Context, f *searchFile, m searchMatch, action
 	clicked := row.Clicked()
 	row.Children(func() {
 		ui.RichText(c, a.matchPreview(m)...).FontSize(12.5).SingleLine().Grow(1).Shrink(1).MinWidth(0)
-		if hovered && s.replacing && a.smallButton(c, iconReplace, "Replace") {
-			*action = func() { a.replaceMatches([]*searchFile{f}, &m) }
+		if hovered && s.replacing {
+			if a.smallButton(c, iconReplace, "Replace") {
+				*action = func() { a.replaceMatches([]*searchFile{f}, &m) }
+			}
+		} else {
+			// Its line, to tell apart the matches of lines alike.
+			ui.Text(c, strconv.Itoa(m.line+1)).FontSize(10.5).TextColor(a.pal.faint).SingleLine().Shrink(0).Padding(0, 4, 0, 0)
 		}
 	})
 	if clicked && *action == nil {
@@ -928,7 +1076,7 @@ func (a *app) matchPreview(m searchMatch) []ui.Span {
 	oneLine := func(t string) string { return strings.ReplaceAll(strings.ReplaceAll(t, "\t", " "), "\n", "⏎") }
 	spans := []ui.Span{{Text: oneLine(pre), Color: p.text}}
 	if !s.replacing || s.re == nil {
-		spans = append(spans, ui.Span{Text: oneLine(m.hit), Color: p.text, Background: p.match})
+		spans = append(spans, ui.Span{Text: oneLine(m.hit), Color: p.text, Background: p.matchNow})
 	} else {
 		with := s.re.ReplaceAllString(m.text, replaceTemplate(s.with, s.regex))
 		spans = append(spans, ui.Span{Text: oneLine(m.hit), Color: p.text, Background: p.removed.Alpha(0.22), Strikethrough: true})
