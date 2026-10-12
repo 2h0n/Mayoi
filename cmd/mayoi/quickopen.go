@@ -23,7 +23,8 @@ type quickOpen struct {
 	sel     int
 	shown   string // the query the results are of
 	stale   bool
-	moved   bool // the choice moved by keys, to scroll into view
+	moved   bool     // the choice moved by keys, to scroll into view
+	used    []string // the commands the palette ran last, the last first
 }
 
 func (a *app) openQuick(query string) {
@@ -69,6 +70,10 @@ func (a *app) quickOpenView(c *ui.Context) {
 		a.quickSymbols(c, symQuery)
 		return
 	}
+	if cmdQuery, isCmd := strings.CutPrefix(strings.TrimLeft(q.query, " "), ">"); isCmd {
+		a.quickCommands(c, cmdQuery)
+		return
+	}
 	if !isLine && (q.stale || q.shown != q.query) {
 		q.results = workspace.Fuzzy(a.index, q.query, 60)
 		if strings.TrimSpace(q.query) == "" {
@@ -94,7 +99,7 @@ func (a *app) quickOpenView(c *ui.Context) {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconSearch).FontSize(15).TextColor(p.muted)
 					in := ui.TextInputBase(c.Key("quick-input"), &q.query).Grow(1).FontSize(14).AutoFocus().
-						Placeholder("Search files by name, : to go to a line, @ for symbols").Label("Quick Open")
+						Placeholder("Search files by name, > for commands, : for a line, @ for symbols").Label("Quick Open")
 					if in.Shortcut(0, ui.KeyDown) {
 						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true
 					}
@@ -115,7 +120,7 @@ func (a *app) quickOpenView(c *ui.Context) {
 				a.quickBody(c, isLine, line, col, choose)
 				tip := ""
 				if a.root != "" {
-					tip = "Type : for a line, @ for a symbol"
+					tip = "Type > for commands, : for a line, @ for a symbol"
 				}
 				a.quickFooter(c, isLine, "open", tip)
 			})
@@ -150,7 +155,7 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 		msg := "No matching files"
 		switch {
 		case a.root == "":
-			msg = "Open a folder to search its files"
+			msg = "Open a folder to search its files, or type > for commands"
 		case a.indexing && a.index == nil:
 			msg = "Indexing files…"
 		}

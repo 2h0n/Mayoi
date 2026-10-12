@@ -64,6 +64,7 @@ func (a *app) commands() []command {
 		{"sel.line", "Select Line", "CmdOrCtrl+L", a.editActive(selectLines)},
 		{"go.bracket", "Go to Bracket", "Shift+CmdOrCtrl+\\", a.editActive(goToBracket)},
 		{"go.quickOpen", "Quick Open…", "CmdOrCtrl+P", func() { a.openQuick("") }},
+		{"go.commands", "Command Palette…", "Shift+CmdOrCtrl+P", func() { a.openQuick(">") }},
 		{"go.line", "Go to Line…", "Ctrl+G", func() { a.openQuick(":") }},
 		{"go.symbol", "Go to Symbol…", "Shift+CmdOrCtrl+O", func() { a.openQuick("@") }},
 		{"go.nextTab", "Next Tab", "Ctrl+Tab", func() { a.cycleTab(1) }},
@@ -306,7 +307,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},
 		{Label: "Go", Submenu: []*mygo.MenuItem{
-			item("go.quickOpen"), item("go.symbol"), item("go.line"), item("go.bracket"), mygo.Separator(),
+			item("go.quickOpen"), item("go.commands"), item("go.symbol"), item("go.line"), item("go.bracket"), mygo.Separator(),
 			item("go.nextTab"), item("go.prevTab"),
 		}},
 		{Label: "Git", Submenu: []*mygo.MenuItem{

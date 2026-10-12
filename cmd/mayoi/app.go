@@ -129,8 +129,9 @@ type app struct {
 	dragging, dragNow bool
 
 	quick    quickOpen
-	branches branchPicker // the box that switches branches
-	recents  recentPicker // the box of the recent folders
+	palette  []paletteEntry // the commands of the command palette, made as it first opens
+	branches branchPicker   // the box that switches branches
+	recents  recentPicker   // the box of the recent folders
 	find     findState
 	prompt   *prompt
 	confirm  *confirm

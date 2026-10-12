@@ -3,6 +3,12 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **Go → Command Palette…** (⇧⌘P), or `>` typed in quick open, runs any
+  command by name. Each row shows its menu and its shortcut, and a check
+  when it is on; the commands run last come first.
+
 ## 0.3.3
 
 - **View → Theme** (formerly Appearance) adds The Matrix: phosphor green on

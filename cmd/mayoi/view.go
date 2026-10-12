@@ -859,6 +859,7 @@ func (a *app) welcome(c *ui.Context) {
 					} else {
 						a.welcomeAction(c, iconSearch, "Quick Open…", "⌘P", func() { a.openQuick("") })
 					}
+					a.welcomeAction(c, iconChevronRight, "Command Palette…", "⇧⌘P", func() { a.openQuick(">") })
 					a.welcomeAction(c, iconFilePlus, "New File", "⌘N", a.newFile)
 					a.welcomeAction(c, iconTerminal, "Toggle Terminal", "⌃`", a.togglePanel)
 					a.welcomeAction(c, iconSidebar, "Toggle Sidebar", "⌘B", a.toggleSidebar)
@@ -935,7 +936,6 @@ func (a *app) welcomeAction(c *ui.Context, icon *ui.SVG, label, keys string, fn 
 // keycaps shows keys as the caps of a keyboard, one a symbol, except for
 // a named key as "esc".
 func (a *app) keycaps(c *ui.Context, keys string) {
-	p := a.pal
 	var caps []string
 	if isASCII(keys) && len(keys) > 1 && strings.ToLower(keys) == keys && !strings.ContainsAny(keys, "`") {
 		caps = []string{keys}
@@ -944,6 +944,12 @@ func (a *app) keycaps(c *ui.Context, keys string) {
 			caps = append(caps, string(k))
 		}
 	}
+	a.caps(c, caps)
+}
+
+// caps shows keys as the caps of a keyboard.
+func (a *app) caps(c *ui.Context, caps []string) {
+	p := a.pal
 	ui.Row(c).Gap(3).Shrink(0).Children(func() {
 		for _, k := range caps {
 			ui.Text(c, k).FontSize(11).TextColor(p.muted).TextAlign(ui.Center).
