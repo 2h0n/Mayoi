@@ -3,6 +3,11 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Clicking a file or a commit in source control focuses its changes, so
+  `]` `[` go from change to change and `.` `,` from file to file at once.
+
 ## 0.3.2
 
 - Drop files from the Finder to open them: on a column, on its tab strip

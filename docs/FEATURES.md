@@ -91,7 +91,8 @@ tree, with a count of them. Files are grouped as merge changes, staged changes, 
 
 - The branch at the top opens **Switch Branch…**. Beside it, fetch, pull and push, which show how many commits
   they would bring down or send up; a branch with no upstream gets **Publish Branch** instead.
-- Click a file to see its changes, Enter opens them too, and Space stages or unstages it.
+- Click a file, or press Enter, to see its changes with the diff focused, so its keys (`]` `[`, `.` `,`) work at once.
+  Space stages or unstages the file chosen.
 - The buttons on a row open the file, discard its changes, and stage or unstage it. A group's header does the same for
   all its files. Discarding asks first, and moves untracked files to the Trash.
 - Write a message and press ⌘↵ or the commit button, which says what it will do: **Commit**, **Commit All** when nothing
@@ -113,9 +114,9 @@ Under the changes, **COMMITS** lists the last 50 commits of the branch, newest f
 A filled dot and an arrow mark the commits not pushed yet, and **Show More Commits** reads 50 more. Point at a commit to
 see its author and hash.
 
-Click a commit to see it in a tab of its own: its message, author, date and hash at the top, then each file it changed
-from its first parent, as the **Changes** tab shows them. Its menu copies the hash or the message, and the newest
-commit's menu can undo it.
+Click a commit to see it, focused, in a tab of its own: its message, author, date and hash at the top, then each file
+it changed from its first parent, as the **Changes** tab shows them. Its menu copies the hash or the message, and the
+newest commit's menu can undo it.
 
 ### Diffs
 

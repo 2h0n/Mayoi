@@ -680,7 +680,7 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 			TextColor(gitColor(p, letter)).Shrink(0)
 	})
 	if clicked && *action == nil {
-		*action = func() { a.openChange(r, false) }
+		*action = func() { a.openChange(r, true) }
 	}
 }
 
@@ -753,7 +753,7 @@ func (a *app) scmCommit(c *ui.Context, r scmRow, last bool, action *func()) {
 		ui.Text(c, shortAgo(cm.Time, time.Now())).FontSize(11).TextColor(p.faint).Shrink(0).Padding(0, 2, 0, 0)
 	})
 	if clicked && *action == nil {
-		*action = func() { a.showCommit(*cm, false) }
+		*action = func() { a.showCommit(*cm, true) }
 	}
 }
 
