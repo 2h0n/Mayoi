@@ -28,7 +28,7 @@
   stage a change, branches and blame
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the bottom panel or in a tab
 - **Image viewer:** PNG, JPEG, GIF, WebP and BMP, plus a live SVG preview
-- **Auto save,** light, dark and The Matrix themes, one window per folder, and a `mayoi` shell command
+- **Auto save,** light, dark, The Matrix and Claude themes, one window per folder, and a `mayoi` shell command
 - **Settings:** a JSON file applied as you save it, with the code's and the terminal's fonts, weight, ligatures and
   line height
 

@@ -88,8 +88,9 @@ type Prefs struct {
 	Blame bool `json:"blame"`
 	// Vim edits with vim's keys: the editors start in normal mode.
 	Vim bool `json:"vim,omitempty"`
-	// Appearance is "light", "dark", "matrix" for The Matrix, or "" to
-	// follow the system.
+	// Appearance is "light", "dark", "matrix" for The Matrix, "claude" for
+	// Claude, which follows the system's light or dark, or "" to follow the
+	// system.
 	Appearance string `json:"appearance,omitempty"`
 	// SidebarRight puts the sidebar right of the editors, rather than left.
 	SidebarRight bool `json:"sidebarRight,omitempty"`

@@ -31,7 +31,7 @@ type host interface {
 	setTitle(title string)
 	closeWindow()
 	// setAppearance makes the windows light, dark, The Matrix for
-	// "matrix", or follow the system for "".
+	// "matrix", Claude for "claude", or follow the system for "".
 	setAppearance(appearance string)
 	// showFolder brings the other window that has dir open to the front,
 	// and reports whether there is one.
@@ -123,7 +123,8 @@ type app struct {
 
 	panelMax    bool // the panel takes the editor's room
 	welcomeView ui.Handle
-	rain        rainState // The Matrix's, behind the welcome page
+	rain        rainState  // The Matrix's, behind the welcome page
+	clawd       clawdState // Claude's character
 	// blurred is set while the window has not the keyboard.
 	blurred  bool
 	colsView ui.Handle // the columns, whose width their weights share

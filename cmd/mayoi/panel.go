@@ -45,7 +45,7 @@ func (a *app) termThemes() (light, dark *terminal.Theme) {
 // ones follow the window themselves.
 func (a *app) themeTerminals() {
 	ap := a.settings.Appearance
-	if ap != appearanceMatrix {
+	if !ownTheme(ap) {
 		ap = ""
 	}
 	if ap == a.termAppearance {

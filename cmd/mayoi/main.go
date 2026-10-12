@@ -85,7 +85,7 @@ func (h *desktop) setTitle(title string)   { h.win.SetTitle(title) }
 func (h *desktop) closeWindow()            { h.win.Close() }
 func (h *desktop) setAppearance(appearance string) {
 	mygo.Theme.SetSource(themeSource(appearance))
-	// From dark to The Matrix the native appearance stays, so the other
+	// From dark to The Matrix or Claude the native appearance stays, so the other
 	// windows would not draw anew.
 	for _, w := range h.m.wins {
 		w.a.invalidate()

@@ -5,6 +5,10 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- **View → Theme → Claude**: Anthropic's ivory and warm near-black with
+  Claude's orange, light or dark as the system is. Clawd, Claude Code's
+  little character, sits on the welcome page and in the status bar,
+  blinking now and then, and hops while Git or search works.
 - **Search** in the sidebar (⇧⌘F) finds text in every file of the folder,
   with match case, whole word and regular expressions, and files to
   include and exclude. ⇧⌘H replaces across files, all at once, a file at

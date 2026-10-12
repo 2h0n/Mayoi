@@ -119,6 +119,7 @@ func (a *app) commands() []command {
 		{"view.appearance.light", "Light", "", func() { a.setAppearance("light") }},
 		{"view.appearance.dark", "Dark", "", func() { a.setAppearance("dark") }},
 		{"view.appearance.matrix", "The Matrix", "", func() { a.setAppearance(appearanceMatrix) }},
+		{"view.appearance.claude", "Claude", "", func() { a.setAppearance(appearanceClaude) }},
 	}
 }
 
@@ -189,6 +190,7 @@ func (a *app) moveTerminal() {
 }
 
 // setAppearance makes the windows light, dark, The Matrix for "matrix",
+// Claude for "claude",
 // or follow the system for "".
 func (a *app) setAppearance(appearance string) {
 	a.settings.Appearance = appearance
@@ -315,6 +317,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			{Label: "Theme", Submenu: []*mygo.MenuItem{
 				radio("view.appearance.system", ""), radio("view.appearance.light", "light"), radio("view.appearance.dark", "dark"),
 				mygo.Separator(), radio("view.appearance.matrix", appearanceMatrix),
+				radio("view.appearance.claude", appearanceClaude),
 			}}, mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},

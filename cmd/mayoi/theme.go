@@ -286,16 +286,173 @@ func matrixPalette() *palette {
 	return p
 }
 
+// claudeDarkPalette is Claude in a dark window: Anthropic's warm
+// near-black and cloud, with Claude's orange for the accent.
+func claudeDarkPalette() *palette {
+	p := &palette{
+		dark:      true,
+		editor:    ui.Hex("#1f1e1d"),
+		chrome:    ui.Hex("#191918"),
+		panel:     ui.Hex("#1c1b1a"),
+		border:    ui.Hex("#2e2c2a"),
+		hover:     ui.RGBA(255, 245, 230, 0.045),
+		active:    ui.RGBA(217, 119, 87, 0.16),
+		text:      ui.Hex("#e8e6dc"),
+		muted:     ui.Hex("#a39e93"),
+		faint:     ui.Hex("#75716a"),
+		accent:    ui.Hex("#d97757"),
+		accentDim: ui.RGBA(217, 119, 87, 0.55),
+		line:      ui.RGBA(255, 245, 230, 0.035),
+		selection: ui.RGBA(217, 119, 87, 0.28),
+		gutter:    ui.Hex("#6b675f"),
+		gutterNow: ui.Hex("#c4bfb3"),
+		status:    ui.Hex("#191918"),
+		statusFg:  ui.Hex("#a39e93"),
+		modified:  ui.Hex("#e3b25f"),
+		danger:    ui.Hex("#e8705f"),
+		match:     ui.RGBA(227, 178, 95, 0.20),
+		matchNow:  ui.RGBA(227, 178, 95, 0.38),
+		matchRing: ui.RGBA(227, 178, 95, 0.85),
+		guide:     ui.RGBA(255, 245, 230, 0.065),
+		guideNow:  ui.RGBA(255, 245, 230, 0.22),
+		bracket:   ui.RGBA(255, 245, 230, 0.30),
+		word:      ui.RGBA(255, 245, 230, 0.075),
+		shadow:    ui.RGBA(0, 0, 0, 0.35),
+		added:     ui.Hex("#7ba05b"),
+		changed:   ui.Hex("#6a9bcc"),
+		removed:   ui.Hex("#d9634f"),
+		// White on Claude's orange reads at 3:1, so buttons take a
+		// deeper one, with white on it at 4.6:1.
+		fill:           ui.Hex("#b8573a"),
+		fillText:       ui.Hex("#ffffff"),
+		surface:        ui.Hex("#262523"),
+		surfaceHover:   ui.Hex("#2d2b29"),
+		surfacePressed: ui.Hex("#34322f"),
+		scrollbar:      ui.RGBA(255, 245, 230, 0.16),
+		inverse:        ui.Hex("#302e2b"),
+		inverseText:    ui.Hex("#f0eee6"),
+		ansi: [16]ui.Color{
+			ui.Hex("#2e2c2a"), ui.Hex("#e8705f"), ui.Hex("#9cbf7a"), ui.Hex("#e3b25f"),
+			ui.Hex("#6a9bcc"), ui.Hex("#c68fb5"), ui.Hex("#7fbfb3"), ui.Hex("#e8e6dc"),
+			ui.Hex("#6b675f"), ui.Hex("#f08a78"), ui.Hex("#b3d496"), ui.Hex("#f0c87e"),
+			ui.Hex("#8fb6dd"), ui.Hex("#d9a8cb"), ui.Hex("#9fd6cb"), ui.Hex("#faf9f5"),
+		},
+	}
+	p.fillHover, p.fillPressed = p.fill.Mix(white, 0.1), p.fill.Mix(black, 0.15)
+	s := &p.syntax
+	s[highlight.Plain] = p.text
+	s[highlight.Keyword] = ui.Hex("#d97757")
+	s[highlight.Type] = ui.Hex("#7fbfb3")
+	s[highlight.Function] = ui.Hex("#8fb6dd")
+	s[highlight.String] = ui.Hex("#b3c98a")
+	s[highlight.Number] = ui.Hex("#d4a27f")
+	s[highlight.Comment] = ui.Hex("#7d786f")
+	s[highlight.Operator] = ui.Hex("#b0aa9e")
+	s[highlight.Punctuation] = ui.Hex("#938d82")
+	s[highlight.Constant] = ui.Hex("#d4a27f")
+	s[highlight.Builtin] = ui.Hex("#e3b25f")
+	s[highlight.Tag] = ui.Hex("#e8705f")
+	s[highlight.Attribute] = ui.Hex("#e3b25f")
+	s[highlight.Variable] = ui.Hex("#ebe9e0")
+	s[highlight.Heading] = ui.Hex("#d97757")
+	s[highlight.Deleted] = ui.Hex("#e8705f")
+	s[highlight.Inserted] = ui.Hex("#9cbf7a")
+	return p
+}
+
+// claudeLightPalette is Claude in a light window: Anthropic's ivory and
+// near-black, with a deeper orange for the accent, for marks on a light
+// ground.
+func claudeLightPalette() *palette {
+	p := &palette{
+		editor:         ui.Hex("#faf9f5"),
+		chrome:         ui.Hex("#f0eee6"),
+		panel:          ui.Hex("#f5f4ee"),
+		border:         ui.Hex("#e3dfd3"),
+		hover:          ui.RGBA(20, 20, 19, 0.045),
+		active:         ui.RGBA(201, 100, 66, 0.13),
+		text:           ui.Hex("#141413"),
+		muted:          ui.Hex("#6b675f"),
+		faint:          ui.Hex("#938d82"),
+		accent:         ui.Hex("#c96442"),
+		accentDim:      ui.RGBA(201, 100, 66, 0.5),
+		line:           ui.RGBA(20, 20, 19, 0.03),
+		selection:      ui.RGBA(217, 119, 87, 0.22),
+		gutter:         ui.Hex("#a39e93"),
+		gutterNow:      ui.Hex("#3d3a35"),
+		status:         ui.Hex("#f0eee6"),
+		statusFg:       ui.Hex("#6b675f"),
+		modified:       ui.Hex("#b5791f"),
+		danger:         ui.Hex("#bf4d3a"),
+		match:          ui.RGBA(212, 162, 64, 0.24),
+		matchNow:       ui.RGBA(212, 162, 64, 0.44),
+		matchRing:      ui.RGBA(181, 121, 31, 0.9),
+		guide:          ui.RGBA(20, 20, 19, 0.07),
+		guideNow:       ui.RGBA(20, 20, 19, 0.24),
+		bracket:        ui.RGBA(20, 20, 19, 0.28),
+		word:           ui.RGBA(20, 20, 19, 0.065),
+		shadow:         ui.RGBA(40, 30, 20, 0.12),
+		added:          ui.Hex("#5e8a3a"),
+		changed:        ui.Hex("#4a7fb5"),
+		removed:        ui.Hex("#c4513c"),
+		fill:           ui.Hex("#b8573a"),
+		fillText:       ui.Hex("#ffffff"),
+		surface:        ui.Hex("#ffffff"),
+		surfaceHover:   ui.Hex("#f5f3ec"),
+		surfacePressed: ui.Hex("#ece9df"),
+		scrollbar:      ui.RGBA(20, 20, 19, 0.18),
+		ansi: [16]ui.Color{
+			ui.Hex("#141413"), ui.Hex("#bf4d3a"), ui.Hex("#5e8a3a"), ui.Hex("#a3680f"),
+			ui.Hex("#3b6ea8"), ui.Hex("#9a4f86"), ui.Hex("#2f8378"), ui.Hex("#b0aa9e"),
+			ui.Hex("#6b675f"), ui.Hex("#d9634f"), ui.Hex("#76a34f"), ui.Hex("#c4862a"),
+			ui.Hex("#5a8cc4"), ui.Hex("#b56aa1"), ui.Hex("#45a093"), ui.Hex("#e3dfd3"),
+		},
+	}
+	p.fillHover, p.fillPressed = p.fill.Mix(black, 0.1), p.fill.Mix(black, 0.22)
+	s := &p.syntax
+	s[highlight.Plain] = p.text
+	s[highlight.Keyword] = ui.Hex("#b8573a")
+	s[highlight.Type] = ui.Hex("#2f8378")
+	s[highlight.Function] = ui.Hex("#3b6ea8")
+	s[highlight.String] = ui.Hex("#5e8a3a")
+	s[highlight.Number] = ui.Hex("#a85a1f")
+	s[highlight.Comment] = ui.Hex("#938d82")
+	s[highlight.Operator] = ui.Hex("#5c5850")
+	s[highlight.Punctuation] = ui.Hex("#75716a")
+	s[highlight.Constant] = ui.Hex("#a85a1f")
+	s[highlight.Builtin] = ui.Hex("#a3680f")
+	s[highlight.Tag] = ui.Hex("#bf4d3a")
+	s[highlight.Attribute] = ui.Hex("#a3680f")
+	s[highlight.Variable] = ui.Hex("#141413")
+	s[highlight.Heading] = ui.Hex("#b8573a")
+	s[highlight.Deleted] = ui.Hex("#bf4d3a")
+	s[highlight.Inserted] = ui.Hex("#5e8a3a")
+	return p
+}
+
 var (
 	black, white = ui.Hex("#000000"), ui.Hex("#ffffff")
 
 	lightPal  = lightPalette().derive()
 	darkPal   = darkPalette().derive()
 	matrixPal = matrixPalette().derive()
+
+	claudeLightPal = claudeLightPalette().derive()
+	claudeDarkPal  = claudeDarkPalette().derive()
 )
 
-// appearanceMatrix is the Appearance of The Matrix, which is dark.
-const appearanceMatrix = "matrix"
+// The Appearances of Mayoi's own themes: The Matrix, which is dark, and
+// Claude, which follows the system's light or dark.
+const (
+	appearanceMatrix = "matrix"
+	appearanceClaude = "claude"
+)
+
+// ownTheme reports whether an appearance of the settings is a theme of
+// Mayoi's own, rather than light, dark or the system's.
+func ownTheme(appearance string) bool {
+	return appearance == appearanceMatrix || appearance == appearanceClaude
+}
 
 // paletteFor returns the palette of an appearance of the settings, in a
 // window that is dark or not.
@@ -303,6 +460,10 @@ func paletteFor(appearance string, dark bool) *palette {
 	switch {
 	case appearance == appearanceMatrix:
 		return matrixPal
+	case appearance == appearanceClaude && dark:
+		return claudeDarkPal
+	case appearance == appearanceClaude:
+		return claudeLightPal
 	case dark:
 		return darkPal
 	}
@@ -310,10 +471,14 @@ func paletteFor(appearance string, dark bool) *palette {
 }
 
 // themeSource is the light or dark appearance of the native window for an
-// appearance of the settings: a theme of Mayoi's own is dark.
+// appearance of the settings: The Matrix is dark, and Claude follows the
+// system.
 func themeSource(appearance string) mygo.ThemeSource {
-	if appearance == appearanceMatrix {
+	switch appearance {
+	case appearanceMatrix:
 		return mygo.ThemeDark
+	case appearanceClaude:
+		return mygo.ThemeSystem
 	}
 	return mygo.ThemeSource(appearance)
 }
