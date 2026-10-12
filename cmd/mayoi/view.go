@@ -842,7 +842,12 @@ func (a *app) welcome(c *ui.Context) {
 	}
 	page.Children(func() {
 		ui.Column(c).FillWidth().MinHeight(view.H).Center().Padding(40, 24, 64).Children(func() {
-			ui.Column(c).Width(380).MaxWidthPercent(100).Gap(32).Children(func() {
+			content := ui.Column(c).Width(380).MaxWidthPercent(100).Gap(32)
+			if a.settings.Appearance == appearanceMatrix {
+				// Over the rain, which would run through the words.
+				content.Width(380+2*24).Padding(24).Radius(12).Background(p.editor.Alpha(0.88)).Border(1, p.border)
+			}
+			content.Children(func() {
 				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
 					// Clipped to the icon's squircle: 185 of its 824 DIPs.
 					ui.Column(c).Size(52, 52).Radius(52.0 * 185 / 824).Clip().Children(func() {

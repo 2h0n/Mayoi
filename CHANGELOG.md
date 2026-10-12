@@ -10,6 +10,8 @@ needs a `## <version>` section here, or its build fails.
   when it is on; the commands run last come first.
 - The status bar no longer calls `go.mod` AMPL or every `.sql` file
   MySQL. Brewfiles highlight as Ruby and `.npmrc` as INI.
+- In The Matrix, the welcome page sits on a panel over the digital rain,
+  so its words read.
 
 ## 0.3.3
 
