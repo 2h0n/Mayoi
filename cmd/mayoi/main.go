@@ -289,11 +289,14 @@ func (m *mayoi) launch(paths []string) {
 		}
 	} else {
 		// A folder of the last session opens as it was left. The other
-		// windows of the session are let go.
+		// windows of the session are let go, keeping their folders'
+		// sessions.
 		var keep []*settings.Window
 		for _, w := range m.s.Windows {
 			if slices.Contains(folders, filepath.Clean(w.Folder)) && !slices.ContainsFunc(keep, func(k *settings.Window) bool { return k.Folder == w.Folder }) {
 				keep = append(keep, w)
+			} else {
+				m.s.Stash(w)
 			}
 		}
 		m.s.Windows = keep
@@ -352,7 +355,7 @@ func (m *mayoi) openFolder(dir string, reuse bool) {
 				// Its folder at once, so that the next folder looks for
 				// another window.
 				a.window.Folder = dir
-				w.do(func() { a.openFolder(dir) })
+				w.do(func() { a.openSession(dir) })
 				w.show()
 				return
 			}
@@ -365,8 +368,12 @@ func (m *mayoi) openFolder(dir string, reuse bool) {
 			return
 		}
 	}
+	// With the tabs it had when a window last closed it.
 	w := m.s.NewWindow()
 	w.Folder = dir
+	if ses := m.s.TakeSession(dir); ses != nil {
+		w.Session = *ses
+	}
 	m.openWindow(w)
 }
 
@@ -497,7 +504,7 @@ func (m *mayoi) settle(wins []*desktop, done func()) {
 			return
 		}
 		w.show()
-		a.closeAll(func() { m.settle(wins[1:], done) })
+		a.closeKeeping(func() { m.settle(wins[1:], done) })
 	})
 }
 
@@ -546,7 +553,7 @@ func (m *mayoi) openWindow(st *settings.Window) *desktop {
 				done()
 				return
 			}
-			a.closeAll(done)
+			a.closeKeeping(done)
 		})
 		win.Invalidate()
 	})
@@ -575,8 +582,10 @@ func (m *mayoi) openWindow(st *settings.Window) *desktop {
 		})
 	})
 	// The last window to close quits the app, and stays in the settings
-	// to open again, as do those the quitting closes.
+	// to open again, as do those the quitting closes. The others keep
+	// their folders' sessions.
 	win.OnClosed(func() {
+		a.keepSession()
 		a.closeTerminals()
 		m.wins = slices.DeleteFunc(m.wins, func(w *desktop) bool { return w == h })
 		if !m.quitting && len(m.wins) > 0 {

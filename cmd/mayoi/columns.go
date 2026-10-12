@@ -648,24 +648,38 @@ func (a *app) moveTabBy(step int) {
 }
 
 // rememberTabs keeps the columns and the files open in them in the
-// settings.
+// settings, where each was scrolled and its caret, and the folders open
+// in the explorer.
 func (a *app) rememberTabs() {
 	cols := make([]settings.Column, 0, len(a.cols))
 	for _, col := range a.cols {
 		cs := settings.Column{Tabs: []settings.Tab{}, Active: -1, Weight: col.weight}
 		for i, t := range col.tabs {
+			var ts settings.Tab
 			switch {
 			case t.term != nil:
-				cs.Tabs = append(cs.Tabs, settings.Tab{Terminal: true})
+				ts = settings.Tab{Terminal: true}
 			case t.diff != nil && t.diff.commit != nil:
-				cs.Tabs = append(cs.Tabs, settings.Tab{Diff: "commit:" + t.diff.commit.hash, Layout: t.diff.layout.key()})
+				ts = settings.Tab{Diff: "commit:" + t.diff.commit.hash, Layout: t.diff.layout.key()}
 			case t.diff != nil:
-				cs.Tabs = append(cs.Tabs, settings.Tab{Diff: "all", Layout: t.diff.layout.key()})
+				ts = settings.Tab{Diff: "all", Layout: t.diff.layout.key()}
 			case t.path() != "":
-				cs.Tabs = append(cs.Tabs, settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil, Transient: t.transient})
+				ts = settings.Tab{File: t.path(), Preview: t.ed != nil && t.ed.preview != nil, Transient: t.transient}
 			default:
 				continue
 			}
+			if v := t.diff; v != nil {
+				ts.Full, ts.ScrollY = v.full, v.scroll.Y
+				ts.Wrap = a.ownWrap(v.wrap, v.wrapGen)
+			}
+			if ed := t.ed; ed != nil {
+				ts.Sel, ts.ScrollX, ts.ScrollY = ed.sel, ed.hscroll.X, ed.vscroll.Y
+				if ed.hidden {
+					ts.ScrollY = ed.hiddenY
+				}
+				ts.Wrap = a.ownWrap(ed.wrap, ed.wrapGen)
+			}
+			cs.Tabs = append(cs.Tabs, ts)
 			if i == col.active {
 				cs.Active = len(cs.Tabs) - 1
 			}
@@ -673,13 +687,77 @@ func (a *app) rememberTabs() {
 		cols = append(cols, cs)
 	}
 	a.window.Columns, a.window.Column = cols, a.col
+	if a.tree != nil {
+		var open []string
+		for dir := range a.files.Open.All() {
+			if rel, err := filepath.Rel(a.root, dir); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+				open = append(open, filepath.ToSlash(rel))
+			}
+		}
+		slices.Sort(open)
+		a.window.Expanded = open
+	}
 	a.settings.Changed()
 }
 
-// restoreTabs opens the columns of the last session and their files, and
-// starts a terminal where one was.
+// ownWrap is a tab's own choice to wrap its lines, made while the
+// settings' WordWrap was of generation gen, as the settings keep it: nil
+// when it follows WordWrap.
+func (a *app) ownWrap(wrap *bool, gen int) *bool {
+	if wrap == nil || gen != a.settings.WrapGen {
+		return nil
+	}
+	w := *wrap
+	return &w
+}
+
+// restoreExpanded opens the explorer's folders that were open, those
+// still there.
+func (a *app) restoreExpanded(rels []string) {
+	if a.tree == nil {
+		return
+	}
+	for _, rel := range rels {
+		dir := filepath.Join(a.root, filepath.FromSlash(rel))
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			a.files.Open.Add(dir)
+			a.tree.Load(dir)
+		}
+	}
+}
+
+// restoreTab puts back where a tab restored was scrolled, its caret and
+// its own choice to wrap.
+func (a *app) restoreTab(t *colTab, ts settings.Tab) {
+	if v := t.diff; v != nil {
+		v.full, v.scroll.Y = ts.Full, ts.ScrollY
+		if ts.Wrap != nil {
+			w := *ts.Wrap
+			v.wrap, v.wrapGen = &w, a.settings.WrapGen
+		}
+	}
+	if ed := t.ed; ed != nil {
+		// The file may be shorter than it was.
+		n := ed.buf.Len()
+		ed.sel = [2]int{min(max(ts.Sel[0], 0), n), min(max(ts.Sel[1], 0), n)}
+		ed.caret = ed.sel[1]
+		ed.vscroll.Y, ed.hscroll.X = ts.ScrollY, ts.ScrollX
+		if ed.hidden {
+			ed.hiddenY = ts.ScrollY
+		}
+		if ts.Wrap != nil {
+			w := *ts.Wrap
+			ed.wrap, ed.wrapGen = &w, a.settings.WrapGen
+		}
+	}
+}
+
+// restoreTabs opens the columns of the last session and their files, as
+// they were scrolled, starts a terminal where one was, and opens the
+// explorer's folders that were open.
 func (a *app) restoreTabs() {
 	saved, focused := a.window.Columns, a.window.Column
+	a.restoreExpanded(a.window.Expanded)
 	at := -1 // the column to give the keyboard
 	for i, cs := range saved {
 		col := a.cols[len(a.cols)-1]
@@ -727,8 +805,11 @@ func (a *app) restoreTabs() {
 					}
 				}
 			}
-			if k == cs.Active && len(col.tabs) > n {
-				shown = col.tab()
+			if len(col.tabs) > n {
+				a.restoreTab(col.tab(), ts)
+				if k == cs.Active {
+					shown = col.tab()
+				}
 			}
 		}
 		if _, k := a.locate(shown); k >= 0 {

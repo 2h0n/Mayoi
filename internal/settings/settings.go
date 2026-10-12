@@ -1,5 +1,6 @@
-// Package settings keeps what Mayoi remembers between launches, in a JSON
-// file.
+// Package settings keeps what Mayoi remembers between launches, in JSON
+// files: the preferences in one, and the state Mayoi keeps itself in
+// another beside it.
 package settings
 
 import (
@@ -15,43 +16,59 @@ import (
 	"github.com/fsnotify/fsnotify"
 )
 
-// Settings are what Mayoi remembers between launches: the layout, and
-// the windows with the folder and the files open in each. A window's
-// frame is its StateKey's.
+// Settings are what Mayoi remembers between launches: the preferences,
+// in settings.json, and the state Mayoi keeps itself, in state.json
+// beside it. A window's frame is its StateKey's.
 type Settings struct {
 	Prefs
+	State
+	// WrapGen counts the changes of WordWrap.
+	WrapGen int
+
+	path      string
+	statePath string
+	mu        sync.Mutex
+	timer     *time.Timer
+	// written is what the settings last wrote to their file, which a
+	// change of the file that is not theirs differs from, and
+	// stateWritten what they last wrote to the state's.
+	written      []byte
+	stateWritten []byte
+}
+
+// State is what Mayoi keeps itself, not what a person chooses: the
+// layout, the recent folders, the windows with the folder and the files
+// open in each, and the sessions of the folders closed.
+type State struct {
 	SidebarOpen bool `json:"sidebarOpen"`
 	// SidebarView is what the sidebar shows: "" the explorer, "git" the
 	// changes for source control.
-	SidebarView  string  `json:"sidebarView,omitempty"`
-	SidebarWidth float32 `json:"sidebarWidth"`
-	PanelHeight  float32 `json:"panelHeight"`
-	// DiffSplit is what an older version kept for DiffLayout "split".
-	DiffSplit bool `json:"diffSplit,omitempty"`
-	// WrapGen counts the changes of WordWrap.
-	WrapGen int      `json:"-"`
-	Recent  []string `json:"recent"`
+	SidebarView  string   `json:"sidebarView,omitempty"`
+	SidebarWidth float32  `json:"sidebarWidth"`
+	PanelHeight  float32  `json:"panelHeight"`
+	Recent       []string `json:"recent"`
 	// Windows are the windows open, the one focused last first.
 	Windows []*Window `json:"windows,omitempty"`
+	// Sessions are the tabs and the layout of the recent folders no
+	// window has open, by folder, which the next window to open one gets
+	// back.
+	Sessions map[string]*Session `json:"sessions,omitempty"`
+}
 
-	// Folder, Columns, Column, PanelOpen and TerminalOpen are the window
-	// as a version with one window kept it, and OpenFiles and ActiveFile
-	// its tabs as a version without columns kept them: Load
-	// makes a window of them.
-	Folder       string   `json:"folder,omitempty"`
-	Columns      []Column `json:"columns,omitempty"`
-	Column       int      `json:"column,omitempty"`
-	PanelOpen    bool     `json:"panelOpen,omitempty"`
-	TerminalOpen bool     `json:"terminalOpen,omitempty"`
-	OpenFiles    []string `json:"openFiles,omitempty"`
-	ActiveFile   string   `json:"activeFile,omitempty"`
-
-	path  string
-	mu    sync.Mutex
-	timer *time.Timer
-	// written is what the settings last wrote to their file, which a
-	// change of the file that is not theirs differs from.
-	written []byte
+// legacy is what an older version kept in the settings' file besides the
+// state: DiffSplit, which DiffLayout "split" is now, and the window as a
+// version with one window kept it, Folder, Columns, Column, PanelOpen and
+// TerminalOpen, with OpenFiles and ActiveFile its tabs as a version
+// without columns kept them. Load makes a window of them.
+type legacy struct {
+	DiffSplit    bool     `json:"diffSplit"`
+	Folder       string   `json:"folder"`
+	Columns      []Column `json:"columns"`
+	Column       int      `json:"column"`
+	PanelOpen    bool     `json:"panelOpen"`
+	TerminalOpen bool     `json:"terminalOpen"`
+	OpenFiles    []string `json:"openFiles"`
+	ActiveFile   string   `json:"activeFile"`
 }
 
 // Prefs are the settings a person chooses, which an edit of the file
@@ -100,17 +117,26 @@ type Prefs struct {
 	SidebarRight bool `json:"sidebarRight,omitempty"`
 }
 
-// Window is a window as the settings keep it: its folder, the
-// columns of its editor area and what their tabs show, and Column the one
-// that had the keyboard.
+// Window is a window as the settings keep it: its folder, and its
+// session of it.
 type Window struct {
 	// ID names the window's frame, which the next start gives it back.
-	ID           int      `json:"id"`
-	Folder       string   `json:"folder,omitempty"`
+	ID     int    `json:"id"`
+	Folder string `json:"folder,omitempty"`
+	Session
+}
+
+// Session is what a window shows of its folder: the columns of its editor
+// area and what their tabs show, Column the one that had the keyboard,
+// the panel, and the folders open in the explorer.
+type Session struct {
 	Columns      []Column `json:"columns,omitempty"`
 	Column       int      `json:"column,omitempty"`
 	PanelOpen    bool     `json:"panelOpen,omitempty"`
 	TerminalOpen bool     `json:"terminalOpen,omitempty"`
+	// Expanded are the explorer's folders showing their files, relative to
+	// the window's folder.
+	Expanded []string `json:"expanded,omitempty"`
 }
 
 // Column is a column of the editor area, as the settings keep it.
@@ -138,6 +164,15 @@ type Tab struct {
 	Diff   string `json:"diff,omitempty"`
 	Layout string `json:"layout,omitempty"`
 	Split  bool   `json:"split,omitempty"`
+	// Full is set for a diff showing every unchanged line.
+	Full bool `json:"full,omitempty"`
+	// Sel is the selection of a file's editor, its caret at Sel[1], and
+	// ScrollX and ScrollY where the tab was scrolled. Wrap is the tab's
+	// own choice to wrap its lines, nil to follow WordWrap.
+	Sel     [2]int  `json:"sel,omitzero"`
+	ScrollX float32 `json:"scrollX,omitempty"`
+	ScrollY float32 `json:"scrollY,omitempty"`
+	Wrap    *bool   `json:"wrap,omitempty"`
 }
 
 // Default is the settings of a first launch.
@@ -147,21 +182,42 @@ func Default() *Settings {
 			FontSize: 13, FontFamily: "monospace", FontWeight: 400, LineHeight: 1.55,
 			AutoSave: true, Blame: true,
 		},
-		SidebarOpen: true, SidebarWidth: 248, PanelHeight: 260,
+		State: State{SidebarOpen: true, SidebarWidth: 248, PanelHeight: 260},
 	}
 }
 
-// Load reads the settings at path, the defaults where it has none.
+// Load reads the settings at path, and the state in state.json beside
+// it, the defaults where they have none. The state an older version kept
+// in the settings' file moves to the state's.
 func Load(path string) *Settings {
 	s := Default()
-	if data, err := os.ReadFile(path); err == nil {
-		json.Unmarshal(data, s)
-	}
 	s.path = path
+	if path != "" {
+		s.statePath = filepath.Join(filepath.Dir(path), "state.json")
+	}
+	var old legacy
+	data, err := os.ReadFile(path)
+	if err == nil {
+		json.Unmarshal(data, &s.Prefs)
+		json.Unmarshal(data, &old)
+	}
+	moved := false
+	if state, serr := os.ReadFile(s.statePath); serr == nil {
+		json.Unmarshal(state, &s.State)
+	} else if err == nil {
+		json.Unmarshal(data, &s.State)
+		moved = true
+	}
 	s.SidebarWidth = clamp(s.SidebarWidth, 160, 600)
 	s.PanelHeight = clamp(s.PanelHeight, 100, 2000)
+	if old.DiffSplit && s.DiffLayout == "" {
+		s.DiffLayout = "split"
+	}
 	s.normalize()
-	s.migrate()
+	if moved {
+		s.migrate(old)
+		s.Flush()
+	}
 	return s
 }
 
@@ -184,9 +240,6 @@ func (s *Settings) normalize() {
 	if s.TerminalFontSize != 0 {
 		s.TerminalFontSize = clamp(s.TerminalFontSize, 9, 28)
 	}
-	if s.DiffSplit {
-		s.DiffLayout, s.DiffSplit = "split", false
-	}
 	// The themes were appearances once.
 	if s.Appearance == "matrix" || s.Appearance == "claude" {
 		s.Theme, s.Appearance = s.Appearance, ""
@@ -194,16 +247,18 @@ func (s *Settings) normalize() {
 }
 
 // migrate makes a window of the one an older version kept.
-func (s *Settings) migrate() {
-	if len(s.Windows) > 0 || s.Folder == "" && len(s.Columns) == 0 && len(s.OpenFiles) == 0 {
+func (s *Settings) migrate(old legacy) {
+	if len(s.Windows) > 0 || old.Folder == "" && len(old.Columns) == 0 && len(old.OpenFiles) == 0 {
 		return
 	}
-	w := &Window{Folder: s.Folder, Columns: s.Columns, Column: s.Column, PanelOpen: s.PanelOpen, TerminalOpen: s.TerminalOpen}
-	if len(w.Columns) == 0 && len(s.OpenFiles) > 0 {
+	w := &Window{Folder: old.Folder, Session: Session{
+		Columns: old.Columns, Column: old.Column, PanelOpen: old.PanelOpen, TerminalOpen: old.TerminalOpen,
+	}}
+	if len(w.Columns) == 0 && len(old.OpenFiles) > 0 {
 		// The files of one column.
 		cs := Column{Active: -1, Weight: 1}
-		for _, p := range s.OpenFiles {
-			if p == s.ActiveFile {
+		for _, p := range old.OpenFiles {
+			if p == old.ActiveFile {
 				cs.Active = len(cs.Tabs)
 			}
 			cs.Tabs = append(cs.Tabs, Tab{File: p})
@@ -211,8 +266,6 @@ func (s *Settings) migrate() {
 		w.Columns, w.Column = []Column{cs}, 0
 	}
 	s.Windows = []*Window{w}
-	s.Folder, s.Columns, s.Column, s.PanelOpen, s.TerminalOpen = "", nil, 0, false, false
-	s.OpenFiles, s.ActiveFile = nil, ""
 }
 
 // Path is the file the settings are kept in, "" for none.
@@ -241,10 +294,51 @@ func (s *Settings) Focused(w *Window) {
 	s.Changed()
 }
 
-// Forget lets go of a window that closed.
+// Forget lets go of a window that closed, keeping its session for the
+// next window to open its folder.
 func (s *Settings) Forget(w *Window) {
+	s.Stash(w)
 	s.Windows = slices.DeleteFunc(s.Windows, func(o *Window) bool { return o == w })
 	s.Changed()
+}
+
+// Stash keeps the session of w's folder, which the folder's next window
+// gets back, while the folder is a recent one. A session with no tabs
+// and no folders open in the explorer lets the folder's go.
+func (s *Settings) Stash(w *Window) {
+	if w.Folder == "" {
+		return
+	}
+	dir := filepath.Clean(w.Folder)
+	if !slices.Contains(s.Recent, dir) {
+		return
+	}
+	empty := len(w.Expanded) == 0
+	for _, c := range w.Columns {
+		empty = empty && len(c.Tabs) == 0
+	}
+	if empty {
+		delete(s.Sessions, dir)
+	} else {
+		if s.Sessions == nil {
+			s.Sessions = map[string]*Session{}
+		}
+		ses := w.Session
+		s.Sessions[dir] = &ses
+	}
+	s.Changed()
+}
+
+// TakeSession returns the session kept of dir, which is no longer kept
+// once a window has it, or nil for none.
+func (s *Settings) TakeSession(dir string) *Session {
+	dir = filepath.Clean(dir)
+	ses := s.Sessions[dir]
+	if ses != nil {
+		delete(s.Sessions, dir)
+		s.Changed()
+	}
+	return ses
 }
 
 func clamp(v, lo, hi float32) float32 { return max(lo, min(v, hi)) }
@@ -259,8 +353,8 @@ func (s *Settings) Changed() {
 	if s.timer != nil {
 		s.timer.Stop()
 	}
-	data := s.Encode()
-	s.timer = time.AfterFunc(400*time.Millisecond, func() { s.write(data) })
+	prefs, state := s.Encode()
+	s.timer = time.AfterFunc(400*time.Millisecond, func() { s.write(prefs, state) })
 }
 
 // Flush saves the settings now, as the app quits.
@@ -272,34 +366,54 @@ func (s *Settings) Flush() {
 	if s.timer != nil {
 		s.timer.Stop()
 	}
-	data := s.Encode()
+	prefs, state := s.Encode()
 	s.mu.Unlock()
-	s.write(data)
+	s.write(prefs, state)
 }
 
-// Encode is the settings as their file keeps them.
-func (s *Settings) Encode() []byte {
-	data, _ := json.MarshalIndent(s, "", "  ")
-	return data
+// Encode is the preferences as the settings' file keeps them, and the
+// state as the state's does.
+func (s *Settings) Encode() (prefs, state []byte) {
+	prefs, _ = json.MarshalIndent(s.Prefs, "", "  ")
+	state, _ = json.MarshalIndent(s.State, "", "  ")
+	return prefs, state
 }
 
-func (s *Settings) write(data []byte) {
+// write writes the files that changed since the settings last wrote
+// them: most changes are of the state only.
+func (s *Settings) write(prefs, state []byte) {
 	s.mu.Lock()
-	s.written = data
+	samePrefs, sameState := bytes.Equal(prefs, s.written), bytes.Equal(state, s.stateWritten)
+	s.written, s.stateWritten = prefs, state
 	s.mu.Unlock()
-	os.MkdirAll(filepath.Dir(s.path), 0o755)
-	tmp := s.path + ".tmp"
-	if os.WriteFile(tmp, data, 0o644) == nil {
-		os.Rename(tmp, s.path)
+	if !samePrefs {
+		writeFile(s.path, prefs)
+	}
+	if !sameState && s.statePath != "" {
+		writeFile(s.statePath, state)
 	}
 }
 
-// AddRecent puts dir first of the recent folders, of which it keeps ten.
+func writeFile(path string, data []byte) {
+	os.MkdirAll(filepath.Dir(path), 0o755)
+	tmp := path + ".tmp"
+	if os.WriteFile(tmp, data, 0o644) == nil {
+		os.Rename(tmp, path)
+	}
+}
+
+// AddRecent puts dir first of the recent folders, of which it keeps ten,
+// and lets go of the sessions of those no longer recent.
 func (s *Settings) AddRecent(dir string) {
 	s.Recent = slices.DeleteFunc(s.Recent, func(d string) bool { return d == dir })
 	s.Recent = slices.Insert(s.Recent, 0, dir)
 	if len(s.Recent) > 10 {
 		s.Recent = s.Recent[:10]
+	}
+	for d := range s.Sessions {
+		if !slices.Contains(s.Recent, d) {
+			delete(s.Sessions, d)
+		}
 	}
 }
 
@@ -319,9 +433,9 @@ func (s *Settings) RecentExcept(dir string) []string {
 	return out
 }
 
-// ClearRecent forgets the recent folders.
+// ClearRecent forgets the recent folders, and the sessions kept of them.
 func (s *Settings) ClearRecent() {
-	s.Recent = nil
+	s.Recent, s.Sessions = nil, nil
 	s.Changed()
 }
 
@@ -397,7 +511,7 @@ func (s *Settings) edited() (Prefs, bool) {
 		return Prefs{}, false
 	}
 	f := Default()
-	if json.Unmarshal(data, f) != nil {
+	if json.Unmarshal(data, &f.Prefs) != nil {
 		return Prefs{}, false
 	}
 	f.normalize()

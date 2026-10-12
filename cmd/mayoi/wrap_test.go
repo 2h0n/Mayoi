@@ -58,7 +58,7 @@ func TestWordWrapToggles(t *testing.T) {
 	if !a.wraps(d) || !a.wraps(a.cols[1].tab().ed) {
 		t.Error("the tabs do not follow the setting after it changed")
 	}
-	if !strings.Contains(string(a.settings.Encode()), `"wordWrap": true`) {
+	if prefs, _ := a.settings.Encode(); !strings.Contains(string(prefs), `"wordWrap": true`) {
 		t.Error("the setting is not saved")
 	}
 }

@@ -158,11 +158,12 @@ func (a *app) clearRecent() {
 	a.host.recentChanged()
 }
 
-// switchFolder opens dir in the window, unless another window has it
-// open: then that one comes to the front.
+// switchFolder opens dir in the window, with the tabs it had when it
+// closed, in place of the window's folder and its tabs, unless another
+// window has it open: then that one comes to the front.
 func (a *app) switchFolder(dir string) {
 	if !a.host.showFolder(filepath.Clean(dir)) {
-		a.openFolder(dir)
+		a.switchTo(dir)
 	}
 }
 

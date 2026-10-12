@@ -15,6 +15,17 @@ needs a `## <version>` section here, or its build fails.
   `scmAllBranches` setting.
 - A commit's menu checks it out, creates a branch or a tag there, and
   copies the name of its branches and tags.
+- A folder closed, by closing its window, **File → Close Folder** or
+  opening another folder in its window, opens again with its tabs,
+  columns and the folders open in the Explorer. Opening
+  another folder in a window now closes the tabs of the one it had,
+  rather than keeping them beside the new folder's.
+- Tabs come back with their caret, selection, scroll position and own
+  word wrap, and a diff showing every line still does, also when Mayoi
+  starts again.
+- The windows, tabs, recent folders and layout move from `settings.json`
+  to `state.json` beside it, so `settings.json` holds only the
+  preferences.
 
 ## 0.5.0
 

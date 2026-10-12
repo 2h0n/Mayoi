@@ -155,6 +155,9 @@ type app struct {
 	title   string
 	focus   pane
 	started bool
+	// kept is the session the window had before its documents closed as it
+	// closes, which it keeps for its next start, nil until then.
+	kept *settings.Session
 }
 
 type pane int
@@ -293,9 +296,13 @@ func (a *app) blank() bool {
 	return true
 }
 
-// closeFolder closes the workspace, once its documents are closed.
+// closeFolder closes the workspace, once its documents are closed,
+// keeping its session for when it opens again.
 func (a *app) closeFolder() {
+	ses := a.session()
 	a.closeAll(func() {
+		a.stash(ses)
+		a.window.Expanded = nil
 		if a.tree != nil {
 			a.tree.Close()
 		}

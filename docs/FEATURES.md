@@ -293,15 +293,17 @@ near-black with Claude's orange, in a light and a dark kind. Clawd, Claude Code'
 the welcome page and sits at the start of the status bar: it blinks now and then, and hops while a Git command or a search of the files
 runs, and holds still as the rain does. **View → Sidebar on Right**
 moves the sidebar to the right of the editors. It remembers the sidebar's side, the sidebar and panel sizes, and every
-window with its folder, frame, columns and tabs. Started without a folder, Mayoi reopens the windows that were open when
-it quit. Closing the last window quits the app.
+window with its folder, frame, columns and tabs, each tab with its caret, selection, scroll position and own word wrap,
+and the folders open in the Explorer. Started without a folder, Mayoi reopens the windows that were open when it quit.
+A recent folder closed, by closing its window, **File → Close Folder** or opening another folder in its window, opens
+again with its tabs, columns and Explorer as they were. Closing the last window quits the app.
 
 ## Settings
 
 **File → Open Settings** (⌘,) opens `settings.json` in a tab. Saving it applies its preferences in every window at once:
-the fonts, `theme`, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `scmAllBranches`, `blame`, `vim` and `sidebarRight`. Mayoi
-keeps the windows, tabs and layout in the same file itself, and an edit of those waits for the next start. A file that
-does not parse is left alone until it does.
+the fonts, `theme`, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `scmAllBranches`, `blame`, `vim` and
+`sidebarRight`. A file that does not parse is left alone until it does. Mayoi keeps the windows, tabs, recent folders
+and layout itself, in `state.json` beside it.
 
 The font keys:
 

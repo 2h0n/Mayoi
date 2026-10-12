@@ -36,20 +36,107 @@ func TestMigrateTheWindow(t *testing.T) {
 	data, _ := json.Marshal(old)
 	os.WriteFile(path, data, 0o644)
 	s := Load(path)
-	if len(s.Windows) != 1 || s.Folder != "" || s.OpenFiles != nil || s.PanelOpen {
-		t.Fatalf("windows %d, left behind %q %v %v", len(s.Windows), s.Folder, s.OpenFiles, s.PanelOpen)
+	if len(s.Windows) != 1 || s.SidebarWidth != 300 {
+		t.Fatalf("windows %d, sidebar %v", len(s.Windows), s.SidebarWidth)
 	}
 	w := s.Windows[0]
 	if w.ID != 0 || w.Folder != "/tmp/x" || !w.PanelOpen || !w.TerminalOpen || len(w.Columns) != 1 ||
 		len(w.Columns[0].Tabs) != 2 || w.Columns[0].Active != 1 {
 		t.Fatalf("window %+v", w)
 	}
-	s.Flush()
 	data, _ = os.ReadFile(path)
-	for _, key := range []string{`"folder": "/tmp/x"`, `"openFiles"`} {
-		if strings.Contains(string(data), "\n  "+key) {
-			t.Errorf("%s still kept at the top", key)
+	for _, key := range []string{`"folder"`, `"openFiles"`, `"sidebarWidth"`} {
+		if strings.Contains(string(data), key) {
+			t.Errorf("%s still kept in the settings", key)
 		}
+	}
+	if got := Load(path); len(got.Windows) != 1 || got.SidebarWidth != 300 {
+		t.Errorf("loaded again: windows %d, sidebar %v", len(got.Windows), got.SidebarWidth)
+	}
+}
+
+// The settings' file keeps the preferences, and state.json beside it the
+// state: the state an older version kept in the settings moves there,
+// once.
+func TestStateMovesToItsFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	os.WriteFile(path, []byte(`{"fontSize": 15, "sidebarWidth": 320, "recent": ["/tmp/x"],
+		"windows": [{"id": 0, "folder": "/tmp/x", "columns": [{"tabs": [{"file": "/tmp/x/a.go"}], "active": 0, "weight": 1}]}]}`), 0o644)
+	s := Load(path)
+	if s.FontSize != 15 || s.SidebarWidth != 320 || len(s.Windows) != 1 || len(s.Recent) != 1 {
+		t.Fatalf("loaded %+v", s)
+	}
+	prefs, _ := os.ReadFile(path)
+	state, err := os.ReadFile(filepath.Join(dir, "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(prefs), "windows") || strings.Contains(string(prefs), "recent") ||
+		!strings.Contains(string(prefs), `"fontSize": 15`) {
+		t.Errorf("settings %s", prefs)
+	}
+	if !strings.Contains(string(state), `"/tmp/x/a.go"`) || strings.Contains(string(state), "fontSize") {
+		t.Errorf("state %s", state)
+	}
+	// A change of the state only leaves the settings' file be.
+	info, _ := os.Stat(path)
+	os.Chtimes(path, info.ModTime().Add(-time.Hour), info.ModTime().Add(-time.Hour))
+	before, _ := os.Stat(path)
+	s.NewWindow().Folder = "/tmp/y"
+	s.Flush()
+	if after, _ := os.Stat(path); !after.ModTime().Equal(before.ModTime()) {
+		t.Error("the settings' file was written for a change of the state")
+	}
+	if got := Load(path); len(got.Windows) != 2 || got.FontSize != 15 {
+		t.Errorf("loaded again: windows %d, font %v", len(got.Windows), got.FontSize)
+	}
+}
+
+// A window that closes keeps its folder's session while the folder is a
+// recent one, which the next window of the folder takes.
+func TestSessions(t *testing.T) {
+	s := Default()
+	s.AddRecent("/tmp/x")
+	w := s.NewWindow()
+	w.Folder = "/tmp/x/"
+	w.Columns = []Column{{Tabs: []Tab{{File: "/tmp/x/a.go", Sel: [2]int{3, 5}}}}}
+	w.Expanded = []string{"internal"}
+	s.Forget(w)
+	if len(s.Windows) != 0 || s.Sessions["/tmp/x"] == nil {
+		t.Fatalf("windows %d, sessions %v", len(s.Windows), s.Sessions)
+	}
+	ses := s.TakeSession("/tmp/x")
+	if ses == nil || ses.Columns[0].Tabs[0].Sel != [2]int{3, 5} || ses.Expanded[0] != "internal" || len(s.Sessions) != 0 {
+		t.Fatalf("taken %+v, left %v", ses, s.Sessions)
+	}
+	// Not a recent folder, or a window with nothing to keep.
+	other := s.NewWindow()
+	other.Folder = "/tmp/y"
+	other.Columns = w.Columns
+	s.Forget(other)
+	if s.Sessions["/tmp/y"] != nil {
+		t.Error("kept the session of a folder not recent")
+	}
+	s.Stash(w)
+	empty := &Window{Folder: "/tmp/x", Session: Session{Columns: []Column{{}}}}
+	s.Stash(empty)
+	if s.Sessions["/tmp/x"] != nil {
+		t.Error("an empty window kept its folder's session")
+	}
+	// Folders no longer recent, and clearing them, let theirs go.
+	s.Stash(w)
+	for i := range 10 {
+		s.AddRecent(filepath.Join("/tmp/z", string(rune('a'+i))))
+	}
+	if len(s.Sessions) != 0 {
+		t.Errorf("kept %v", s.Sessions)
+	}
+	s.AddRecent("/tmp/x")
+	s.Stash(w)
+	s.ClearRecent()
+	if s.Sessions != nil {
+		t.Errorf("cleared, kept %v", s.Sessions)
 	}
 }
 
@@ -74,8 +161,8 @@ func TestKeepTheWindowsInOrder(t *testing.T) {
 func TestMigrateDiffSplit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	os.WriteFile(path, []byte(`{"diffSplit": true}`), 0o644)
-	if s := Load(path); s.DiffLayout != "split" || s.DiffSplit {
-		t.Errorf("layout %q, split %v", s.DiffLayout, s.DiffSplit)
+	if s := Load(path); s.DiffLayout != "split" {
+		t.Errorf("layout %q", s.DiffLayout)
 	}
 	os.WriteFile(path, []byte(`{}`), 0o644)
 	if s := Load(path); s.DiffLayout != "" {
