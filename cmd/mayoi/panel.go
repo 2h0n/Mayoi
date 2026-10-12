@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
@@ -359,6 +360,32 @@ func (a *app) terminalView(c *ui.Context, s *session) {
 	})
 }
 
+// termFont is the terminals' font: the settings' own for the terminal,
+// else the code's, a little smaller.
 func termFont(s *settings.Settings) terminal.Font {
-	return terminal.Font{Family: s.FontFamily, Size: max(s.FontSize-0.5, 9)}
+	f := terminal.Font{Family: s.TerminalFontFamily, Size: s.TerminalFontSize, Weight: s.FontWeight, Features: s.FontFeatures}
+	if strings.TrimSpace(f.Family) == "" {
+		f.Family = s.FontFamily
+	}
+	if f.Size == 0 {
+		f.Size = max(s.FontSize-0.5, 9)
+	}
+	return f
+}
+
+// fontTerminals gives the terminals the font of the settings, once it
+// changes.
+func (a *app) fontTerminals() {
+	f := termFont(a.settings)
+	if sameTermFont(f, a.termFont) {
+		return
+	}
+	a.termFont = f
+	for _, s := range a.terms {
+		s.term.SetFont(f)
+	}
+}
+
+func sameTermFont(a, b terminal.Font) bool {
+	return a.Family == b.Family && a.Size == b.Size && a.Weight == b.Weight && slices.Equal(a.Features, b.Features)
 }

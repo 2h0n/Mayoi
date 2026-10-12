@@ -165,7 +165,7 @@ func (a *app) stickyRows(d *editor, snap ui.TextSnapshot, lines []int) []stickyR
 		span := func(from, to int, c ui.Color) {
 			if to > from {
 				txt := strings.ReplaceAll(string(runes[from:to]), "\t", "    ")
-				row.spans = append(row.spans, ui.Span{Text: txt, Font: f.family, Size: f.size, Color: c})
+				row.spans = append(row.spans, f.span(txt, c))
 			}
 		}
 		for _, t := range toks {

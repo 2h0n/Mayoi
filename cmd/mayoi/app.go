@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/highlight"
@@ -44,6 +45,9 @@ type host interface {
 	// recentChanged shows the recent folders anew, in the menus, once
 	// they change.
 	recentChanged()
+	// fontChanged draws every window anew, in the font the settings
+	// have now.
+	fontChanged()
 	// installCLI and uninstallCLI put the mayoi command on the shell's
 	// path, and take it away, saying how it went.
 	installCLI()
@@ -114,6 +118,8 @@ type app struct {
 	// termAppearance is the theme of Mayoi's own the terminals have the
 	// colors of, "" for none.
 	termAppearance string
+	// termFont is the font the terminals have.
+	termFont terminal.Font
 
 	panelMax    bool // the panel takes the editor's room
 	welcomeView ui.Handle

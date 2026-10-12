@@ -278,6 +278,38 @@ moves the sidebar to the right of the editors. It remembers the sidebar's side, 
 window with its folder, frame, columns and tabs. Started without a folder, Mayoi reopens the windows that were open when
 it quit. Closing the last window quits the app.
 
+## Settings
+
+**File → Open Settings** (⌘,) opens `settings.json` in a tab. Saving it applies its preferences in every window at once:
+the fonts, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `blame`, `vim` and `sidebarRight`. Mayoi
+keeps the windows, tabs and layout in the same file itself, and an edit of those waits for the next start. A file that
+does not parse is left alone until it does.
+
+The font keys:
+
+| Key                  | Default       | What it does                                                                      |
+| -------------------- | ------------- | --------------------------------------------------------------------------------- |
+| `fontFamily`         | `"monospace"` | The code's font. A comma-separated list falls back in order, as `"Iosevka, monospace"`. |
+| `fontSize`           | `13`          | 9 to 28. ⌘= and ⌘- change it, and ⌘0 sets it back to 13.                          |
+| `fontWeight`         | `400`         | 100 (thin) to 900 (black), of the weights the font has.                           |
+| `fontFeatures`       | none          | OpenType features: `["calt=0"]` turns off most coding ligatures, `["ss01"]` a stylistic set on. |
+| `lineHeight`         | `1.55`        | The height of a line of code, a multiple of `fontSize`, from 1 to 3.              |
+| `terminalFontFamily` | `""`          | The terminal's font, else `fontFamily`.                                           |
+| `terminalFontSize`   | `0`           | The terminal's size, else half a point under `fontSize`. Zoom leaves a set size alone. |
+
+The terminal takes `fontWeight` and `fontFeatures` too. The editor lines up columns, indent guides and the caret in
+cells as wide as the font's `0`, so a font whose letters differ in width lines them up only roughly.
+
+```json
+{
+  "fontFamily": "JetBrains Mono, monospace",
+  "fontSize": 14,
+  "fontFeatures": ["calt=0"],
+  "lineHeight": 1.6,
+  "terminalFontSize": 12
+}
+```
+
 ## Updates
 
 Release builds check GitHub Releases for a new version once a day, 10 seconds after launch when a check is due, and

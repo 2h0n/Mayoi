@@ -265,10 +265,10 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		}
 		box.Draw(func(pt *ui.Painter, r ui.Rect) {
 			vx, vy := r.X+v.scroll.X, r.Y+v.scroll.Y // the view's corner
-			_, numH := pt.MeasureText(0, ui.Span{Text: "0", Font: f.family, Size: f.size})
+			_, numH := pt.MeasureText(0, f.span("0", ui.Color{}))
 			mid := (lineH - numH) / 2
 			txt := func(x, y float32, s string, col ui.Color) float32 {
-				span := ui.Span{Text: s, Font: f.family, Size: f.size, Color: col}
+				span := f.span(s, col)
 				w, _ := pt.MeasureText(0, span)
 				pt.RichText(x, y+mid, 0, span)
 				return w
@@ -833,7 +833,7 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 	for _, rn := range runs {
 		piece(rn.from, rn.to, func(k int, _, _ float32, s0, s1 int) {
 			if s1 > s0 {
-				rowSpans[k] = append(rowSpans[k], ui.Span{Text: shown[s0:s1], Font: f.family, Size: f.size, Color: rn.col})
+				rowSpans[k] = append(rowSpans[k], f.span(shown[s0:s1], rn.col))
 			}
 		})
 	}

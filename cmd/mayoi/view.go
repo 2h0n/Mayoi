@@ -43,9 +43,10 @@ func (a *app) view(c *ui.Context) {
 	a.drain()
 	a.pal = a.applyTheme(c)
 	a.themeTerminals()
+	a.fontTerminals()
 	p := a.pal
-	if f := a.settings; a.font.charW == 0 || a.font.size != f.FontSize || a.font.family != f.FontFamily {
-		a.font = newCodeFont(f.FontFamily, f.FontSize)
+	if p := a.settings.Prefs; !a.font.is(p) {
+		a.font = newCodeFont(p)
 	}
 	if now := c.Now(); now != a.frameAt {
 		a.frameAt = now
@@ -430,7 +431,8 @@ func (a *app) hiddenEditor(c *ui.Context, d *editor) {
 	d.vscroll.Y = d.hiddenY
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Children(func() {
 		// Laid out as the editor shows it, so that its place stays.
-		area := ui.TextAreaBufferBase(c, d.buf).Font(a.font.family).FontSize(a.font.size).FixedLineHeight(a.font.lineH).
+		area := ui.TextAreaBufferBase(c, d.buf).Font(a.font.family).FontSize(a.font.size).FontWeight(a.font.weight).
+			FontFeatures(a.font.featureList()...).FixedLineHeight(a.font.lineH).
 			Fill().TrackScroll(&d.vscroll)
 		if a.wraps(d) {
 			// The rows the editor measured stay measured only at its width

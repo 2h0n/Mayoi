@@ -8,6 +8,7 @@ import (
 
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
+	"mayoi/internal/settings"
 )
 
 const (
@@ -21,21 +22,53 @@ const (
 type codeFont struct {
 	family string
 	size   float32
-	lineH  float32
-	charW  float32
+	weight int
+	// features are the font's OpenType features, comma separated.
+	features string
+	// lineHeight is the height of a line as the settings have it, a
+	// multiple of size, and lineH the height of a line.
+	lineHeight float32
+	lineH      float32
+	charW      float32
 	// tabW is how far apart the platform's text layout puts its tab stops,
 	// which is not a number of cells: a tab ends at the next stop.
 	tabW float32
 }
 
-func newCodeFont(family string, size float32) codeFont {
-	font := ui.Font{Family: family, Size: size}
-	w, _ := ui.ShapeText(strings.Repeat("0", 64), font, 0).Size()
-	f := codeFont{family: family, size: size, lineH: float32(int(size*1.55 + 0.5)), charW: w / 64}
-	if f.tabW, _ = ui.ShapeText("\t", font, 0).Size(); f.tabW <= 0 {
+func newCodeFont(p settings.Prefs) codeFont {
+	f := codeFont{
+		family: p.FontFamily, size: p.FontSize, weight: p.FontWeight, features: strings.Join(p.FontFeatures, ","),
+		lineHeight: p.LineHeight, lineH: float32(int(p.FontSize*p.LineHeight + 0.5)),
+	}
+	w, _ := ui.ShapeText(strings.Repeat("0", 64), f.font(), 0).Size()
+	f.charW = w / 64
+	if f.tabW, _ = ui.ShapeText("\t", f.font(), 0).Size(); f.tabW <= 0 {
 		f.tabW = tabWidth * f.charW
 	}
 	return f
+}
+
+// is reports whether the font is the one the preferences choose.
+func (f codeFont) is(p settings.Prefs) bool {
+	return f.charW != 0 && f.family == p.FontFamily && f.size == p.FontSize && f.weight == p.FontWeight &&
+		f.features == strings.Join(p.FontFeatures, ",") && f.lineHeight == p.LineHeight
+}
+
+func (f codeFont) font() ui.Font {
+	return ui.Font{Family: f.family, Size: f.size, Weight: f.weight, Features: f.features}
+}
+
+// span is a run of code in the font.
+func (f codeFont) span(text string, col ui.Color) ui.Span {
+	return ui.Span{Text: text, Font: f.family, Size: f.size, Weight: f.weight, Features: f.features, Color: col}
+}
+
+// featureList is the font's features as Element.FontFeatures takes them.
+func (f codeFont) featureList() []string {
+	if f.features == "" {
+		return nil
+	}
+	return strings.Split(f.features, ",")
 }
 
 // width measures a run from the start of a line as the text area lays it
@@ -49,7 +82,7 @@ func (f codeFont) width(s string) float32 {
 		case c < 0x80:
 			x += f.charW
 		default:
-			w, _ := ui.ShapeText(s, ui.Font{Family: f.family, Size: f.size}, 0).Size()
+			w, _ := ui.ShapeText(s, f.font(), 0).Size()
 			return w
 		}
 	}
@@ -122,7 +155,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 
 	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Background(p.editor).Children(func() {
 		area := ui.TextAreaBufferBase(c, d.buf).
-			Font(f.family).FontSize(f.size).FixedLineHeight(f.lineH).TextColor(p.text).
+			Font(f.family).FontSize(f.size).FontWeight(f.weight).FontFeatures(f.featureList()...).FixedLineHeight(f.lineH).TextColor(p.text).
 			FillHeight().
 			Padding(editorPadY, textPadR, editorPadY, textX).
 			Label("Editor " + d.name()).

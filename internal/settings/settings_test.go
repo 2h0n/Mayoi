@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRoundTrip(t *testing.T) {
@@ -102,5 +103,58 @@ func TestRecentExcept(t *testing.T) {
 	s.ClearRecent()
 	if len(s.Recent) != 0 || len(s.RecentExcept("")) != 0 {
 		t.Errorf("cleared: %v", s.Recent)
+	}
+}
+
+// The font preferences keep in their bounds, and take their defaults
+// where the file leaves them out.
+func TestFontPrefs(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if s := Load(path); s.FontWeight != 400 || s.LineHeight != 1.55 || s.TerminalFontSize != 0 || s.FontFeatures != nil {
+		t.Fatalf("defaults %+v", s.Prefs)
+	}
+	os.WriteFile(path, []byte(`{"fontFamily": " ", "fontWeight": 1000, "lineHeight": 9, "terminalFontSize": 4,
+		"fontFeatures": ["calt=0", "", "ss01"]}`), 0o644)
+	s := Load(path)
+	if s.FontFamily != "monospace" || s.FontWeight != 900 || s.LineHeight != 3 || s.TerminalFontSize != 9 ||
+		!slices.Equal(s.FontFeatures, []string{"calt=0", "ss01"}) {
+		t.Fatalf("loaded %+v", s.Prefs)
+	}
+}
+
+// An edit of the file changes the preferences it watches, but not the
+// windows; the settings' own writes and a file that does not parse
+// change nothing.
+func TestWatchTheFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	s := Load(path)
+	s.NewWindow().Folder = "/tmp/x"
+	s.Flush()
+	got := make(chan Prefs, 4)
+	stop, err := s.Watch(func(p Prefs) { got <- p })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	s.FontSize = 15
+	s.Flush()
+	os.WriteFile(path, []byte(`{"fontSize": 1`), 0o644)
+	select {
+	case p := <-got:
+		t.Fatalf("changed by its own write or a broken file: %+v", p)
+	case <-time.After(300 * time.Millisecond):
+	}
+	os.WriteFile(path, []byte(`{"fontSize": 16, "fontWeight": 500, "vim": true, "wordWrap": true, "windows": []}`), 0o644)
+	select {
+	case p := <-got:
+		if p.FontSize != 16 || p.FontWeight != 500 || !p.Vim || p.FontFamily != "monospace" {
+			t.Fatalf("prefs %+v", p)
+		}
+		gen := s.WrapGen
+		if old := s.SetPrefs(p); old.FontSize != 15 || s.WrapGen != gen+1 || len(s.Windows) != 1 {
+			t.Fatalf("old %+v, wrap gen %d, windows %d", old, s.WrapGen, len(s.Windows))
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no change seen")
 	}
 }

@@ -36,6 +36,7 @@ func (a *app) commands() []command {
 		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
 		{"file.autoSave", "Auto Save", "", a.toggleAutoSave},
+		{"file.settings", "Open Settings", "CmdOrCtrl+,", a.openSettings},
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
 		{"file.reopenClosed", "Reopen Closed Tab", "Shift+CmdOrCtrl+T", a.reopenClosed},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
@@ -195,6 +196,15 @@ func (a *app) setAppearance(appearance string) {
 	a.host.setAppearance(appearance)
 }
 
+// openSettings opens the settings file in a tab, as they are now. The
+// preferences in it apply as it is saved.
+func (a *app) openSettings() {
+	if path := a.settings.Path(); path != "" {
+		a.settings.Flush()
+		a.openFile(path, true)
+	}
+}
+
 // zoom makes the picture shown bigger or smaller, or fits it for 0, and
 // otherwise the text.
 func (a *app) zoom(by float32) {
@@ -209,9 +219,7 @@ func (a *app) zoom(by float32) {
 		s.FontSize = clamp(s.FontSize+by, 9, 28)
 	}
 	s.Changed()
-	for _, t := range a.terms {
-		t.term.SetFont(termFont(a.settings))
-	}
+	a.host.fontChanged()
 }
 
 // menu is the menu bar, which the windows share: its items run the
@@ -259,7 +267,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	file := []*mygo.MenuItem{
 		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"),
 		{Label: "Open Recent", Submenu: recent}, mygo.Separator(),
-		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), mygo.Separator(),
+		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), item("file.settings"), mygo.Separator(),
 		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"),
 	}
 	if cli {

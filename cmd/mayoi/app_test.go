@@ -57,6 +57,7 @@ func (h *fakeHost) showFolder(dir string) bool {
 func (h *fakeHost) newWindow(dir string)      { h.windows = append(h.windows, dir) }
 func (h *fakeHost) openFolders(dirs []string) { h.folders = append(h.folders, dirs...) }
 func (h *fakeHost) recentChanged()            { h.recentChanges++ }
+func (h *fakeHost) fontChanged()              {}
 func (h *fakeHost) installCLI()               {}
 func (h *fakeHost) uninstallCLI()             {}
 

@@ -10,6 +10,14 @@ needs a `## <version>` section here, or its build fails.
   include and exclude. ⇧⌘H replaces across files, all at once, a file at
   a time or a match at a time, showing each replacement first. Open files
   change as a step of undo.
+- **File → Open Settings** (⌘,) opens `settings.json`, and saving it
+  applies the fonts, theme, auto save, word wrap, vim mode and the other
+  preferences in every window at once, rather than at the next start.
+- New font settings: `fontWeight`, `fontFeatures` (as `["calt=0"]` to
+  turn ligatures off), `lineHeight`, and `terminalFontFamily` and
+  `terminalFontSize` for a terminal font of its own.
+- Zooming the text resizes the terminals of every window, not only the
+  window's own.
 - The welcome page titles its sections as the sidebar titles its views.
 - A diff says that a file has no changes in its text, or is binary, in
   the window's font rather than as a line of code.

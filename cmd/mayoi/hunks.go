@@ -294,7 +294,7 @@ func (a *app) hunkPeekView(c *ui.Context, d *editor) {
 				if len(line) > 400 {
 					line = line[:400]
 				}
-				ui.Text(c, line).Font(f.family).FontSize(f.size).Height(f.lineH).SingleLine().TextColor(p.text).
+				ui.Text(c, line).Font(f.family).FontSize(f.size).FontWeight(f.weight).FontFeatures(f.featureList()...).Height(f.lineH).SingleLine().TextColor(p.text).
 					Padding(0, 10)
 			}
 			if h.ALen > most {

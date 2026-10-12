@@ -112,6 +112,12 @@ func (h *desktop) openFolders(dirs []string) {
 
 func (h *desktop) recentChanged() { h.m.refreshMenu() }
 
+func (h *desktop) fontChanged() {
+	for _, w := range h.m.wins {
+		w.a.invalidate()
+	}
+}
+
 func (h *desktop) installCLI() {
 	go func() {
 		home, _ := os.UserHomeDir()
@@ -219,6 +225,9 @@ func main() {
 	mygo.App.WhenReady(func() {
 		m.s = settings.Load(settingsPath())
 		mygo.Theme.SetSource(themeSource(m.s.Appearance))
+		if stop, err := m.s.Watch(func(p settings.Prefs) { mygo.RunOnMain(func() { m.reload(p) }) }); err == nil {
+			mygo.App.OnQuit(stop)
+		}
 		wd, _ := os.Getwd()
 		m.ready = true
 		m.launch(append(m.pending, argPaths(os.Args[1:], wd)...))
@@ -398,6 +407,22 @@ func (m *mayoi) of(st *settings.Window) *desktop {
 		}
 	}
 	return nil
+}
+
+// reload applies the preferences of the settings file, which a person
+// changed as Mayoi runs.
+func (m *mayoi) reload(p settings.Prefs) {
+	old := m.s.SetPrefs(p)
+	if p.Appearance != old.Appearance {
+		mygo.Theme.SetSource(themeSource(p.Appearance))
+	}
+	for _, w := range m.wins {
+		if p.AutoSave && !old.AutoSave {
+			w.a.autoSaveAll()
+		}
+		w.a.invalidate()
+	}
+	m.refreshMenu()
 }
 
 // refreshMenu builds the menus anew on the window in front, whose folder
