@@ -42,8 +42,9 @@ type colTab struct {
 	diff *diffView
 	term *session
 	// transient marks the preview tab of its column, as a file is chosen
-	// in the Explorer or in search's results: the next file chosen
-	// replaces it, until it is edited or kept.
+	// in the Explorer or in search's results, or a commit in source
+	// control: the next one chosen replaces it, until it is edited or
+	// kept.
 	transient bool
 }
 
@@ -245,6 +246,17 @@ func (a *app) previewFile(path string) {
 		a.activate(col, i, false)
 		return
 	}
+	a.previewIn(col, func(at int) {
+		a.opening = true
+		a.openFileIn(col, at, path, false)
+		a.opening = false
+	})
+}
+
+// previewIn has open put a preview tab in a column at the place it is
+// given: that of the column's preview tab, which then goes, else after
+// the tab shown.
+func (a *app) previewIn(col *column, open func(at int)) {
 	old := slices.IndexFunc(col.tabs, func(t *colTab) bool { return t.transient })
 	if old >= 0 && col.tabs[old].ed != nil && col.tabs[old].ed.dirty() {
 		// Edited since the frame began: it stays.
@@ -256,9 +268,7 @@ func (a *app) previewFile(path string) {
 		at = old
 	}
 	n := len(col.tabs)
-	a.opening = true
-	a.openFileIn(col, at, path, false)
-	a.opening = false
+	open(at)
 	if len(col.tabs) == n {
 		return // it could not be read
 	}
@@ -660,7 +670,7 @@ func (a *app) rememberTabs() {
 			case t.term != nil:
 				ts = settings.Tab{Terminal: true}
 			case t.diff != nil && t.diff.commit != nil:
-				ts = settings.Tab{Diff: "commit:" + t.diff.commit.hash, Layout: t.diff.layout.key()}
+				ts = settings.Tab{Diff: "commit:" + t.diff.commit.hash, Layout: t.diff.layout.key(), Transient: t.transient}
 			case t.diff != nil:
 				ts = settings.Tab{Diff: "all", Layout: t.diff.layout.key()}
 			case t.path() != "":
@@ -781,7 +791,8 @@ func (a *app) restoreTabs() {
 			case strings.HasPrefix(ts.Diff, "commit:"):
 				hash := strings.TrimPrefix(ts.Diff, "commit:")
 				if c, _ := a.commitTab(hash); c == nil && hash != "" {
-					a.addTab(col, len(col.tabs), &colTab{diff: newCommitView(parseDiffLayout(ts.Layout), hash, git.Commit{})})
+					v := newCommitView(parseDiffLayout(ts.Layout), hash, git.Commit{})
+					a.addTab(col, len(col.tabs), &colTab{diff: v, transient: ts.Transient})
 					a.activate(col, len(col.tabs)-1, false)
 				}
 			case ts.Diff != "":

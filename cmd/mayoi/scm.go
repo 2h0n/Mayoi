@@ -330,7 +330,7 @@ func (a *app) scmView(c *ui.Context) {
 		case r.header:
 			a.scmHeader(c, r, &action)
 		case r.commit != nil:
-			a.scmCommit(c, r, &action)
+			a.scmCommit(c, i, r, &action)
 		case r.more:
 			a.scmMore(c, &action)
 		case r.dir != "":
@@ -707,8 +707,9 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 
 // scmCommit is the row of a commit of the history: its lanes of the
 // graph, who made it, its branches and tags, its subject, and how long
-// ago it was made. A click shows its changes.
-func (a *app) scmCommit(c *ui.Context, r scmRow, action *func()) {
+// ago it was made. A click chooses row i and shows the commit's changes
+// in the preview tab, which Enter or a double click keeps.
+func (a *app) scmCommit(c *ui.Context, i int, r scmRow, action *func()) {
 	p := a.pal
 	cm := r.commit
 	g := &a.git
@@ -779,7 +780,10 @@ func (a *app) scmCommit(c *ui.Context, r scmRow, action *func()) {
 		ui.Text(c, shortAgo(cm.Time, time.Now())).FontSize(11).TextColor(p.faint).Shrink(0).Padding(0, 2, 0, 0)
 	})
 	if clicked && *action == nil {
-		*action = func() { a.showCommit(*cm, true) }
+		*action = func() {
+			a.scm.row = i
+			a.previewCommit(*cm)
+		}
 	}
 }
 

@@ -33,7 +33,8 @@ which is an editor or a terminal.
 A column has at most one preview tab, marked `transient`. The Explorer and search open files with `previewFile`,
 which shows a file in the tab that has it, else in the preview tab's place, dropping the document it showed unless
 another tab does, else in a new one. Opening a file the usual way, an edit, a double click on the tab and a drag to
-another column keep the tab, and only kept tabs go among quick open's recent files.
+another column keep the tab, and only kept tabs go among quick open's recent files. A commit clicked in source control opens with
+`previewCommit` in the same place, through `previewIn`, which both share; `showCommit` keeps it.
 
 Typing is credited to the editor that has the keyboard, and the selections of the document's other editors move with
 the text. A text area scrolls to its caret when its text changes. So an editor without the keyboard parks the area's

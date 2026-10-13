@@ -11,6 +11,10 @@ needs a `## <version>` section here, or its build fails.
   menu of a file or folder has **Copy** and **Paste** too.
 - Double-clicking a file in the Explorer keeps its tab open, and gives
   it the keyboard, rather than leaving it a preview.
+- A commit clicked under **COMMITS** opens in the preview tab, its name
+  in italics, and the keyboard stays in the list: clicking through
+  commits leaves one tab. Enter, a double click or **Open Changes** keeps
+  it.
 
 ## 0.5.1
 

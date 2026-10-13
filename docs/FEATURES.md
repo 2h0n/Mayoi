@@ -14,7 +14,8 @@ have unsaved edits.
 A file clicked in the Explorer, or chosen in search's results, opens in a preview tab, its name in italics: the next
 file chosen takes its place, so looking through files leaves one tab. Editing it, double-clicking it or its tab,
 pressing Enter on it, or dragging it to another column keeps it open. A file already in a tab shows there. Each column
-has its own preview tab, which comes back as one at the next start.
+has its own preview tab, which comes back as one at the next start. A commit clicked in source control opens in the
+same preview tab.
 
 ⇧⌘T reopens the last tab you closed, in its column and place, with its caret and scroll position. Press it again for
 the one before. Files and terminals both come back, a terminal as a new shell in the folder it started in. Opening or
@@ -126,8 +127,10 @@ The branch button in the COMMITS header, or **Show All Branches** in the **⋯**
 too, and every tag, not only the history of the branch checked out. The button stays in the header, in the accent
 color, while it is on.
 
-Click a commit to see it, focused, in a tab of its own: its message, author, date, hash, branches and tags at the top,
-then each file it changed from its first parent, as the **Changes** tab shows them. Its menu checks it out (switching to
+Click a commit to see it in the preview tab, the keyboard staying in the list, so clicking through commits leaves one
+tab; Enter, a double click or **Open Changes** in its menu keeps it in a tab of its own, focused. The tab shows its
+message, author, date, hash, branches and tags at the top, then each file it changed from its first parent, as the
+**Changes** tab shows them. Its menu checks it out (switching to
 its branch when it has one, or detaching HEAD at it once asked), creates a branch or a tag there, copies the hash, the
 message or the name of a branch or tag, and on HEAD undoes it.
 

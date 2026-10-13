@@ -192,3 +192,52 @@ func TestExplorerDoubleClick(t *testing.T) {
 	hs.settle()
 	wantTabs(t, hs, "README.md", "main.go", "go.mod*")
 }
+
+// A click on a commit previews its changes, in the tab a file's preview
+// has too; Enter keeps it, and a preview comes back as one.
+func TestCommitPreviewTab(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a, tt := hs.a, hs.tt
+	os.WriteFile(hs.path("main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644)
+	git("commit", "-qam", "Trim main")
+	tt.Click("go.mod")
+	hs.settle()
+	wantTabs(t, hs, "go.mod*")
+	a.run("view.scm")
+	hs.settleGit()
+	if err := tt.Click("Trim main"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	wantTabs(t, hs, "Trim main*")
+	if err := tt.Click("first"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	wantTabs(t, hs, "first*")
+
+	// Enter, as a double click does, keeps it: the keyboard stayed in
+	// the list.
+	tt.Key(0, ui.KeyEnter)
+	hs.settleGit()
+	wantTabs(t, hs, "first")
+	if err := tt.Click("Trim main"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settleGit()
+	wantTabs(t, hs, "first", "Trim main*")
+	if got := a.window.Columns[0].Tabs; len(got) != 2 || got[0].Transient || !got[1].Transient {
+		t.Fatalf("tabs kept %+v", got)
+	}
+
+	// The next start.
+	b := newApp(hs.h, a.settings, a.window)
+	tb := ui.NewTester(b.view, 1200, 760)
+	for range 5 {
+		tb.Frame()
+	}
+	if tabs := b.column().tabs; len(tabs) != 2 || tabs[0].transient || tabs[1].diff == nil || !tabs[1].transient {
+		t.Errorf("restored %+v", tabs)
+	}
+}

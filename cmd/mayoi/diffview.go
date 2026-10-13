@@ -410,6 +410,7 @@ func (a *app) commitTab(hash string) (*column, int) {
 // the tab shown of the column that has the keyboard when there is none.
 func (a *app) showCommit(c git.Commit, focus bool) {
 	if col, i := a.commitTab(c.Hash); col != nil {
+		a.keepTab(col.tabs[i])
 		a.activate(col, i, focus)
 		return
 	}
@@ -418,6 +419,21 @@ func (a *app) showCommit(c git.Commit, focus bool) {
 	a.addTab(col, at, &colTab{diff: newCommitView(parseDiffLayout(a.settings.DiffLayout), c.Hash, c)})
 	a.activate(col, at, focus)
 	a.rememberTabs()
+}
+
+// previewCommit shows the changes of a commit in the preview tab of the
+// column that has the keyboard, without giving it the keyboard, unless a
+// tab shows them already.
+func (a *app) previewCommit(c git.Commit) {
+	if col, i := a.commitTab(c.Hash); col != nil {
+		a.activate(col, i, false)
+		return
+	}
+	col := a.column()
+	a.previewIn(col, func(at int) {
+		a.addTab(col, at, &colTab{diff: newCommitView(parseDiffLayout(a.settings.DiffLayout), c.Hash, c), transient: true})
+		a.activate(col, at, false)
+	})
 }
 
 // diffDoc returns the open document of a file of a diff, whose text is
