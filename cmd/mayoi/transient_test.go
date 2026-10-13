@@ -159,3 +159,36 @@ func TestExplorerPreviewTab(t *testing.T) {
 		t.Error("the preview dragged to another column is still one")
 	}
 }
+
+// A double click in the Explorer keeps the file open, with the keyboard.
+func TestExplorerDoubleClick(t *testing.T) {
+	hs := newHarness(t, true)
+	tt := hs.tt
+	// The rows of the tree, before tabs show the names too.
+	row := func(name string) func() {
+		r, ok := tt.Find(name)
+		if !ok {
+			t.Fatalf("no row %s", name)
+		}
+		return func() { tt.ClickAt(r.X+r.W/2, r.Y+r.H/2) }
+	}
+	readme, main, mod := row("README.md"), row("main.go"), row("go.mod")
+	readme()
+	hs.settle()
+	wantTabs(t, hs, "README.md*")
+	// The second click of the double click.
+	readme()
+	hs.settle()
+	wantTabs(t, hs, "README.md")
+	if !tt.Focused("Editor README.md") {
+		t.Error("the file double-clicked does not have the keyboard")
+	}
+	// From scratch, too, and the next file clicked opens beside it.
+	main()
+	main()
+	hs.settle()
+	wantTabs(t, hs, "README.md", "main.go")
+	mod()
+	hs.settle()
+	wantTabs(t, hs, "README.md", "main.go", "go.mod*")
+}

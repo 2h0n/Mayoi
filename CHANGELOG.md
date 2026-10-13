@@ -9,6 +9,8 @@ needs a `## <version>` section here, or its build fails.
   pastes the files copied, in another window or in the Finder, into the
   folder chosen; a name taken gets "copy" added, as in the Finder. The
   menu of a file or folder has **Copy** and **Paste** too.
+- Double-clicking a file in the Explorer keeps its tab open, and gives
+  it the keyboard, rather than leaving it a preview.
 
 ## 0.5.1
 

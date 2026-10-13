@@ -167,7 +167,7 @@ func (a *app) fileTree(c *ui.Context) {
 	quiet := *base
 	quiet.Accent, quiet.AccentText, quiet.SurfaceHover = p.active, p.text, p.hover
 	c.SetTheme(&quiet)
-	var clicked string
+	var clicked, kept string
 	var action func()
 	out := ui.Outline(c.Key("files"), &a.files, t.Children(a.root), children, func(path string) {
 		isDir := t.IsDir(path)
@@ -175,6 +175,11 @@ func (a *app) fileTree(c *ui.Context) {
 		row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(17)
 		if row.Clicked() {
 			clicked = path
+		}
+		// The row, not the list's, takes the clicks, and so the double
+		// click that keeps a file open.
+		if row.DoubleClicked() && !isDir {
+			kept = path
 		}
 		row.ContextMenu(func(m *ui.Menu) {
 			dir := path
@@ -274,7 +279,7 @@ func (a *app) fileTree(c *ui.Context) {
 		action()
 	}
 	if out.Submitted() && a.fileRow >= 0 && a.fileRow < a.files.Rows() {
-		// Enter, or a double click: keep the file open with the focus.
+		// Enter: keep the file open with the focus.
 		if path := a.files.Item(a.fileRow); !t.IsDir(path) {
 			a.openFile(path, true)
 		}
@@ -291,9 +296,13 @@ func (a *app) fileTree(c *ui.Context) {
 			} else {
 				a.files.Open.Add(clicked)
 			}
-		} else {
+		} else if kept != clicked {
 			a.previewFile(clicked)
 		}
+	}
+	if kept != "" {
+		// A double click: keep the file open with the focus.
+		a.openFile(kept, true)
 	}
 }
 
