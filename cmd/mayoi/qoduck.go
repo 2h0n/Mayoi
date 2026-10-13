@@ -1,14 +1,16 @@
 package main
 
 import (
+	"math"
+
 	"github.com/egoist/mygo/ui"
 )
 
-// Qoduck, Qoder's duck, as its icon draws it: a yellow body under a dome
-// of a head, a tuft of three feathers, a frowning brow, two eyes and an
-// orange beak. It is Qoder's character, drawn from shapes rather than
-// cells, so that it reads as small as the status bar, and in its own
-// colors rather than the accent. In the air, its tuft trails behind it.
+// Qoduck, Qoder's duck, as its icon draws it, a little rounder: a yellow
+// body under a dome of a head, a tuft of three feathers, a frowning brow,
+// two eyes and an orange beak. It is Qoder's character, drawn from shapes
+// rather than cells, so that it reads as small as the status bar, and in
+// its own colors rather than the accent. In the air, its tuft trails behind it.
 
 // The duck is drawn in units of half a cell, in a square of qoduckSpan of
 // them, as its icon is: the coordinates below are the icon's, a 32nd of
@@ -54,13 +56,14 @@ func (a *app) drawQoduck(pt *ui.Painter, r ui.Rect, cell float32, _ ui.Color, p 
 	}
 
 	// The head's dome, the sides, and the rounded corners of the bottom.
+	// Rounder than the icon's, the far side curves all the way down into
+	// the bottom.
 	body := move(new(ui.Path), 3.5, 14)
 	cube(body, 3.5, 8.6, 9.2, 5.6, 16, 5.6)
-	cube(body, 22.8, 5.6, 29.3, 8.6, 29.3, 14)
-	body.LineTo(at(29.3, 22.6))
-	cube(body, 29.3, 26.1, 26.4, 29, 22.9, 29)
-	body.LineTo(at(9.9, 29))
-	cube(body, 6.4, 29, 3.5, 26.1, 3.5, 22.6)
+	cube(body, 22.8, 5.6, 29.5, 8.6, 29.5, 14.5)
+	cube(body, 29.5, 23.9, 26, 29.2, 17, 29.2)
+	body.LineTo(at(9.9, 29.2))
+	cube(body, 6.3, 29.2, 3.5, 26.2, 3.5, 22.6)
 	body.Close()
 	// The tuft, its tips trailing down in the air.
 	droop := 0.8 * float32(p.step)
@@ -71,7 +74,7 @@ func (a *app) drawQoduck(pt *ui.Painter, r ui.Rect, cell float32, _ ui.Color, p 
 	move(tuft, 19, 6.8)
 	quad(tuft, 19.8, 4.6, 20.6, 3.6+droop)
 	tuftW := 2.2 * u
-	beak := ellipse(new(ui.Path), x0+7.5*u, y0+20.4*u, 6.9*u, 5.1*u)
+	beak := ellipse(new(ui.Path), x0+7.4*u, y0+20.4*u, 7.2*u, 4.6*u, 18)
 
 	// The edges first, half of them under the shapes.
 	edge := max(0.8*u, 1)
@@ -96,20 +99,34 @@ func (a *app) drawQoduck(pt *ui.Painter, r ui.Rect, cell float32, _ ui.Color, p 
 		pt.Fill(ui.Rect{X: x - ew/2, Y: y - eh/2, W: ew, H: eh}, qoduckInk, min(ew, eh)/2)
 	}
 
-	// The beak, over the near eye.
+	// The beak, tilted down to the front, over the lower half of the near
+	// eye.
 	if light {
 		pt.StrokePath(beak, 2*edge, qoduckBeakEdge)
 	}
 	pt.FillPath(beak, qoduckBeak)
 }
 
-// ellipse adds an ellipse as a subpath, in four cubic curves.
-func ellipse(p *ui.Path, cx, cy, rx, ry float32) *ui.Path {
+// ellipse adds an ellipse as a subpath, in four cubic curves, turned by
+// deg degrees clockwise about its center.
+func ellipse(p *ui.Path, cx, cy, rx, ry, deg float32) *ui.Path {
 	const k = 0.5522847498
-	p.MoveTo(cx+rx, cy)
-	p.CubeTo(cx+rx, cy+ry*k, cx+rx*k, cy+ry, cx, cy+ry)
-	p.CubeTo(cx-rx*k, cy+ry, cx-rx, cy+ry*k, cx-rx, cy)
-	p.CubeTo(cx-rx, cy-ry*k, cx-rx*k, cy-ry, cx, cy-ry)
-	p.CubeTo(cx+rx*k, cy-ry, cx+rx, cy-ry*k, cx+rx, cy)
+	sin, cos := math.Sincos(float64(deg) * math.Pi / 180)
+	// at turns a point of the level ellipse, from its center.
+	at := func(x, y float32) (float32, float32) {
+		s, c := float32(sin), float32(cos)
+		return cx + x*c - y*s, cy + x*s + y*c
+	}
+	cube := func(c1x, c1y, c2x, c2y, x, y float32) {
+		c1x, c1y = at(c1x, c1y)
+		c2x, c2y = at(c2x, c2y)
+		x, y = at(x, y)
+		p.CubeTo(c1x, c1y, c2x, c2y, x, y)
+	}
+	p.MoveTo(at(rx, 0))
+	cube(rx, ry*k, rx*k, ry, 0, ry)
+	cube(-rx*k, ry, -rx, ry*k, -rx, 0)
+	cube(-rx, -ry*k, -rx*k, -ry, 0, -ry)
+	cube(rx*k, -ry, rx, -ry*k, rx, 0)
 	return p.Close()
 }

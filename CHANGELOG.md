@@ -7,10 +7,10 @@ needs a `## <version>` section here, or its build fails.
 
 - The Qoder theme: **View → Theme → Qoder** takes Qoder's Forest colors,
   light or dark as the Appearance is, with its code in Forest's greens,
-  blues, teals and ambers. Qoduck, Qoder's duck, takes the logo's place on
-  the welcome page and sits at the start of the status bar, blinking now
-  and then and hopping while Git or a search works, as Clawd does in
-  Claude.
+  blues, teals and ambers. Qoduck, Qoder's round-faced duck, its beak
+  tilted so that both eyes show, takes the logo's place on the welcome page
+  and sits at the start of the status bar, blinking now and then and
+  hopping while Git or a search works, as Clawd does in Claude.
 - Switching to a branch checked out in another worktree offers to open
   that worktree, in this window or a new one; when its folder was deleted,
   to prune it and switch.
