@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.6.0
 
 - **⌘C** in the Explorer copies the file or folder chosen, and **⌘V**
   pastes the files copied, in another window or in the Finder, into the
