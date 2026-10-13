@@ -72,11 +72,12 @@ type viewer struct {
 	// late is dropped.
 	loading int
 
-	// svg is the document an SVG preview shows, version the version of
+	// svg is the document an SVG or Markdown preview shows, version the version of
 	// its text parsed last, and wait the timer of a parse after an edit.
-	svg     *document
-	version uint64
-	wait    *time.Timer
+	markdown *markdownPreview
+	svg      *document
+	version  uint64
+	wait     *time.Timer
 }
 
 // newImageViewer makes the viewer of an image file, which load reads.
@@ -198,6 +199,9 @@ func (v *viewer) stop() {
 		v.wait = nil
 	}
 	v.loading++
+	if v.markdown != nil {
+		v.markdown.generation.Add(1)
+	}
 }
 
 // fitScale is the scale that fits the picture in a pane w×h, never above
@@ -330,6 +334,10 @@ func (a *app) viewerInput(v *viewer, ev ui.InputEvent) bool {
 // viewerView is the pane of a viewer: the picture on a checkerboard,
 // which shows what is transparent, or what kept it from showing.
 func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
+	if v.markdown != nil {
+		a.markdownView(c, v, name)
+		return
+	}
 	p := a.pal
 	label := "Image " + name
 	if v.svg != nil {
@@ -448,14 +456,16 @@ func sizeText(n int64) string {
 	}
 }
 
-// setPreview shows an SVG document as a picture in an editor's place, or
-// its text again.
+// setPreview shows a document rendered in its editor's place, or its text again.
 func (a *app) setPreview(d *editor, on bool) {
-	if on == (d.preview != nil) || on && !isSVG(d.document) {
+	if on == (d.preview != nil) || on && !canPreview(d.document) {
 		return
 	}
 	if on {
 		d.preview = newSVGViewer(d.document)
+		if isMarkdown(d.document) {
+			d.preview.markdown = &markdownPreview{}
+		}
 	} else {
 		d.preview.stop()
 		d.preview = nil
@@ -466,16 +476,16 @@ func (a *app) setPreview(d *editor, on bool) {
 	a.rememberTabs()
 }
 
-// togglePreview shows the SVG shown as a picture, or as text.
+// togglePreview switches between a document's source and rendered view.
 func (a *app) togglePreview() {
-	if d := a.activeEditor(); d != nil && isSVG(d.document) {
+	if d := a.activeEditor(); d != nil && canPreview(d.document) {
 		a.setPreview(d, d.preview == nil)
 		a.focusColumn()
 	}
 }
 
 // textEditor returns the editor shown, showing its text in place of the
-// preview of an SVG, for commands that work on the text. Nil when the
+// rendered preview, for commands that work on the text. Nil when the
 // column shows no editor.
 func (a *app) textEditor() *editor {
 	d := a.activeEditor()

@@ -13,6 +13,11 @@ needs a `## <version>` section here, or its build fails.
 - New commands: **Sort Lines Ascending** and **Descending**, **Transform
   to Camel Case**, **Copy Path of Active File**, **Reveal Active File in
   Finder** and **Indent Using Tabs** or **Spaces**.
+- **⇧⌘V**, or the button at the end of the breadcrumbs, previews a
+  Markdown file as well as an SVG: headings, lists and task lists, quotes,
+  code highlighted as in the editor, tables, local images and links, in
+  the editor's fonts and colors. It follows your edits, and with the same
+  file in another column shows its source beside it.
 
 ## 0.6.0
 

@@ -199,7 +199,7 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 		return
 	}
 	m.Separator()
-	if d := t.ed; d != nil && isSVG(d.document) {
+	if d := t.ed; d != nil && canPreview(d.document) {
 		label := "Show Preview"
 		if d.preview != nil {
 			label = "Show Source"
