@@ -178,7 +178,7 @@ func (a *app) branchPickerView(c *ui.Context) {
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconBranch).FontSize(15).TextColor(p.muted)
-					in := ui.TextInputBase(c.Key("branch-input"), &b.query).Grow(1).FontSize(14).AutoFocus().
+					in := a.textKeys(ui.TextInputBase(c.Key("branch-input"), &b.query)).Grow(1).FontSize(14).AutoFocus().
 						Placeholder("Switch to a branch, or type a name to create one").Label("Switch Branch")
 					if in.Shortcut(0, ui.KeyDown) {
 						b.sel, b.moved = min(b.sel+1, len(choices)-1), true

@@ -84,7 +84,7 @@ func (a *app) recentPickerView(c *ui.Context) {
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconFolderOpen).FontSize(15).TextColor(p.muted)
-					in := ui.TextInputBase(c.Key("recent-input"), &r.query).Grow(1).FontSize(14).AutoFocus().
+					in := a.textKeys(ui.TextInputBase(c.Key("recent-input"), &r.query)).Grow(1).FontSize(14).AutoFocus().
 						Placeholder("Open a recent folder").Label("Open Recent")
 					if in.Shortcut(0, ui.KeyDown) {
 						r.sel, r.moved = min(r.sel+1, len(r.results)-1), true

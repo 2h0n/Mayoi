@@ -283,7 +283,7 @@ func (a *app) scmView(c *ui.Context) {
 		if branch != "" {
 			hint = fmt.Sprintf("Message (⌘⏎ to commit on %s)", branch)
 		}
-		box := ui.TextArea(c.Key("commit-message"), &g.message).Placeholder(hint).FontSize(12.5).
+		box := a.textKeys(ui.TextArea(c.Key("commit-message"), &g.message)).Placeholder(hint).FontSize(12.5).
 			MinHeight(60).MaxHeight(160).Label("Commit Message")
 		if box.Shortcut(ui.Cmd, ui.KeyEnter) {
 			a.commit(false)

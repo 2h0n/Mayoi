@@ -195,9 +195,9 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	}
 	sticky, stickyY := v.stickyHeader(lineH)
 	focused := v.pane.FocusWithin(c)
-	ui.ScrollBoth(c.Key("diff")).TrackScroll(&v.scroll).Bind(&v.pane).Fill().Background(p.editor).
-		Focusable().FocusRing(false).Label("Diff of the Changes").
-		HandleInput(func(ev ui.InputEvent) bool { return a.diffInput(v, ev) }).Children(func() {
+	pane := ui.ScrollBoth(c.Key("diff")).TrackScroll(&v.scroll).Bind(&v.pane).Fill().Background(p.editor).
+		Focusable().FocusRing(false).Label("Diff of the Changes")
+	a.takeKeys(pane, placeDiff, func(ev ui.InputEvent) bool { return a.diffInput(v, ev) }).Children(func() {
 		box := ui.Box(c).Width(contentW).Height(contentH)
 		// The buttons of the file's header under the pointer, or chosen.
 		onSticky := func(y float32) bool { return sticky >= 0 && y >= stickyY && y < stickyY+lineH }

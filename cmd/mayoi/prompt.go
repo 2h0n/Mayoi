@@ -40,7 +40,7 @@ func (a *app) promptView(c *ui.Context) {
 					ui.Text(c, pr.title).FontSize(13).FontWeight(600).TextColor(p.text)
 					ui.Text(c, pr.hint).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
 				})
-				in := ui.TextInput(c.Key("prompt-"+pr.title), &pr.value).AutoFocus().FontSize(13).Label(pr.title)
+				in := a.textKeys(ui.TextInput(c.Key("prompt-"+pr.title), &pr.value)).AutoFocus().FontSize(13).Label(pr.title)
 				if !pr.selected {
 					// Select the name without its extension, as Finder does.
 					pr.selected = true

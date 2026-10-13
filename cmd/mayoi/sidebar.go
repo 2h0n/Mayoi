@@ -284,7 +284,8 @@ func (a *app) fileTree(c *ui.Context) {
 			ui.Text(c, string(letter)).FontSize(11).FontWeight(600).Font(a.font.family).Padding(0, 4, 0, 0).
 				TextColor(gitColor(p, letter)).Shrink(0)
 		})
-	}).Grow(1).Padding(0, 6, 8, 6).Gap(0).HandleInput(a.explorerInput)
+	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
+	a.takeKeys(out, placeExplorer, a.explorerInput)
 	// The space below the files, while the last shows: a click there
 	// chooses none, so that new files go in the workspace, and its menu is
 	// the workspace's. The pointer is followed only then.

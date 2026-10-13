@@ -8,6 +8,8 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
+
+	"mayoi/internal/keymap"
 )
 
 // command is something the menus, their shortcuts and the command
@@ -37,6 +39,10 @@ func (a *app) commands() []command {
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
 		{"file.autoSave", "Auto Save", "", a.toggleAutoSave},
 		{"file.settings", "Open Settings", "CmdOrCtrl+,", a.openSettings},
+		{"file.keybindings", "Open Keyboard Shortcuts", "", a.openKeybindings},
+		{"file.copyPath", "Copy Path of Active File", "", func() { a.copyActivePath(false) }},
+		{"file.copyRelativePath", "Copy Relative Path of Active File", "", func() { a.copyActivePath(true) }},
+		{"file.reveal", "Reveal Active File in Finder", "", a.revealActive},
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
 		{"file.reopenClosed", "Reopen Closed Tab", "Shift+CmdOrCtrl+T", a.reopenClosed},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
@@ -65,6 +71,13 @@ func (a *app) commands() []command {
 		{"sel.lineBelow", "Insert Line Below", "", a.editActive(func(d *editor) { insertLine(d, false) })},
 		{"sel.lineAbove", "Insert Line Above", "", a.editActive(func(d *editor) { insertLine(d, true) })},
 		{"sel.line", "Select Line", "CmdOrCtrl+L", a.editActive(selectLines)},
+		{"sel.indentTabs", "Indent Using Tabs", "", a.editActive(func(d *editor) { d.indent.tabs = true })},
+		{"sel.indent2", "Indent Using 2 Spaces", "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 2} })},
+		{"sel.indent4", "Indent Using 4 Spaces", "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 4} })},
+		{"sel.indent8", "Indent Using 8 Spaces", "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 8} })},
+		{"sel.camelCase", "Transform to Camel Case", "", a.editActive(camelCase)},
+		{"sel.sortAsc", "Sort Lines Ascending", "", a.editActive(func(d *editor) { sortLines(d, false) })},
+		{"sel.sortDesc", "Sort Lines Descending", "", a.editActive(func(d *editor) { sortLines(d, true) })},
 		{"go.bracket", "Go to Bracket", "Shift+CmdOrCtrl+\\", a.editActive(goToBracket)},
 		{"go.quickOpen", "Quick Open…", "CmdOrCtrl+P", func() { a.openQuick("") }},
 		{"go.commands", "Command Palette…", "Shift+CmdOrCtrl+P", func() { a.openQuick(">") }},
@@ -248,7 +261,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	}
 	item := func(id string) *mygo.MenuItem {
 		cmd := byID[id]
-		return &mygo.MenuItem{Label: cmd.label, Accelerator: cmd.accel, Click: func(_ *mygo.MenuItem, win *mygo.Window) {
+		return &mygo.MenuItem{Label: cmd.label, Accelerator: a.menuAccel(cmd), Click: func(_ *mygo.MenuItem, win *mygo.Window) {
 			run(id, win)
 		}}
 	}
@@ -289,7 +302,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	file := []*mygo.MenuItem{
 		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"),
 		{Label: "Open Recent", Submenu: recent}, mygo.Separator(),
-		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), item("file.settings"), mygo.Separator(),
+		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), item("file.settings"), item("file.keybindings"), mygo.Separator(),
 		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"),
 	}
 	if cli {
@@ -324,7 +337,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("sel.line"), mygo.Separator(),
 			item("sel.comment"), item("sel.indent"), item("sel.outdent"), mygo.Separator(),
 			item("sel.moveUp"), item("sel.moveDown"), item("sel.copyUp"), item("sel.copyDown"), mygo.Separator(),
-			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"),
+			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"), mygo.Separator(),
+			item("sel.sortAsc"), item("sel.sortDesc"), item("sel.camelCase"),
 		}},
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.search"), item("view.scm"), mygo.Separator(),
@@ -360,6 +374,17 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	return mygo.NewMenu(menus)
 }
 
+// menuAccel is the accelerator of a command's menu item: none when
+// keybindings.json binds its keys, which the menu would take first, or
+// takes them away from it.
+func (a *app) menuAccel(cmd command) string {
+	st, ok := keymap.ParseAccel(cmd.accel)
+	if ok && (a.keys.Binds(st) || a.keys.Removes(commandNames(cmd.id)...)) {
+		return ""
+	}
+	return cmd.accel
+}
+
 // terminalFocused reports whether a terminal has the keyboard, of the
 // panel or of a tab.
 func (a *app) terminalFocused(c *ui.Context) bool {
@@ -375,12 +400,12 @@ func (a *app) terminalFocused(c *ui.Context) bool {
 func (a *app) shortcuts(c *ui.Context) {
 	// ⌃R, unless a terminal has the keyboard: shells search their history
 	// with it. Vim's normal mode redoes with it.
-	if !a.terminalFocused(c) && !a.vimTakesKeys(c) && c.Shortcut(ui.Ctrl, ui.KeyR) {
+	if !a.terminalFocused(c) && !a.vimTakesKeys(c) && !a.keyBound(ui.Ctrl, ui.KeyR) && c.Shortcut(ui.Ctrl, ui.KeyR) {
 		a.openRecentPicker()
 	}
 	// Cmd+1…9 shows a tab of the column, as in browsers.
 	for i, k := range []ui.Key{ui.Key1, ui.Key2, ui.Key3, ui.Key4, ui.Key5, ui.Key6, ui.Key7, ui.Key8, ui.Key9} {
-		if c.Shortcut(ui.Cmd, k) {
+		if !a.keyBound(ui.Cmd, k) && c.Shortcut(ui.Cmd, k) {
 			col := a.column()
 			if k == ui.Key9 {
 				i = len(col.tabs) - 1

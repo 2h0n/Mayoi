@@ -159,8 +159,8 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			FillHeight().
 			Padding(editorPadY, textPadR, editorPadY, textX).
 			Label("Editor " + d.name()).
-			HandleInput(func(ev ui.InputEvent) bool { return a.editorKey(d, ev) }).
-			ReadOnly(vimKeys)
+			ReadOnly(vimKeys || a.chording())
+		a.takeKeys(area, placeEditor, func(ev ui.InputEvent) bool { return a.editorKey(d, ev) })
 		if wrap {
 			area.TrackLines(&d.lines)
 		} else {

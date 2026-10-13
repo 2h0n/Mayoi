@@ -346,7 +346,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			field := ui.Row(c).Grow(1).Height(26).Padding(0, 4, 0, 8).Gap(2).AlignItems(ui.Center).Radius(5).
 				Background(p.editor).Border(1, p.border)
 			field.Children(func() {
-				in := ui.TextInputBase(c.Key("find-query"), &f.query).Bind(&f.input).Grow(1).FontSize(12.5).
+				in := a.textKeys(ui.TextInputBase(c.Key("find-query"), &f.query)).Bind(&f.input).Grow(1).FontSize(12.5).
 					Placeholder("Find").Label("Find")
 				if in.Focused() {
 					field.Border(1, p.accentDim)
@@ -396,7 +396,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			field := ui.Row(c).Grow(1).Height(26).Padding(0, 8).AlignItems(ui.Center).Radius(5).
 				Background(p.editor).Border(1, p.border)
 			field.Children(func() {
-				in := ui.TextInputBase(c.Key("find-with"), &f.with).Grow(1).FontSize(12.5).Placeholder("Replace").Label("Replace")
+				in := a.textKeys(ui.TextInputBase(c.Key("find-with"), &f.with)).Grow(1).FontSize(12.5).Placeholder("Replace").Label("Replace")
 				if in.Focused() {
 					field.Border(1, p.accentDim)
 				}

@@ -341,6 +341,43 @@ cells as wide as the font's `0`, so a font whose letters differ in width lines t
 }
 ```
 
+## Keyboard shortcuts
+
+**File → Open Keyboard Shortcuts** opens `keybindings.json`, beside `settings.json`, in VS Code's format, so a VS Code
+or Cursor file can be pasted in. Saving it applies it in every window at once. A file that does not parse is left alone
+until it does, and a key or a condition Mayoi can't read is named in a toast.
+
+- **`key`** is a key, as `"cmd+1"`, or a chord, as `"ctrl+. g c"`. Its modifiers are `cmd`, `ctrl`, `alt` and `shift`.
+  While a chord is waiting for its next key, the status bar shows its keys. A key it has no binding of does nothing and
+  ends it, and Escape ends it too.
+- **`command`** is a command of Mayoi's, by its id as `view.sidebar`, or VS Code's name for it, as
+  `workbench.action.toggleSidebarVisibility`. A command named with a `-` first takes the key away from that command.
+  `runCommands` runs its `commands` in order, each once the edits and the Git commands of the one before are done, and
+  stops at an error. `vscode.open` opens the file of its `args`: an absolute path, one from `~`, or one in the folder.
+  `type` types the `text` of its `args` in the editor or the terminal, and `workbench.action.terminal.sendSequence`
+  sends it to the terminal. Pressing the key of a command Mayoi doesn't have says so.
+- **`when`** is when it applies: `editorTextFocus`, `editorFocus`, `inputFocus`, `textInputFocus`,
+  `filesExplorerFocus`, `terminalFocus`, `terminalHasBeenCreated`, `terminalIsOpen`, `sideBarVisible`,
+  `editorHasSelection`, `isMac`, `isLinux` and `isWindows`, with `!`, `&&`, `||` and parentheses. Other names don't hold.
+
+The keys of the file take the place of Mayoi's own: the menus drop a key the file binds, ⌘1 to ⌘9 and ⌃R let the file
+have theirs, and the command palette shows the file's keys. The shortcuts apply in the editor, the terminal, the
+Explorer, diffs, pictures, and the text fields of find, search, quick open and the commit message.
+
+```json
+[
+  { "key": "ctrl+. s", "command": "editor.action.indentUsingSpaces" },
+  { "key": "ctrl+. g p", "command": "git.push" },
+  { "key": "d", "command": "deleteFile", "when": "filesExplorerFocus && !inputFocus" },
+  { "key": "cmd+1", "command": "workbench.action.toggleSidebarVisibility" }
+]
+```
+
+Some commands are only in the command palette: **Copy Path of Active File**, **Copy Relative Path of Active File**,
+**Reveal Active File in Finder**, **Indent Using Tabs** and **Indent Using 2, 4 or 8 Spaces**. **Selection → Sort Lines
+Ascending**, **Sort Lines Descending** and **Transform to Camel Case** work on the lines selected, or every line, and on
+the words selected, or the caret's.
+
 ## Updates
 
 Release builds check GitHub Releases for a new version once a day, 10 seconds after launch when a check is due, and

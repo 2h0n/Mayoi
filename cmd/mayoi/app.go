@@ -14,6 +14,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/highlight"
+	"mayoi/internal/keymap"
 	"mayoi/internal/settings"
 	"mayoi/internal/workspace"
 )
@@ -154,11 +155,28 @@ type app struct {
 	dialog      string
 	dialogBuilt bool
 
-	errors  []string // to show as toasts
-	notes   []note   // what went well, to show as toasts
+	errors []string // to show as toasts
+	// fails counts the errors shown, which stop the commands of
+	// runCommands.
+	fails   int
+	notes   []note // what went well, to show as toasts
 	title   string
 	focus   pane
 	started bool
+	// keys are the shortcuts of keybindings.json, nil for none; chord the
+	// strokes of a chord of them typed so far. keyFocus is the place the
+	// keyboard is in as the view was built, placeNone where the window
+	// takes their keys, and keyTerm the terminal that took a key last.
+	keys     *keymap.Map
+	chord    []keymap.Stroke
+	keyFocus keyPlace
+	keyTerm  *session
+	// held is the key the keymap took last, until it is let go of.
+	held *ui.Key
+	// chain are the commands of runCommands still to run, which stop at
+	// an error once fails passes chainFails.
+	chain      []chainStep
+	chainFails int
 	// kept is the session the window had before its documents closed as it
 	// closes, which it keeps for its next start, nil until then.
 	kept *settings.Session
@@ -218,6 +236,7 @@ func (a *app) drain() {
 
 func (a *app) fail(format string, args ...any) {
 	a.errors = append(a.errors, fmt.Sprintf(format, args...))
+	a.fails++
 }
 
 // note is a toast of what a command did, with a button of label that runs

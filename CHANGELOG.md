@@ -3,6 +3,17 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Keyboard shortcuts of your own: **File → Open Keyboard Shortcuts** opens
+  `keybindings.json`, in VS Code's format, so those of VS Code or Cursor
+  can be pasted in. It takes chords, as `ctrl+. g c`, the names of VS
+  Code's commands, `when` conditions, `runCommands`, `vscode.open` and
+  keys taken away with `-`, and applies as it is saved.
+- New commands: **Sort Lines Ascending** and **Descending**, **Transform
+  to Camel Case**, **Copy Path of Active File**, **Reveal Active File in
+  Finder** and **Indent Using Tabs** or **Spaces**.
+
 ## 0.6.0
 
 - **⌘C** in the Explorer copies the file or folder chosen, and **⌘V**

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"mayoi/internal/cli"
+	"mayoi/internal/keymap"
 	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
@@ -30,6 +31,7 @@ type desktop struct {
 // mayoi is the app's windows, the focused one last first.
 type mayoi struct {
 	s    *settings.Settings
+	keys *keymap.Map // the shortcuts of keybindings.json
 	wins []*desktop
 	// pending are the folders and files the app was asked to open before
 	// it was ready.
@@ -237,6 +239,12 @@ func main() {
 		if stop, err := m.s.Watch(func(p settings.Prefs) { mygo.RunOnMain(func() { m.reload(p) }) }); err == nil {
 			mygo.App.OnQuit(stop)
 		}
+		keysPath := keymap.Path(m.s.Path())
+		keys, keysErr := keymap.Load(keysPath)
+		m.keys = keys
+		if stop, err := keymap.Watch(keysPath, func(km *keymap.Map, err error) { mygo.RunOnMain(func() { m.reloadKeys(km, err) }) }); err == nil {
+			mygo.App.OnQuit(stop)
+		}
 		wd, _ := os.Getwd()
 		m.ready = true
 		m.launch(append(m.pending, argPaths(os.Args[1:], wd)...))
@@ -245,6 +253,7 @@ func main() {
 			return
 		}
 		first := m.wins[0]
+		first.a.keysFailed(keys, keysErr)
 		m.setMenu(first.a)
 		if out := os.Getenv("MAYOI_SNAPSHOT"); out != "" {
 			// For checking the real window: capture it once it settles, and
@@ -441,6 +450,24 @@ func (m *mayoi) reload(p settings.Prefs) {
 	m.refreshMenu()
 }
 
+// reloadKeys applies the shortcuts of keybindings.json, which a person
+// saved as Mayoi runs: those of a file that does not parse stay.
+func (m *mayoi) reloadKeys(km *keymap.Map, err error) {
+	if len(m.wins) == 0 {
+		return
+	}
+	if err == nil {
+		m.keys = km
+		for _, w := range m.wins {
+			w.a.keys, w.a.chord, w.a.palette = km, nil, nil
+			w.a.invalidate()
+		}
+		m.refreshMenu()
+	}
+	front := m.wins[0]
+	front.do(func() { front.a.keysFailed(km, err) })
+}
+
 // refreshMenu builds the menus anew on the window in front, whose folder
 // the recent folders of the File menu leave out.
 func (m *mayoi) refreshMenu() {
@@ -519,6 +546,7 @@ func (m *mayoi) settle(wins []*desktop, done func()) {
 func (m *mayoi) openWindow(st *settings.Window) *desktop {
 	h := &desktop{m: m}
 	a := newApp(h, m.s, st)
+	a.keys = m.keys
 	h.a = a
 	key := "main"
 	if st.ID > 0 {

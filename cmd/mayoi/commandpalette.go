@@ -49,11 +49,18 @@ func (a *app) paletteEntries() []paletteEntry {
 			group = "Theme"
 		}
 		title := group + ": " + cmd.label
-		accel := cmd.accel
-		if accel == "" {
+		accel := a.menuAccel(cmd)
+		if accel == "" && cmd.accel == "" {
 			accel = viewKeys[cmd.id]
 		}
-		a.palette = append(a.palette, paletteEntry{id: cmd.id, title: title, group: len(group) + 2, caps: accelCaps(accel, runtime.GOOS == "darwin")})
+		caps := accelCaps(accel, runtime.GOOS == "darwin")
+		// The keys keybindings.json gives it, as a chord's strokes.
+		if keys := a.keys.Last(commandNames(cmd.id)...); len(keys) == 1 {
+			caps = accelCaps(keys[0].Accel(), runtime.GOOS == "darwin")
+		} else if keys != nil {
+			caps = chordCaps(keys)
+		}
+		a.palette = append(a.palette, paletteEntry{id: cmd.id, title: title, group: len(group) + 2, caps: caps})
 	}
 	slices.SortStableFunc(a.palette, func(x, y paletteEntry) int { return strings.Compare(x.title, y.title) })
 	return a.palette
@@ -209,7 +216,7 @@ func (a *app) quickCommands(c *ui.Context, query string) {
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconChevronRight).FontSize(15).TextColor(p.muted)
-					in := ui.TextInputBase(c.Key("quick-input"), &q.query).Grow(1).FontSize(14).AutoFocus().
+					in := a.textKeys(ui.TextInputBase(c.Key("quick-input"), &q.query)).Grow(1).FontSize(14).AutoFocus().
 						Placeholder("Run a command by name").Label("Command Palette")
 					if in.Shortcut(0, ui.KeyDown) {
 						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true

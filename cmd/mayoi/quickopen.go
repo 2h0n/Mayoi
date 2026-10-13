@@ -98,7 +98,7 @@ func (a *app) quickOpenView(c *ui.Context) {
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconSearch).FontSize(15).TextColor(p.muted)
-					in := ui.TextInputBase(c.Key("quick-input"), &q.query).Grow(1).FontSize(14).AutoFocus().
+					in := a.textKeys(ui.TextInputBase(c.Key("quick-input"), &q.query)).Grow(1).FontSize(14).AutoFocus().
 						Placeholder("Search files by name, > for commands, : for a line, @ for symbols").Label("Quick Open")
 					if in.Shortcut(0, ui.KeyDown) {
 						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true
@@ -341,7 +341,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconHash).FontSize(15).TextColor(p.muted)
-					in := ui.TextInputBase(c.Key("quick-input"), &q.query).Grow(1).FontSize(14).AutoFocus().
+					in := a.textKeys(ui.TextInputBase(c.Key("quick-input"), &q.query)).Grow(1).FontSize(14).AutoFocus().
 						Placeholder("Go to a symbol by name").Label("Go to Symbol")
 					if in.Shortcut(0, ui.KeyDown) {
 						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true

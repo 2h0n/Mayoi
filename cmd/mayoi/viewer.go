@@ -341,7 +341,8 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 	b := v.pane.Bounds(c)
 	v.paneW, v.paneH = b.W, b.H
 	pane := ui.Box(c.Key("viewer")).Bind(&v.pane).Fill().Background(p.editor).Clip().Focusable().FocusRing(false).
-		Label(label).HandleInput(func(ev ui.InputEvent) bool { return a.viewerInput(v, ev) })
+		Label(label)
+	a.takeKeys(pane, placeViewer, func(ev ui.InputEvent) bool { return a.viewerInput(v, ev) })
 	switch {
 	case v.grab:
 		pane.Cursor(ui.CursorGrabbing)

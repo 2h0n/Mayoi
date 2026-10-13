@@ -20,6 +20,13 @@ which the settings embed) and `main.go` applies them on the main thread, in ever
 stay as the app has them. Each frame, a window checks the code's font and the terminals' against the settings and
 measures them anew when they differ.
 
+**`internal/keymap`, `keymap.go`.** `keybindings.json` is read in VS Code's format, comments and all, and watched as the
+settings are. Every place that takes keys itself, the editor, the terminal (`OnKey`), the Explorer, diffs, pictures and
+text fields, asks the keymap first with `takeKeys`, as the key comes, so that a chord's next key never types. Where the
+keyboard is in none of them, the window registers the keys of the file as its shortcuts. A binding's command runs with
+the next frame, by Mayoi's id or VS Code's name, and `runCommands` steps through its commands one frame at a time, until
+the edits and Git commands before each are done.
+
 **`view.go`.** This is the layout. The sidebar, the columns and the panel keep stable keys as panes come and go, so
 editors never lose their state. Tabs are dragged as values within the window, and the drop targets a column offers only
 show during a drag.

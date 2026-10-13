@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"mayoi/internal/keymap"
 	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
@@ -76,6 +77,11 @@ func (a *app) startTerminal(dir string) *session {
 		Cursor:    terminal.CursorBar,
 		OnTitle: func(title string) {
 			a.post(func() { s.title = title })
+		},
+		// The shortcuts of keybindings.json, before the shell.
+		OnKey: func(mods ui.Modifiers, key ui.Key) bool {
+			a.keyTerm = s
+			return a.keyStroke(keymap.Stroke{Mods: mods, Key: key}, placeTerminal)
 		},
 		OnExit: func(int) {
 			a.post(func() { a.removeTerminal(s) })

@@ -41,6 +41,14 @@ func (a *app) view(c *ui.Context) {
 		a.start()
 	}
 	a.drain()
+	a.pumpChain()
+	// The key the keymap took is let go of where its release does not
+	// come: in a place with no text, or another window.
+	if a.held != nil && (a.blurred || a.keyFocus != placeEditor && a.keyFocus != placeInput) {
+		a.held = nil
+	}
+	// The places that take the keys say so as they are built.
+	a.keyFocus = placeNone
 	a.pal = a.applyTheme(c)
 	a.themeTerminals()
 	a.fontTerminals()
@@ -126,6 +134,7 @@ func (a *app) view(c *ui.Context) {
 		a.dialog = ""
 	}
 	a.dialogBuilt = false
+	a.windowKeys(c)
 	for _, msg := range a.errors {
 		c.Toast(msg)
 	}
@@ -728,6 +737,9 @@ func (a *app) statusBar(c *ui.Context) {
 				}
 				text(busy)
 			})
+		}
+		if len(a.chord) > 0 {
+			item("chord", "("+strings.Join(chordCaps(a.chord), " ")+") was pressed. Waiting for the next key…", "", iconKeyboard, nil)
 		}
 		if a.root != "" {
 			item("folder", filepath.Base(a.root), "Reveal "+shortenHome(a.root)+" in Finder", iconFolder, func() { a.host.reveal(a.root) })
