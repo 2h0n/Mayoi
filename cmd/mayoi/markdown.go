@@ -2,7 +2,9 @@ package main
 
 import (
 	"html"
+	"maps"
 	"net/url"
+	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -12,6 +14,7 @@ import (
 
 	"mayoi/internal/highlight"
 
+	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/egoist/mygo/ui"
 	"github.com/yuin/goldmark/ast"
@@ -25,6 +28,7 @@ import (
 // markdownPreview keeps parsed blocks and the pane's place between edits.
 type markdownPreview struct {
 	blocks     []markdownBlock
+	images     map[markdownImageKey]markdownInline
 	list       ui.ListState
 	scroll     ui.ScrollState
 	observed   uint64
@@ -37,14 +41,34 @@ type markdownPreview struct {
 type markdownInline struct {
 	text, link, image               string
 	bold, italic, strike, code, raw bool
-	bitmap                          *ui.Bitmap
-	w, h                            int
+	bitmap                          ui.ImageSource
+	w, h                            float32
 	kind                            highlight.Kind
+}
+
+type markdownKind uint8
+
+const (
+	markdownParagraph markdownKind = iota
+	markdownHeading
+	markdownRule
+	markdownCodeBlock
+	markdownHTML
+	markdownImageBlock
+	markdownTable
+	markdownTableHeader
+)
+
+type markdownImageKey struct {
+	path  string
+	mtime time.Time
+	size  int64
 }
 
 // markdownBlock is a paragraph-sized row, including its enclosing lists and quotes.
 type markdownBlock struct {
-	kind                 string
+	kind                 markdownKind
+	offset, markerWidth  float32
 	tight                bool
 	level, indent, quote int
 	marker, language     string
@@ -89,7 +113,30 @@ func markdownParser() parser.Parser {
 }
 
 // parseMarkdown converts the AST once, away from the UI thread.
-func parseMarkdown(source []byte, path string, current func() bool) []markdownBlock {
+func parseMarkdown(source []byte, path string, current func() bool, caches ...map[markdownImageKey]markdownInline) []markdownBlock {
+	cache := map[markdownImageKey]markdownInline{}
+	if len(caches) > 0 && caches[0] != nil {
+		cache = caches[0]
+	}
+	used := map[markdownImageKey]bool{}
+	defer func() {
+		for k := range cache {
+			if !used[k] {
+				delete(cache, k)
+			}
+		}
+	}()
+	// Front matter is recognized only at the start, with exact delimiter lines.
+	if lines := strings.SplitAfter(string(source), "\n"); strings.TrimSuffix(strings.TrimSuffix(lines[0], "\n"), "\r") == "---" {
+		for i := 1; i < len(lines); i++ {
+			line := strings.TrimSuffix(strings.TrimSuffix(lines[i], "\n"), "\r")
+			if line == "---" || line == "..." {
+				source = []byte(strings.Join(lines[i+1:], ""))
+				break
+			}
+		}
+	}
+
 	root := markdownParser().Parse(text.NewReader(source))
 	var blocks []markdownBlock
 	var inline func(ast.Node, markdownInline) []markdownInline
@@ -136,11 +183,46 @@ func parseMarkdown(source []byte, path string, current func() bool) []markdownBl
 				s.text = string(x.Text(source))
 				s.image = string(x.Destination)
 				if local := markdownPath(path, s.image); local != "" && (current == nil || current()) {
-					s.bitmap, s.w, s.h, _, _ = decodeImage(local)
+					if info, err := os.Stat(local); err == nil && info.Mode().IsRegular() {
+						key := markdownImageKey{local, info.ModTime(), info.Size()}
+						used[key] = true
+						image, ok := cache[key]
+						if !ok {
+							if strings.EqualFold(filepath.Ext(local), ".svg") {
+								if data, err := readImage(local); err == nil {
+									if svg, err := ui.ParseSVG(data); err == nil {
+										image.bitmap = svg
+										image.w, image.h = svg.Size()
+										if image.w <= 0 || image.h <= 0 {
+											image.bitmap = nil
+										}
+									}
+								}
+							} else {
+								bm, w, h, _, _ := decodeImage(local)
+								image.bitmap, image.w, image.h = bm, float32(w), float32(h)
+								if bm == nil {
+									image.bitmap = nil
+								}
+							}
+							cache[key] = image
+						}
+						s.bitmap, s.w, s.h = image.bitmap, image.w, image.h
+					}
 				}
+				if s.text == "" {
+					s.text = filepath.Base(s.image)
+					if s.text == "." || s.text == "" {
+						s.text = "image"
+					}
+				}
+				s.raw = s.bitmap == nil
 			case *ast.RawHTML:
 				s.raw = true
-				s.text = string(x.Segments.Value(source))
+				s.text = markdownHTMLText(string(x.Segments.Value(source)))
+				if tag := strings.ToLower(strings.TrimSpace(s.text)); tag == "<br>" || tag == "<br/>" || tag == "<br />" {
+					s.text, s.raw = "\n", false
+				}
 			case *east.TaskCheckBox:
 				s.text = "☐ "
 				if x.IsChecked {
@@ -154,62 +236,76 @@ func parseMarkdown(source []byte, path string, current func() bool) []markdownBl
 		}
 		return out
 	}
-	var walk func(ast.Node, int, int, string, bool)
-	walk = func(n ast.Node, indent, quote int, marker string, tight bool) {
-		b := markdownBlock{indent: indent, quote: quote, marker: marker, tight: tight}
+	var walk func(ast.Node, int, int, string, bool, float32, float32)
+	walk = func(n ast.Node, indent, quote int, marker string, tight bool, offset, markerWidth float32) {
+		b := markdownBlock{indent: indent, quote: quote, marker: marker, tight: tight, offset: offset, markerWidth: markerWidth}
 		switch x := n.(type) {
 		case *ast.Heading:
-			b.kind, b.level = "heading", x.Level
+			b.kind, b.level = markdownHeading, x.Level
 			b.runs = inline(n, markdownInline{bold: true})
 		case *ast.Paragraph, *ast.TextBlock:
-			b.kind = "paragraph"
+			b.kind = markdownParagraph
 			b.runs = inline(n, markdownInline{})
-			for _, r := range b.runs {
-				if strings.HasPrefix(r.text, "☐") || strings.HasPrefix(r.text, "☑") {
-					b.marker = ""
-					break
-				}
+			if _, task := n.FirstChild().(*east.TaskCheckBox); task && marker != "" {
+				b.marker = strings.TrimSpace(b.runs[0].text)
+				b.runs = b.runs[1:]
 			}
+
 		case *ast.ThematicBreak:
-			b.kind = "rule"
+			b.kind = markdownRule
 		case *ast.FencedCodeBlock:
-			b.kind, b.language = "code", string(x.Language(source))
+			b.kind, b.language = markdownCodeBlock, string(x.Language(source))
 			b.runs = markdownCode(string(x.Lines().Value(source)), b.language)
 		case *ast.CodeBlock:
-			b.kind = "code"
+			b.kind = markdownCodeBlock
 			b.runs = markdownCode(string(x.Lines().Value(source)), "")
 		case *ast.HTMLBlock:
 			raw := string(x.Lines().Value(source))
 			if x.HasClosure() {
 				raw += string(x.ClosureLine.Value(source))
 			}
-			b.kind = "html"
+			b.kind = markdownHTML
+			raw = markdownHTMLText(raw)
+			if strings.TrimSpace(raw) == "" {
+				return
+			}
 			b.runs = []markdownInline{{text: raw, raw: true}}
 		case *ast.Blockquote:
 			for ch := n.FirstChild(); ch != nil; ch = ch.NextSibling() {
-				walk(ch, indent, quote+1, marker, tight)
+				walk(ch, indent, quote+1, marker, tight, offset, markerWidth)
+				if marker != "" {
+					offset += markerWidth + 0.5
+					markerWidth = 0
+				}
 				marker = ""
 			}
 			return
 		case *ast.List:
 			i := x.Start
+			width := float32(1.5)
+			if x.IsOrdered() {
+				width = max(width, float32(len(strconv.Itoa(x.Start+x.ChildCount()-1))+1)*0.65)
+			}
+			if marker != "" {
+				offset += markerWidth + 0.5
+			}
 			for ch := n.FirstChild(); ch != nil; ch = ch.NextSibling() {
 				m := "•"
 				if x.IsOrdered() {
 					m = strconv.Itoa(i) + "."
 					i++
 				}
-				walk(ch, indent+1, quote, m, x.IsTight)
+				walk(ch, indent+1, quote, m, x.IsTight, offset, width)
 			}
 			return
 		case *east.Table:
 			for row := n.FirstChild(); row != nil; row = row.NextSibling() {
 				rb := b
-				rb.kind = "table"
+				rb.kind = markdownTable
 				rb.aligns = x.Alignments
 				_, head := row.(*east.TableHeader)
 				if head {
-					rb.kind = "tableHeader"
+					rb.kind = markdownTableHeader
 				}
 				for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
 					rb.cells = append(rb.cells, inline(cell, markdownInline{bold: head}))
@@ -219,26 +315,38 @@ func parseMarkdown(source []byte, path string, current func() bool) []markdownBl
 			return
 		default:
 			for ch := n.FirstChild(); ch != nil; ch = ch.NextSibling() {
-				walk(ch, indent, quote, marker, tight)
+				walk(ch, indent, quote, marker, tight, offset, markerWidth)
+				if marker != "" {
+					offset += markerWidth + 0.5
+					markerWidth = 0
+				}
 				marker = ""
 			}
 			return
 		}
-		// Images get their own rows so that paragraphs retain native text wrapping.
-		if b.kind == "paragraph" || b.kind == "heading" {
+		// Decoded images get their own rows so that paragraphs retain native text wrapping.
+		if b.kind == markdownParagraph || b.kind == markdownHeading {
 			runs := b.runs
 			b.runs = nil
 			for _, r := range runs {
-				if r.image != "" {
+				if r.bitmap != nil {
 					if markdownHasText(b.runs) {
 						blocks = append(blocks, b)
 						b.runs = nil
+						if b.marker != "" {
+							b.offset += b.markerWidth + 0.5
+						}
+						b.markerWidth = 0
 						b.marker = ""
 					}
 					ib := b
-					ib.kind = "image"
+					ib.kind = markdownImageBlock
 					ib.runs = []markdownInline{r}
 					blocks = append(blocks, ib)
+					if b.marker != "" {
+						b.offset += b.markerWidth + 0.5
+					}
+					b.markerWidth = 0
 					b.marker = ""
 				} else {
 					b.runs = append(b.runs, r)
@@ -250,8 +358,23 @@ func parseMarkdown(source []byte, path string, current func() bool) []markdownBl
 		}
 		blocks = append(blocks, b)
 	}
-	walk(root, 0, 0, "", false)
+	walk(root, 0, 0, "", false, 0, 0)
 	return blocks
+}
+
+// HTML comments may span lines; other HTML remains literal.
+func markdownHTMLText(s string) string {
+	for {
+		start := strings.Index(s, "<!--")
+		if start < 0 {
+			return s
+		}
+		end := strings.Index(s[start+4:], "-->")
+		if end < 0 {
+			return s[:start]
+		}
+		s = s[:start] + s[start+4+end+3:]
+	}
 }
 
 // Soft breaks between standalone images must not become empty paragraph rows.
@@ -268,7 +391,11 @@ func markdownCode(code, language string) []markdownInline {
 	var out []markdownInline
 	var lines []highlight.Line
 	if language != "" {
-		lines = highlight.Lex(lexers.Get(language), strings.TrimSuffix(code, "\n"))
+		lexer := lexers.Get(language)
+		if lexer != nil {
+			lexer = chroma.Coalesce(lexer)
+		}
+		lines = highlight.Lex(lexer, strings.TrimSuffix(code, "\n"))
 	} else {
 		return []markdownInline{{text: strings.TrimSuffix(code, "\n"), code: true}}
 	}
@@ -293,8 +420,10 @@ func markdownCode(code, language string) []markdownInline {
 
 // followMarkdown debounces edits and drops results superseded or closed while parsing.
 func (a *app) followMarkdown(v *viewer) {
-	d, m := v.svg, v.markdown
+	d, m := v.doc, v.markdown
 	ver := d.buf.Version()
+	// Idle keeps the loaded version; debouncing keeps its timer; running keeps one
+	// worker; running+dirty advances the generation and schedules after that worker.
 	if (m.pending || v.loaded && v.version == ver) && m.observed == ver && m.path == d.path {
 		return
 	}
@@ -317,10 +446,16 @@ func (a *app) followMarkdown(v *viewer) {
 		v.wait = nil
 		m.running = true
 		source, path := []byte(d.buf.String()), d.path
+		// Give the worker its own cache snapshot; publish it on the UI thread.
+		images := maps.Clone(m.images)
+		if images == nil {
+			images = map[markdownImageKey]markdownInline{}
+		}
 		go func() {
-			blocks := parseMarkdown(source, path, func() bool { return m.generation.Load() == generation })
+			blocks := parseMarkdown(source, path, func() bool { return m.generation.Load() == generation }, images)
 			a.post(func() {
 				m.running, m.pending = false, false
+				m.images = images
 				if v.loading != loading || !slices.Contains(a.docs, d) {
 					return
 				}
@@ -351,7 +486,7 @@ func (a *app) markdownSpan(r markdownInline, color ui.Color, blockCode bool) ui.
 	if r.bold {
 		span.Weight = 700
 	}
-	if r.raw {
+	if r.raw || r.image != "" && r.bitmap == nil {
 		span.Color = p.muted
 	}
 	if r.code {
@@ -364,7 +499,7 @@ func (a *app) markdownSpan(r markdownInline, color ui.Color, blockCode bool) ui.
 			span.Text = "\u2009" + span.Text + "\u2009"
 		}
 	}
-	if r.link != "" {
+	if r.link != "" && r.image == "" {
 		span.Color = p.accent
 	}
 	if r.strike {
@@ -375,7 +510,7 @@ func (a *app) markdownSpan(r markdownInline, color ui.Color, blockCode bool) ui.
 
 func (a *app) markdownSize(b markdownBlock) float32 {
 	size := a.settings.FontSize
-	if b.kind == "heading" {
+	if b.kind == markdownHeading {
 		size *= []float32{1.6, 1.35, 1.15, 1, 1, 1}[b.level-1]
 	}
 	return size
@@ -384,10 +519,10 @@ func (a *app) markdownSize(b markdownBlock) float32 {
 func (a *app) markdownSpacing(b markdownBlock) (top, bottom float32) {
 	gap := a.settings.FontSize * a.settings.LineHeight * 0.75
 	bottom = gap
-	if b.tight || b.kind == "table" || b.kind == "tableHeader" {
+	if b.tight || b.kind == markdownTable || b.kind == markdownTableHeader {
 		bottom = 0
 	}
-	if b.kind == "heading" {
+	if b.kind == markdownHeading {
 		top, bottom = gap, gap*0.5
 	}
 	return
@@ -437,15 +572,12 @@ func (a *app) markdownLink(c *ui.Context, dest, path string, image bool) ui.Elem
 	return e.OnClick(func() { a.openFile(local, true) })
 }
 
-func (a *app) markdownImage(c *ui.Context, r markdownInline, size, width float32, path string) {
+func (a *app) markdownImage(c *ui.Context, r markdownInline, width float32, path string) {
 	draw := func() {
-		if r.bitmap != nil {
-			w := min(float32(r.w), max(1, width))
-			ui.Image(c, r.bitmap).Width(w).Height(w * float32(r.h) / float32(r.w)).Fit(ui.Contain)
-		} else {
-			a.markdownText(c, []markdownInline{{text: "[Image: " + r.text + "]"}}, size, true, path, false)
-		}
+		w := min(r.w, max(1, width))
+		ui.Image(c, r.bitmap).Width(w).Height(w * r.h / r.w).Fit(ui.Contain)
 	}
+
 	if e := a.markdownLink(c, r.link, path, true); e.Valid() {
 		e.Children(draw)
 	} else {
@@ -466,41 +598,55 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label("Preview "+name).Padding(editorPadY, textPadR).Rows(func(row ui.ListRow) {
 		c := row.Context
 		b := m.blocks[row.Index]
-		ui.Row(c).WidthPercent(100).Justify(ui.Center).Children(func() {
-			ui.Row(c).WidthPercent(100).MaxWidth(width).AlignItems(ui.Start).Padding(0, 0, 0, float32(max(0, b.indent-1))*size*1.5).Gap(size * 0.5).Children(func() {
+		top, bottom := a.markdownSpacing(b)
+		if (b.tight && (row.Index+1 == len(m.blocks) || !m.blocks[row.Index+1].tight)) || (b.kind == markdownTable && (row.Index+1 == len(m.blocks) || m.blocks[row.Index+1].kind != markdownTable)) {
+			bottom = size * a.settings.LineHeight * 0.75
+		}
+		outside := float32(0)
+		if b.quote > 0 && (row.Index+1 == len(m.blocks) || m.blocks[row.Index+1].quote < b.quote) {
+			outside, bottom = max(bottom, size*a.settings.LineHeight*0.75), 0
+		}
+		ui.Row(c).WidthPercent(100).Justify(ui.Center).Margin(0, 0, outside, 0).Children(func() {
+			ui.Row(c).WidthPercent(100).MaxWidth(width).AlignItems(ui.Start).Padding(0, 0, 0, b.offset*size).Gap(size * 0.5).Children(func() {
 				for range b.quote {
 					ui.Box(c).Width(3).AlignSelf(ui.Stretch).Background(p.guideNow)
 				}
 				if b.marker != "" {
 					if b.marker == "•" {
-						ui.Box(c).Width(size * 1.5).Height(size * a.settings.LineHeight).Children(func() {
+						ui.Box(c).Width(size * b.markerWidth).Height(size * a.settings.LineHeight).Children(func() {
 							ui.Box(c).Width(size*0.35).Height(size*0.35).Radius(size*0.175).Background(p.text).Margin((size*a.settings.LineHeight-size*0.35)/2, 0)
 						})
 					} else {
-						ui.Text(c, b.marker).Width(size * 1.5).TextColor(p.text).FontSize(size).LineHeight(a.settings.LineHeight)
+						ui.Text(c, b.marker).Width(size * b.markerWidth).TextColor(p.text).FontSize(size).LineHeight(a.settings.LineHeight)
 					}
-				}
-				top, bottom := a.markdownSpacing(b)
-				if (b.tight && (row.Index+1 == len(m.blocks) || !m.blocks[row.Index+1].tight)) || (b.kind == "table" && (row.Index+1 == len(m.blocks) || m.blocks[row.Index+1].kind != "table")) {
-					bottom = size * a.settings.LineHeight * 0.75
 				}
 
 				ui.Column(c).Grow(1).MinWidth(0).Padding(top, 0, bottom, 0).Children(func() {
 					switch b.kind {
-					case "rule":
+					case markdownRule:
 						ui.Box(c).Height(1).WidthPercent(100).Background(p.border).Margin(size*a.settings.LineHeight*0.375, 0)
-					case "image":
-						imageWidth := max(1, min(width, v.pane.Bounds(c).W-2*textPadR)-float32(b.indent)*size*1.5-float32(b.quote)*size)
-						a.markdownImage(c, b.runs[0], size, imageWidth, v.svg.path)
-					case "code", "html":
+					case markdownImageBlock:
+						imageWidth := max(1, min(width, v.pane.Bounds(c).W-2*textPadR)-(b.offset+b.markerWidth)*size-float32(b.quote)*size)
+						a.markdownImage(c, b.runs[0], imageWidth, v.doc.path)
+					case markdownCodeBlock, markdownHTML:
 						ui.Column(c).WidthPercent(100).Padding(size*0.5, size*0.75).Background(p.chrome).Radius(6).Children(func() {
-							a.markdownText(c, b.runs, size, b.kind == "html", v.svg.path, true)
+							a.markdownText(c, b.runs, size, b.kind == markdownHTML, v.doc.path, true)
 						})
-					case "table", "tableHeader":
+					case markdownTable, markdownTableHeader:
 						ui.Row(c).WidthPercent(100).Children(func() {
 							for i, cell := range b.cells {
-								cellBox := ui.Column(c).WidthPercent(100/float32(len(b.cells))).Padding(size*0.35, size*0.5).Border(1, p.border)
-								if b.kind == "tableHeader" {
+								cellBox := ui.Column(c).WidthPercent(100/float32(len(b.cells))).Padding(size*0.35, size*0.5).Border(1, p.border).BorderWidth(0, 1, 1, 0)
+								if i == 0 {
+									cellBox.BorderWidth(0, 1, 1, 1)
+								}
+								if b.kind == markdownTableHeader {
+									if i == 0 {
+										cellBox.BorderWidth(1)
+									} else {
+										cellBox.BorderWidth(1, 1, 1, 0)
+									}
+								}
+								if b.kind == markdownTableHeader {
 									cellBox.Background(p.chrome)
 								}
 								cellBox.Children(func() {
@@ -516,14 +662,14 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 									ui.Column(c).TextAlign(align).WidthPercent(100).Children(func() {
 										for len(cell) > 0 {
 											n := 0
-											for n < len(cell) && cell[n].image == "" {
+											for n < len(cell) && cell[n].bitmap == nil {
 												n++
 											}
 											if n > 0 {
-												a.markdownText(c, cell[:n], size, false, v.svg.path, false)
+												a.markdownText(c, cell[:n], size, false, v.doc.path, false)
 											}
 											if n < len(cell) {
-												a.markdownImage(c, cell[n], size, width/float32(len(b.cells))-size, v.svg.path)
+												a.markdownImage(c, cell[n], width/float32(len(b.cells))-size, v.doc.path)
 												n++
 											}
 											cell = cell[n:]
@@ -533,7 +679,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							}
 						})
 					default:
-						a.markdownText(c, b.runs, a.markdownSize(b), b.kind == "heading" && b.level == 6, v.svg.path, false)
+						a.markdownText(c, b.runs, a.markdownSize(b), b.kind == markdownHeading && b.level == 6, v.doc.path, false)
 					}
 				})
 			})

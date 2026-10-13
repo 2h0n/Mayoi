@@ -15,7 +15,8 @@ needs a `## <version>` section here, or its build fails.
   Finder** and **Indent Using Tabs** or **Spaces**.
 - **⇧⌘V**, or the button at the end of the breadcrumbs, previews a
   Markdown file as well as an SVG: headings, lists and task lists, quotes,
-  code highlighted as in the editor, tables, local images and links, in
+  code highlighted as in the editor, tables, cached local bitmap and SVG
+  images, inline badges and links, with comments and front matter hidden, in
   the editor's fonts and colors. It follows your edits, and with the same
   file in another column shows its source beside it.
 

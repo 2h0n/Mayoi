@@ -5,7 +5,9 @@ import (
 	"image/png"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -13,7 +15,16 @@ import (
 	east "github.com/yuin/goldmark/extension/ast"
 )
 
-const markdownFixture = `# Markdown preview
+const markdownFixture = `---
+title: hidden front matter
+---
+# Markdown preview
+
+[![CI](https://example.com/ci.svg)](https://example.com) [![npm](https://example.com/npm.svg)](https://example.org)
+<!-- hidden block
+comment -->
+Inline <!-- hidden inline -->comment<br>hard break.<br/>Again<br />Done.
+![SVG logo](logo.svg)
 
 A paragraph with **bold**, *italic*, ***both***, ~~deleted~~, ` + "`inline code`" + ` and [a link](https://example.com). Visit https://example.com.
 Soft
@@ -28,6 +39,24 @@ break. <em>HTML stays text</em>
   - Nested compact bullet
     1. Nested compact number
 - Next compact item
+
+  Continuation paragraph.
+
+  ~~~go
+  println("continuation code")
+  ~~~
+
+1. One
+2. Two
+3. Three
+4. Four
+5. Five
+6. Six
+7. Seven
+8. Eight
+9. Nine
+10. Ten
+11. Eleven
 
 1. Loose first item
 
@@ -66,18 +95,18 @@ break. <em>HTML stays text</em>
 func TestMarkdownBlocks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "docs", "readme.md")
 	blocks := parseMarkdown([]byte(markdownFixture), path, nil)
-	kinds := map[string]int{}
+	kinds := map[markdownKind]int{}
 	levels := map[int]bool{}
 	var bold, italic, both, strike, code, link, nested, task, quote, language, table, image, raw bool
 	for _, b := range blocks {
 		kinds[b.kind]++
-		if b.kind == "heading" {
+		if b.kind == markdownHeading {
 			levels[b.level] = true
 		}
 		nested = nested || b.indent >= 3
 		quote = quote || b.quote == 2
 		language = language || b.language == "go"
-		if b.kind == "tableHeader" {
+		if b.kind == markdownTableHeader {
 			table = len(b.aligns) == 3 && b.aligns[0] == east.AlignLeft && b.aligns[1] == east.AlignCenter && b.aligns[2] == east.AlignRight && b.cells[0][0].bold
 		}
 		for _, r := range b.runs {
@@ -87,13 +116,35 @@ func TestMarkdownBlocks(t *testing.T) {
 			strike = strike || r.strike
 			code = code || r.code
 			link = link || r.link == "https://example.com"
-			task = task || strings.Contains(r.text, "☑")
+			task = task || b.marker == "☑" || strings.Contains(r.text, "☑")
 			raw = raw || r.raw
 			image = image || (r.image == "art.png" && markdownPath(path, r.image) == filepath.Join(filepath.Dir(path), "art.png"))
 		}
 	}
-	if len(levels) != 6 || !bold || !italic || !both || !strike || !code || !link || !nested || !task || !quote || !language || !table || !image || !raw || kinds["rule"] != 1 {
+	if len(levels) != 6 || !bold || !italic || !both || !strike || !code || !link || !nested || !task || !quote || !language || !table || !image || !raw || kinds[markdownRule] != 1 {
 		t.Fatalf("conversion: levels %v, styles %v %v %v %v %v, link %v nested %v task %v quote %v language %v table %v image %v raw %v kinds %v", levels, bold, italic, both, strike, code, link, nested, task, quote, language, table, image, raw, kinds)
+	}
+	for _, ending := range []string{"---", "..."} {
+		bs := parseMarkdown([]byte("---\ntitle: hidden\n"+ending+"\nVisible <!-- hidden\ncomment -->text<br>next<br/>last<br />end"), path, nil)
+		if len(bs) != 1 || markdownRunsText(bs[0].runs) != "Visible text\nnext\nlast\nend" {
+			t.Fatalf("front matter/comments/br: %+v", bs)
+		}
+	}
+	badges := parseMarkdown([]byte("[![CI](https://example.com/ci)](https://example.com) [![npm](missing)](https://example.org)"), path, nil)
+	if len(badges) != 1 || badges[0].kind != markdownParagraph || badges[0].runs[0].link == "" || !badges[0].runs[0].raw {
+		t.Fatal("badges not inline muted links")
+	}
+	bs := parseMarkdown([]byte("99. first\n\n    continuation\n\n    ~~~\n    code\n    ~~~\n\n    > quote\n\n    - nested\n\n100. second\n\n- literal ☑ text\n- [x] task"), path, nil)
+	if bs[0].markerWidth < 2.5 || bs[0].marker != "99." {
+		t.Fatalf("ordered width: %+v", bs)
+	}
+	for _, b := range bs[1:5] {
+		if b.offset != bs[0].markerWidth+0.5 {
+			t.Fatalf("continuation indent: %+v", bs)
+		}
+	}
+	if bs[len(bs)-2].marker != "•" || bs[len(bs)-1].marker != "☑" {
+		t.Fatal("task checkbox detection")
 	}
 	if markdownPath(path, "https://example.com/a.png") != "" || markdownPath(path, "//example.com/a.png") != "" || markdownPath(path, "/tmp/a%20b.png") != "/tmp/a b.png" {
 		t.Fatal("destination resolution")
@@ -114,6 +165,9 @@ func TestMarkdownPreview(t *testing.T) {
 	}
 	hs.until("Markdown preview", func() bool { return d.preview != nil && d.preview.loaded })
 	hs.settle()
+	if !hs.tt.HasText("Preview") {
+		t.Fatal("missing preview status")
+	}
 	if !hs.tt.HasText("Mayoi") {
 		t.Fatal("heading not shown")
 	}
@@ -221,9 +275,10 @@ func TestShotMarkdown(t *testing.T) {
 		hs := newHarness(t, theme.dark)
 		hs.a.settings.Theme = theme.theme
 		// A taller headless viewport includes every supported element in one image.
-		hs.tt = ui.NewTester(hs.a.view, 1200, 1800)
+		hs.tt = ui.NewTester(hs.a.view, 1200, 2200)
 		hs.tt.SetDark(theme.dark)
 		writePNG(t, hs.path("art.png"), 160, 60)
+		os.WriteFile(hs.path("logo.svg"), []byte(testSVG), 0o644)
 		os.WriteFile(hs.path("sample.md"), []byte(markdownFixture), 0o644)
 		hs.a.openFile(hs.path("sample.md"), true)
 		hs.a.run("view.togglePreview")
@@ -267,6 +322,25 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 	path := filepath.Join(dir, "readme.md")
 	art := filepath.Join(dir, "art.png")
 	writePNG(t, art, 80, 40)
+	os.WriteFile(filepath.Join(dir, "logo.svg"), []byte(testSVG), 0o644)
+	cache := map[markdownImageKey]markdownInline{}
+	imageSource := []byte("![art](art.png) ![logo](logo.svg)")
+	first := parseMarkdown(imageSource, path, nil, cache)
+	second := parseMarkdown(imageSource, path, nil, cache)
+	if len(first) != 2 || first[0].runs[0].bitmap != second[0].runs[0].bitmap || first[1].runs[0].w != 64 || first[1].runs[0].h != 32 {
+		t.Fatal("image cache or SVG")
+	}
+	// A reused pointer proves a second bitmap was not decoded.
+	future := time.Now().Add(time.Second)
+	os.Chtimes(art, future, future)
+	third := parseMarkdown(imageSource, path, nil, cache)
+	if third[0].runs[0].bitmap == first[0].runs[0].bitmap || len(cache) != 2 {
+		t.Fatal("mtime did not invalidate/prune cache")
+	}
+	parseMarkdown([]byte("no images"), path, nil, cache)
+	if len(cache) != 0 {
+		t.Fatal("unused images retained")
+	}
 	src := "[![Relative](art.png)](../main.go)\n\n![Absolute](" + art + ")\n\n[Open local](../main.go#text)\n\n[![Remote](https://example.com/art.png)](https://example.com)\n\n![Missing](missing.png)\n\n| Picture |\n| --- |\n| [![Cell](art.png)](../main.go) |\n| [![Cell remote](https://example.com/art.png)](https://example.org) |\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
@@ -274,10 +348,10 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 	blocks := parseMarkdown([]byte(src), path, nil)
 	images := 0
 	for _, b := range blocks {
-		if b.kind == "table" && b.cells[0][0].text == "Cell" && b.cells[0][0].bitmap == nil {
+		if b.kind == markdownTable && b.cells[0][0].text == "Cell" && b.cells[0][0].bitmap == nil {
 			t.Fatal("table image not decoded")
 		}
-		if b.kind != "image" {
+		if b.kind != markdownImageBlock {
 			continue
 		}
 		r := b.runs[0]
@@ -297,7 +371,7 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 			}
 		}
 	}
-	if images != 4 {
+	if images != 2 {
 		t.Fatalf("%d images", images)
 	}
 	hs.a.openFile(path, true)
@@ -320,7 +394,7 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 	if len(hs.tt.OpenedURLs()) != 1 {
 		t.Fatal("linked remote image did not open browser")
 	}
-	if !hs.tt.HasText("[Image: Cell remote]") {
+	if !hs.tt.HasText("Cell remote") {
 		t.Fatal("missing table image placeholder")
 	}
 	r, ok = hs.tt.Find("Open link ../main.go#text")
@@ -346,6 +420,36 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 func TestMarkdownDebounceAndClosedResult(t *testing.T) {
 	hs := newHarness(t, true)
 	a := hs.a
+	fifo := hs.path("fifo")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{fifo, "/dev/zero"} {
+		done := make(chan error, 1)
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		go func() { _, _, _, _, err := decodeImage(path); done <- err }()
+		select {
+		case err := <-done:
+			if err == nil {
+				t.Fatal("special file accepted")
+			}
+		case <-time.After(time.Second):
+			t.Fatal("special file blocked")
+		}
+		runtime.ReadMemStats(&after)
+		if after.TotalAlloc-before.TotalAlloc > 1<<20 {
+			t.Fatal("special file allocated too much")
+		}
+	}
+	os.WriteFile(hs.path("README.md"), []byte("![fifo]("+fifo+") ![zero](/dev/zero)"), 0o644)
+	a.openFile(hs.path("README.md"), true)
+	a.run("view.togglePreview")
+	hs.until("special-file preview", func() bool { return a.activeEditor().preview.loaded })
+	ed := a.activeEditor()
+	ed.edit(ed.sel, textEdit{0, ed.buf.Len(), "Updated after special files"})
+	hs.until("special-file edit", func() bool { return ed.preview.version == ed.buf.Version() })
+	a.setPreview(ed, false)
 	a.openFile(hs.path("README.md"), true)
 	a.run("view.togglePreview")
 	d := a.activeEditor()
@@ -444,7 +548,7 @@ func TestMarkdownFontAndZoom(t *testing.T) {
 		if bytes.Equal(before, tt.Image().Pix) {
 			t.Fatal("hover underline did not change link rendering")
 		}
-		if a.markdownSize(markdownBlock{kind: "paragraph"}) != size || a.markdownSize(markdownBlock{kind: "heading", level: 1}) != size*1.6 {
+		if a.markdownSize(markdownBlock{kind: markdownParagraph}) != size || a.markdownSize(markdownBlock{kind: markdownHeading, level: 1}) != size*1.6 {
 			t.Fatal("preview font does not follow settings")
 		}
 	}
@@ -490,11 +594,11 @@ func TestMarkdownListSpacing(t *testing.T) {
 
 func TestMarkdownImageSpacing(t *testing.T) {
 	blocks := parseMarkdown([]byte("![remote](https://example.com/a.png)\n![missing](missing.png)\n![missing too](missing2.png)\n"), "test.md", nil)
-	if len(blocks) != 3 {
+	if len(blocks) != 1 {
 		t.Fatalf("images gained empty paragraphs: %+v", blocks)
 	}
 	for _, b := range blocks {
-		if b.kind != "image" {
+		if b.kind != markdownParagraph {
 			t.Fatalf("unexpected image separator: %+v", b)
 		}
 	}
