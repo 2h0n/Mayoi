@@ -5,6 +5,14 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Better on Windows and Linux: the menus' shortcuts work there, with VS
+  Code's keys where Ctrl for ⌘ would collide or be AltGr (F3 and
+  Shift+F3 find the next and previous match, Ctrl+H replaces, Alt+1 to
+  Alt+9 show a tab), the terminal leaves the shell its Ctrl keys but the
+  workbench's, vim's normal mode leaves ⌃F, ⌃B and ⌃R to Find, the
+  sidebar and Open Recent unless `vimCtrlKeys` is on, tooltips and hints
+  show Ctrl+… rather than ⌘, and the menus name File Explorer and the
+  Recycle Bin.
 - Keyboard shortcuts of your own: **File → Open Keyboard Shortcuts** opens
   `keybindings.json`, in VS Code's format, so those of VS Code or Cursor
   can be pasted in. It takes chords, as `ctrl+. g c`, the names of VS

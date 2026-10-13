@@ -541,5 +541,5 @@ func (a *app) viewerStatus(c *ui.Context, v *viewer, item func(key, label, tip s
 	if v.size > 0 {
 		item("size", sizeText(v.size), "", nil, nil)
 	}
-	item("zoom", v.zoomPercent(), "Fit to the View (⌘0)", nil, func() { v.zoomBy(0) })
+	item("zoom", v.zoomPercent(), a.withKey("Fit to the View", "view.zoomReset"), nil, func() { v.zoomBy(0) })
 }

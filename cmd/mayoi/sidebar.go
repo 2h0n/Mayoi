@@ -23,9 +23,9 @@ func (a *app) sidebar(c *ui.Context) {
 	sb.Children(func() {
 		ui.Row(c).Height(34).Padding(0, 6, 0, 8).Gap(2).AlignItems(ui.Center).Children(func() {
 			if a.root != "" {
-				a.sidebarSwitch(c, iconFiles, "Explorer (⇧⌘E)", !scm && !search, 0, a.showExplorer)
-				a.sidebarSwitch(c, iconSearch, "Search (⇧⌘F)", search, 0, func() { a.showSearch(false) })
-				a.sidebarSwitch(c, iconBranch, "Source Control (⌃⇧G)", scm, a.changeCount(), a.showSourceControl)
+				a.sidebarSwitch(c, iconFiles, a.withKey("Explorer", "view.explorer"), !scm && !search, 0, a.showExplorer)
+				a.sidebarSwitch(c, iconSearch, a.withKey("Search", "edit.findInFiles"), search, 0, func() { a.showSearch(false) })
+				a.sidebarSwitch(c, iconBranch, a.withKey("Source Control", "view.scm"), scm, a.changeCount(), a.showSourceControl)
 			}
 			title, short, actions := "EXPLORER", "", 0
 			switch {
@@ -237,7 +237,7 @@ func (a *app) fileTree(c *ui.Context) {
 				action = func() { a.askNewEntry(dir, true) }
 			}
 			m.Separator()
-			if m.Item("Reveal in Finder").Chosen() {
+			if m.Item(revealLabel()).Chosen() {
 				action = func() { a.host.reveal(path) }
 			}
 			if !isDir && m.Item("Open in Terminal").Chosen() {
@@ -270,7 +270,7 @@ func (a *app) fileTree(c *ui.Context) {
 			if m.Item("Rename…").Chosen() {
 				action = func() { a.askRename(path) }
 			}
-			if m.Item("Move to Trash").Chosen() {
+			if m.Item(trashLabel()).Chosen() {
 				action = func() { a.trash(path) }
 			}
 		})
@@ -344,7 +344,7 @@ func (a *app) fileTree(c *ui.Context) {
 			action = func() { a.askNewEntry(a.root, true) }
 		}
 		m.Separator()
-		if m.Item("Reveal in Finder").Chosen() {
+		if m.Item(revealLabel()).Chosen() {
 			action = func() { a.host.reveal(a.root) }
 		}
 		if m.Item("Open in Terminal").Chosen() {
@@ -484,7 +484,7 @@ func (a *app) askRename(path string) {
 
 func (a *app) trash(path string) {
 	if err := a.host.trash(path); err != nil {
-		a.fail("Could not move %s to the Trash: %v", filepath.Base(path), err)
+		a.fail("Could not move %s to %s: %v", filepath.Base(path), trashName(), err)
 		return
 	}
 	a.tree.Refresh()
