@@ -3,12 +3,57 @@ package main
 import (
 	"slices"
 	"strings"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // Files dragged from the Finder open where they are dropped: in a column,
 // at a place of its tab strip, or in a column of their own beside one.
 // Folders open as `mayoi <dir>` opens them. On a terminal, the paths are
-// typed instead.
+// typed instead. Files dragged from the explorer, source control and the
+// search results go where those from the Finder go.
+
+// fileDrag is a file dragged from the sidebar, and the match of it a
+// search result shows, which opens selected.
+type fileDrag struct {
+	path  string
+	match *searchMatch
+}
+
+// dropFile opens a file dragged from the sidebar at place at of a column.
+func (a *app) dropFile(f *fileDrag, col *column, at int) {
+	a.dropFiles([]string{f.path}, col, at)
+	a.showDropped(f)
+}
+
+// dropFileBeside opens a file dragged from the sidebar in a column of its
+// own beside col.
+func (a *app) dropFileBeside(f *fileDrag, col *column, after bool) {
+	a.dropFilesBeside([]string{f.path}, col, after)
+	a.showDropped(f)
+}
+
+// dropFileOnColumn opens a file dragged from the sidebar after the tab a
+// column shows, or types its path into the terminal it shows.
+func (a *app) dropFileOnColumn(f *fileDrag, col *column) {
+	a.dropOnColumn([]string{f.path}, col)
+	a.showDropped(f)
+}
+
+// showDropped selects the match of a search result dropped.
+func (a *app) showDropped(f *fileDrag) {
+	if f.match != nil {
+		a.selectMatch(f.path, *f.match)
+	}
+}
+
+// dragFile makes a row of the sidebar drag its file to the columns.
+func (a *app) dragFile(row ui.Element, f *fileDrag) {
+	row.Drag(dragItem{file: f})
+	if row.Dragging() {
+		a.dragNow = true
+	}
+}
 
 // dropFiles opens the files dropped on a column at place at, the first
 // there and each other after it, and the folders in windows of their own.

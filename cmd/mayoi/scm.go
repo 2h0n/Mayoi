@@ -667,6 +667,9 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 	if r.group == groupStaged {
 		letter = e.X
 	}
+	if letter != 'D' && !e.Submodule() {
+		a.dragFile(row, &fileDrag{path: e.Path})
+	}
 	row.Children(func() {
 		name := filepath.Base(e.Path)
 		icon, col := entryIcon(p, e, name)

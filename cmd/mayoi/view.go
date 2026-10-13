@@ -455,10 +455,11 @@ func (a *app) hiddenEditor(c *ui.Context, d *editor) {
 }
 
 // dragItem is what is dragged to a column: one of its tabs, or of
-// another's, or a terminal of the panel.
+// another's, a terminal of the panel, or a file of the sidebar.
 type dragItem struct {
 	tab  *colTab
 	term *session
+	file *fileDrag
 }
 
 // dropInColumn puts what was dragged at place at of a column.
@@ -467,6 +468,8 @@ func (a *app) dropInColumn(it dragItem, col *column, at int) {
 		return
 	}
 	switch {
+	case it.file != nil:
+		a.dropFile(it.file, col, at)
 	case it.term != nil:
 		a.terminalToColumn(it.term, col, at)
 	case it.tab != nil:
@@ -478,6 +481,10 @@ func (a *app) dropInColumn(it dragItem, col *column, at int) {
 // column or after it.
 func (a *app) dropBeside(it dragItem, col *column, after bool) {
 	if slices.Index(a.cols, col) < 0 {
+		return
+	}
+	if it.file != nil {
+		a.dropFileBeside(it.file, col, after)
 		return
 	}
 	if from, _ := a.locate(it.tab); from == col && len(col.tabs) == 1 {
@@ -530,7 +537,14 @@ func (a *app) dropZones(c *ui.Context, col *column, over bool) {
 	}
 	zone("drop-before", 0, side, 0, w/2, func(it dragItem) { a.dropBeside(it, col, false) },
 		func(paths []string) { a.dropFilesBeside(paths, col, false) })
-	zone("drop-in", side, w-2*side, 0, w, func(it dragItem) { a.dropInColumn(it, col, len(col.tabs)) },
+	zone("drop-in", side, w-2*side, 0, w, func(it dragItem) {
+		if it.file != nil {
+			// As files from another app: after the tab shown.
+			a.dropFileOnColumn(it.file, col)
+			return
+		}
+		a.dropInColumn(it, col, len(col.tabs))
+	},
 		func(paths []string) { a.dropOnColumn(paths, col) })
 	zone("drop-after", w-side, side, w/2, w/2, func(it dragItem) { a.dropBeside(it, col, true) },
 		func(paths []string) { a.dropFilesBeside(paths, col, true) })

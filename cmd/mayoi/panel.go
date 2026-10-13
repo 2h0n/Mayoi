@@ -243,13 +243,20 @@ func (a *app) hidePanel() {
 }
 
 // panel is the terminal panel: a header of its terminals and its tools,
-// and the terminal shown. A terminal dragged from a tab is dropped on it.
+// and the terminal shown. A terminal dragged from a tab is dropped on it,
+// and a file dragged from the sidebar types its path.
 func (a *app) panel(c *ui.Context) {
 	p := a.pal
 	terms := a.panelTerms()
 	box := ui.Column(c).Fill().Background(p.panel)
-	if it, ok := ui.Drop[dragItem](box); ok && it.tab != nil && it.tab.term != nil {
-		a.post(func() { a.terminalToPanel(it.tab.term) })
+	if it, ok := ui.Drop[dragItem](box); ok {
+		switch s := a.panelTerm; {
+		case it.tab != nil && it.tab.term != nil:
+			a.post(func() { a.terminalToPanel(it.tab.term) })
+		case it.file != nil && s != nil:
+			// A file of the sidebar types its path, as one from the Finder.
+			a.post(func() { a.pastePaths(s, []string{it.file.path}) })
+		}
 	}
 	over, _ := ui.DragOver[dragItem](box)
 	box.Children(func() {

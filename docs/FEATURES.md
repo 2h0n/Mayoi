@@ -213,6 +213,9 @@ Files dragged from the Finder open where you drop them: in a column after the ta
 marker shows, or on the edge of a column in a new column there. Dropped elsewhere, as on the explorer, they open in the
 column that has the keyboard. A dropped folder opens as `mayoi <dir>` opens it.
 
+Files dragged from the explorer, from source control's changes or from the search results open in the same places. A
+search match opens with the match selected.
+
 ## Terminal
 
 Ghostty's emulator (libghostty-vt), in the bottom panel or in a column tab. You can run several terminals, move one

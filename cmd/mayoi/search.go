@@ -577,8 +577,13 @@ func (a *app) openMatch(f *searchFile, m searchMatch, keep bool) {
 	} else {
 		a.previewFile(f.path)
 	}
+	a.selectMatch(f.path, m)
+}
+
+// selectMatch selects a match in the editor shown, when it has its file.
+func (a *app) selectMatch(path string, m searchMatch) {
 	d := a.activeEditor()
-	if d == nil || d.path != f.path {
+	if d == nil || d.path != path {
 		return
 	}
 	snap := d.buf.Snapshot()
@@ -954,7 +959,7 @@ func (a *app) searchResults(c *ui.Context) {
 		if r.match < 0 {
 			a.searchHeader(c, f, &action)
 		} else {
-			a.searchMatchRow(c, f, f.matches[r.match], &action)
+			a.searchMatchRow(c, i, f, f.matches[r.match], &action)
 		}
 	}).Grow(1).Padding(0, 6, 8, 6)
 	c.SetTheme(base)
@@ -1024,6 +1029,7 @@ func (a *app) searchHeader(c *ui.Context, f *searchFile, action *func()) {
 	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Background(p.chrome)
 	hovered := row.Hovered()
 	clicked := row.Clicked()
+	a.dragFile(row, &fileDrag{path: f.path})
 	row.Children(func() {
 		icon := iconChevronDown
 		if s.collapsed[f.rel] {
@@ -1056,11 +1062,23 @@ func (a *app) searchHeader(c *ui.Context, f *searchFile, action *func()) {
 
 // searchMatchRow is the row of a match: its line, with the match marked,
 // and what replaces it while replacing. A click chooses it in the list,
-// which shows it in the editor.
-func (a *app) searchMatchRow(c *ui.Context, f *searchFile, m searchMatch, action *func()) {
+// which shows it in the editor, and a double click keeps it there. It is
+// dragged to a column as its file, the match selected.
+func (a *app) searchMatchRow(c *ui.Context, i int, f *searchFile, m searchMatch, action *func()) {
 	s := &a.inFiles
 	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, 30)
 	hovered := row.Hovered()
+	// Taking the drag, the row takes the clicks from the list too.
+	a.dragFile(row, &fileDrag{path: f.path, match: &m})
+	switch {
+	case row.DoubleClicked():
+		*action = func() { a.openMatch(f, m, true) }
+	case row.Clicked():
+		*action = func() {
+			s.row, s.toList = i, true
+			a.previewRow()
+		}
+	}
 	row.Children(func() {
 		ui.RichText(c, a.matchPreview(m)...).FontSize(12.5).SingleLine().Grow(1).Shrink(1).MinWidth(0)
 		if hovered && s.replacing {

@@ -181,6 +181,9 @@ func (a *app) fileTree(c *ui.Context) {
 		if row.DoubleClicked() && !isDir {
 			kept = path
 		}
+		if !isDir {
+			a.dragFile(row, &fileDrag{path: path})
+		}
 		row.ContextMenu(func(m *ui.Menu) {
 			dir := path
 			if !isDir {

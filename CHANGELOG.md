@@ -15,6 +15,11 @@ needs a `## <version>` section here, or its build fails.
   in italics, and the keyboard stays in the list: clicking through
   commits leaves one tab. Enter, a double click or **Open Changes** keeps
   it.
+- Drag a file from the explorer, from source control's changes or from
+  the search results to open it where it is dropped: on a tab strip where
+  the marker shows, on a column after the tab shown, or on the edge of a
+  column in a new column there. A search match opens selected. Dropped on
+  a terminal, the file types its path.
 
 ## 0.5.1
 
