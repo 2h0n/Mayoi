@@ -134,6 +134,7 @@ func (a *app) commands() []command {
 		{"view.theme.mayoi", "Mayoi", "", func() { a.setTheme("") }},
 		{"view.theme.matrix", "The Matrix", "", func() { a.setTheme(themeMatrix) }},
 		{"view.theme.claude", "Claude", "", func() { a.setTheme(themeClaude) }},
+		{"view.theme.qoder", "Qoder", "", func() { a.setTheme(themeQoder) }},
 	}
 	for i := range cmds {
 		cmds[i].accel = platformAccel(cmds[i].id, cmds[i].accel)
@@ -355,6 +356,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			{Label: "Theme", Submenu: []*mygo.MenuItem{
 				appearance("view.appearance.system", ""), appearance("view.appearance.light", "light"), appearance("view.appearance.dark", "dark"),
 				mygo.Separator(), theme("view.theme.mayoi", ""), theme("view.theme.matrix", themeMatrix), theme("view.theme.claude", themeClaude),
+				theme("view.theme.qoder", themeQoder),
 			}}, mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},

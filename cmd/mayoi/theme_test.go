@@ -116,124 +116,148 @@ func TestShotMatrix(t *testing.T) {
 	hs.shot("matrix-scm")
 }
 
-// claudeHarness is a window, dark or not, in Claude.
-func claudeHarness(t testing.TB, dark bool) *harness {
+// themeHarness is a window, dark or not, in a theme.
+func themeHarness(t testing.TB, theme string, dark bool) *harness {
 	hs := newHarness(t, dark)
-	hs.a.setTheme(themeClaude)
+	hs.a.setTheme(theme)
 	hs.settle()
 	return hs
 }
 
-func TestClaudeTheme(t *testing.T) {
-	if paletteFor(themeClaude, false) != claudeLightPal || paletteFor(themeClaude, true) != claudeDarkPal {
-		t.Error("Claude does not follow the window's light or dark")
-	}
-	// Claude is light, dark or the system's, as the appearance is.
-	if themeSource(themeClaude, "light") != mygo.ThemeLight || themeSource(themeClaude, "dark") != mygo.ThemeDark ||
-		themeSource(themeClaude, "") != themeSource("", "") {
-		t.Error("the native window does not follow the appearance under Claude")
-	}
-	for _, dark := range []bool{false, true} {
-		hs := claudeHarness(t, dark)
-		a := hs.a
-		if a.pal != paletteFor(themeClaude, dark) || a.pal.dark != dark {
-			t.Fatalf("the window (dark %v) is not in Claude", dark)
+// Claude and Qoder have a light and a dark palette, as the appearance is.
+func TestLightOrDarkThemes(t *testing.T) {
+	for _, tc := range []struct {
+		name, theme string
+		light, dark *palette
+	}{{"Claude", themeClaude, claudeLightPal, claudeDarkPal}, {"Qoder", themeQoder, qoderLightPal, qoderDarkPal}} {
+		if paletteFor(tc.theme, false) != tc.light || paletteFor(tc.theme, true) != tc.dark {
+			t.Errorf("%s does not follow the window's light or dark", tc.name)
 		}
-		if a.termTheme != themeClaude {
-			t.Error("the terminals do not have Claude's colors")
+		// It is light, dark or the system's, as the appearance is.
+		if themeSource(tc.theme, "light") != mygo.ThemeLight || themeSource(tc.theme, "dark") != mygo.ThemeDark ||
+			themeSource(tc.theme, "") != themeSource("", "") {
+			t.Errorf("the native window does not follow the appearance under %s", tc.name)
 		}
-		light, darkTh := a.termThemes()
-		if light.Background != claudeLightPal.panel || darkTh.Palette != claudeDarkPal.ansi {
-			t.Error("the terminal's colors are not Claude's")
-		}
-		// The icons of files keep their languages' colors.
-		if _, c := fileIcon(a.pal, "main.go"); c == langColor(matrixPal, "#00add8", "") {
-			t.Error("a Go file's icon is a mono shade")
-		}
-		// Choosing an appearance keeps the theme.
-		a.setAppearance("light")
-		if a.settings.Theme != themeClaude {
-			t.Error("choosing Light leaves Claude")
-		}
-		a.setTheme("")
-		hs.settle()
-		if a.termTheme != "" || a.pal == claudeLightPal || a.pal == claudeDarkPal {
-			t.Error("the window does not leave Claude")
+		for _, dark := range []bool{false, true} {
+			hs := themeHarness(t, tc.theme, dark)
+			a := hs.a
+			if a.pal != paletteFor(tc.theme, dark) || a.pal.dark != dark {
+				t.Fatalf("the window (dark %v) is not in %s", dark, tc.name)
+			}
+			if a.termTheme != tc.theme {
+				t.Errorf("the terminals do not have %s's colors", tc.name)
+			}
+			light, darkTh := a.termThemes()
+			if light.Background != tc.light.panel || darkTh.Palette != tc.dark.ansi {
+				t.Errorf("the terminal's colors are not %s's", tc.name)
+			}
+			// The icons of files keep their languages' colors.
+			if _, c := fileIcon(a.pal, "main.go"); c == langColor(matrixPal, "#00add8", "") {
+				t.Error("a Go file's icon is a mono shade")
+			}
+			// Choosing an appearance keeps the theme.
+			a.setAppearance("light")
+			if a.settings.Theme != tc.theme {
+				t.Errorf("choosing Light leaves %s", tc.name)
+			}
+			a.setTheme("")
+			hs.settle()
+			if a.termTheme != "" || a.pal == tc.light || a.pal == tc.dark {
+				t.Errorf("the window does not leave %s", tc.name)
+			}
 		}
 	}
 }
 
-// Clawd blinks for a moment, bobs once in a few periods, and hops while
-// there is work, the hop changing every step.
-func TestClawdPoses(t *testing.T) {
+// A character blinks for a moment, bobs once in a few periods, and hops
+// while there is work, the hop changing every step.
+func TestMascotPoses(t *testing.T) {
 	at := func(ms int64) time.Time { return time.UnixMilli(ms) }
-	period := clawdPeriod.Milliseconds()
-	if p, hold := clawdAt(at(3*period+10), false); !p.blink || hold != clawdBlink-10*time.Millisecond {
+	period := mascotPeriod.Milliseconds()
+	if p, hold := poseAt(at(3*period+10), false); !p.blink || hold != mascotBlink-10*time.Millisecond {
 		t.Errorf("no blink at a period's start: %+v for %v", p, hold)
 	}
-	if p, hold := clawdAt(at(period+500), false); p.blink || p.lift != 0 || hold != clawdPeriod-500*time.Millisecond {
-		t.Errorf("Clawd does not rest until the next blink: %+v for %v", p, hold)
+	if p, hold := poseAt(at(period+500), false); p.blink || p.lift != 0 || hold != mascotPeriod-500*time.Millisecond {
+		t.Errorf("the character does not rest until the next blink: %+v for %v", p, hold)
 	}
-	bob := clawdBobAt.Milliseconds()
-	if p, _ := clawdAt(at(3*period+bob+10), false); p.lift == 0 {
-		t.Error("Clawd does not bob")
+	bob := mascotBobAt.Milliseconds()
+	if p, _ := poseAt(at(3*period+bob+10), false); p.lift == 0 {
+		t.Error("the character does not bob")
 	}
-	if p, hold := clawdAt(at(3*period+500), false); p.lift != 0 || hold != clawdBobAt-500*time.Millisecond {
-		t.Errorf("Clawd does not wait for its bob: %+v for %v", p, hold)
+	if p, hold := poseAt(at(3*period+500), false); p.lift != 0 || hold != mascotBobAt-500*time.Millisecond {
+		t.Errorf("the character does not wait for its bob: %+v for %v", p, hold)
 	}
-	a, _ := clawdAt(at(0), true)
-	b, hold := clawdAt(at(clawdHop.Milliseconds()), true)
-	if a == b || hold != clawdHop {
-		t.Errorf("Clawd does not hop: %+v then %+v for %v", a, b, hold)
+	a, _ := poseAt(at(0), true)
+	b, hold := poseAt(at(mascotHop.Milliseconds()), true)
+	if a == b || hold != mascotHop {
+		t.Errorf("the character does not hop: %+v then %+v for %v", a, b, hold)
 	}
 }
 
-// Clawd moves on the welcome page and in the status bar while the window
-// has the keyboard, hops while Git works, and holds still without the
-// keyboard.
-func TestClawdMoves(t *testing.T) {
-	hs := claudeHarness(t, true)
-	a := hs.a
-	if !a.clawd.moving || a.clawd.hopping {
-		t.Fatal("Clawd does not idle in Claude")
-	}
-	a.post(func() { a.git.busy = "Pushing…" })
-	hs.settle()
-	if !a.clawd.hopping {
-		t.Error("Clawd does not hop while Git pushes")
-	}
-	if a.clawdTip() != "Claude · Pushing…" {
-		t.Errorf("Clawd's tip is %q", a.clawdTip())
-	}
-	a.post(func() { a.git.busy, a.blurred = "", true })
-	hs.settle()
-	if a.clawd.moving || a.clawd.hopping {
-		t.Error("Clawd moves in a window without the keyboard")
-	}
-	a.post(func() { a.blurred = false })
-	hs.settle()
-	if !a.clawd.moving {
-		t.Error("Clawd does not move again with the keyboard back")
-	}
-	// Out of Claude, there is none.
-	a.setTheme("")
-	a.clawd.moving = false
-	hs.settle()
-	if a.clawd.moving {
-		t.Error("Clawd shows in a dark window")
+// The theme's character moves on the welcome page and in the status bar
+// while the window has the keyboard, hops while Git works, and holds
+// still without the keyboard: Clawd in Claude, and Qoduck in Qoder.
+func TestMascotMoves(t *testing.T) {
+	for _, tc := range []struct {
+		theme string
+		m     *mascot
+		name  string
+	}{{themeClaude, clawd, "Claude"}, {themeQoder, qoduck, "Qoder"}} {
+		hs := themeHarness(t, tc.theme, true)
+		a := hs.a
+		if a.themeMascot() != tc.m {
+			t.Fatalf("%s has not its character", tc.name)
+		}
+		if !a.mascot.moving || a.mascot.hopping {
+			t.Fatalf("the character does not idle in %s", tc.name)
+		}
+		a.post(func() { a.git.busy = "Pushing…" })
+		hs.settle()
+		if !a.mascot.hopping {
+			t.Errorf("the character does not hop while Git pushes in %s", tc.name)
+		}
+		if tip := a.mascotTip(tc.m); tip != tc.name+" · Pushing…" {
+			t.Errorf("the character's tip is %q", tip)
+		}
+		a.post(func() { a.git.busy, a.blurred = "", true })
+		hs.settle()
+		if a.mascot.moving || a.mascot.hopping {
+			t.Errorf("the character moves in a window without the keyboard in %s", tc.name)
+		}
+		a.post(func() { a.blurred = false })
+		hs.settle()
+		if !a.mascot.moving {
+			t.Errorf("the character does not move again with the keyboard back in %s", tc.name)
+		}
+		// Out of the theme, there is none.
+		a.setTheme("")
+		a.mascot.moving = false
+		hs.settle()
+		if a.themeMascot() != nil || a.mascot.moving {
+			t.Errorf("a character shows in a dark window after %s", tc.name)
+		}
 	}
 }
 
 func TestShotClaude(t *testing.T) {
+	shotTheme(t, themeClaude)
+}
+
+func TestShotQoder(t *testing.T) {
+	shotTheme(t, themeQoder)
+}
+
+// shotTheme shoots a theme's welcome page and an editor, light and dark.
+func shotTheme(t *testing.T, theme string) {
 	if os.Getenv("SHOTS") == "" {
 		t.Skip()
 	}
 	for _, dark := range []bool{false, true} {
-		name := "claude-light"
+		name := theme + "-light"
 		if dark {
-			name = "claude-dark"
+			name = theme + "-dark"
 		}
-		hs := claudeHarness(t, dark)
+		hs := themeHarness(t, theme, dark)
 		a := hs.a
 		hs.shot(name + "-welcome")
 		src, _ := os.ReadFile("editor.go")
@@ -285,6 +309,13 @@ func TestThemeMenu(t *testing.T) {
 	if find("Mayoi").Checked || !find("The Matrix").Checked {
 		t.Error("The Matrix is not the theme checked")
 	}
+	a.setTheme(themeQoder)
+	if q, l := find("Qoder"), find("Light"); q == nil || !q.Checked || find("The Matrix").Checked || l.Disabled {
+		t.Error("Qoder is not the theme checked, with Light to choose")
+	}
+	if !a.commandOn("view.theme.qoder") {
+		t.Error("the palette does not check Qoder")
+	}
 }
 
 // contrast is the WCAG contrast ratio of two opaque colors.
@@ -307,7 +338,8 @@ func contrast(x, y ui.Color) float64 {
 // 4.5:1 of WCAG's AA in every theme, and under the pointer, a moment, at
 // least at the 3:1 AA asks of large or bold text.
 func TestButtonContrast(t *testing.T) {
-	pals := map[string]*palette{"light": lightPal, "dark": darkPal, "matrix": matrixPal, "claude light": claudeLightPal, "claude dark": claudeDarkPal}
+	pals := map[string]*palette{"light": lightPal, "dark": darkPal, "matrix": matrixPal, "claude light": claudeLightPal, "claude dark": claudeDarkPal,
+		"qoder light": qoderLightPal, "qoder dark": qoderDarkPal}
 	for name, p := range pals {
 		for _, pair := range []struct {
 			what     string

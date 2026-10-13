@@ -446,6 +446,166 @@ func claudeLightPalette() *palette {
 	return p
 }
 
+// qoderLightPalette is Qoder in a light window, its Forest Light: white,
+// grey with a hint of green, and the forest green of its buttons for the
+// accent. Forest has no colors of code, so they are drawn from its
+// terminal's.
+func qoderLightPalette() *palette {
+	p := &palette{
+		editor:    ui.Hex("#ffffff"),
+		chrome:    ui.Hex("#f2f4f2"),
+		panel:     ui.Hex("#f5f7f5"),
+		border:    ui.Hex("#e3e6e3"),
+		hover:     ui.RGBA(0, 0, 0, 0.04),
+		active:    ui.RGBA(75, 111, 90, 0.12),
+		text:      ui.Hex("#141414"),
+		muted:     ui.Hex("#636261"),
+		faint:     ui.Hex("#838280"),
+		accent:    ui.Hex("#4b6f5a"),
+		accentDim: ui.RGBA(75, 111, 90, 0.5),
+		line:      ui.RGBA(0, 0, 0, 0.03),
+		selection: ui.RGBA(75, 111, 90, 0.22),
+		gutter:    ui.Hex("#949391"),
+		gutterNow: ui.Hex("#474645"),
+		status:    ui.Hex("#f2f4f2"),
+		statusFg:  ui.Hex("#636261"),
+		// Forest's warning and error are too light for marks on white, so
+		// they take its terminal's deeper yellow and red.
+		modified:  ui.Hex("#b77a0a"),
+		danger:    ui.Hex("#c9363e"),
+		match:     ui.RGBA(239, 176, 65, 0.24),
+		matchNow:  ui.RGBA(239, 176, 65, 0.44),
+		matchRing: ui.RGBA(183, 122, 10, 0.9),
+		guide:     ui.RGBA(0, 0, 0, 0.07),
+		guideNow:  ui.RGBA(0, 0, 0, 0.24),
+		bracket:   ui.RGBA(0, 0, 0, 0.28),
+		word:      ui.RGBA(0, 0, 0, 0.065),
+		shadow:    ui.RGBA(0, 0, 0, 0.12),
+		added:     ui.Hex("#579b6e"),
+		changed:   ui.Hex("#3b81e9"),
+		removed:   ui.Hex("#ea7485"),
+		// Forest's primary button, as it is under the pointer and pressed.
+		fill:           ui.Hex("#4b6f5a"),
+		fillHover:      ui.Hex("#436651"),
+		fillPressed:    ui.Hex("#3a5747"),
+		fillText:       ui.Hex("#fdfdfd"),
+		dangerFill:     ui.Hex("#c9363e"),
+		dangerText:     ui.Hex("#ffffff"),
+		surface:        ui.Hex("#ffffff"),
+		surfaceHover:   ui.Hex("#f6f6f6"),
+		surfacePressed: ui.Hex("#efefef"),
+		scrollbar:      ui.RGBA(0, 0, 0, 0.18),
+		// Forest's terminal, but for its whites, which would not show on
+		// a light terminal.
+		ansi: [16]ui.Color{
+			ui.Hex("#24262b"), ui.Hex("#c9363e"), ui.Hex("#2e7d4f"), ui.Hex("#8a5a00"),
+			ui.Hex("#0969a8"), ui.Hex("#8e4e8b"), ui.Hex("#0b7f78"), ui.Hex("#a7ada8"),
+			ui.Hex("#727a74"), ui.Hex("#e04b53"), ui.Hex("#3f9a64"), ui.Hex("#b77a0a"),
+			ui.Hex("#2b83c1"), ui.Hex("#aa69a7"), ui.Hex("#249d94"), ui.Hex("#d5dbd8"),
+		},
+	}
+	s := &p.syntax
+	s[highlight.Plain] = p.text
+	s[highlight.Keyword] = ui.Hex("#2f7550")
+	s[highlight.Type] = ui.Hex("#0b7f78")
+	s[highlight.Function] = ui.Hex("#0969a8")
+	s[highlight.String] = ui.Hex("#8a5a00")
+	s[highlight.Number] = ui.Hex("#b85a1f")
+	s[highlight.Comment] = ui.Hex("#848c86")
+	s[highlight.Operator] = ui.Hex("#555b57")
+	s[highlight.Punctuation] = ui.Hex("#6c726d")
+	s[highlight.Constant] = ui.Hex("#b85a1f")
+	s[highlight.Builtin] = ui.Hex("#8e4e8b")
+	s[highlight.Tag] = ui.Hex("#b3434a")
+	s[highlight.Attribute] = ui.Hex("#8e4e8b")
+	s[highlight.Variable] = p.text
+	s[highlight.Heading] = ui.Hex("#2f7550")
+	s[highlight.Deleted] = ui.Hex("#c9363e")
+	s[highlight.Inserted] = ui.Hex("#2e7d4f")
+	return p
+}
+
+// qoderDarkPalette is Qoder in a dark window, its Forest Dark: greys
+// with a little green, a deeper green for buttons, with dark labels, and
+// a light one for links and marks.
+func qoderDarkPalette() *palette {
+	p := &palette{
+		dark:      true,
+		editor:    ui.Hex("#191b1a"),
+		chrome:    ui.Hex("#242624"),
+		panel:     ui.Hex("#1c1f1d"),
+		border:    ui.Hex("#363c37"),
+		hover:     ui.RGBA(220, 240, 225, 0.05),
+		active:    ui.RGBA(77, 156, 97, 0.2),
+		text:      ui.Hex("#d9dcd9"),
+		muted:     ui.Hex("#949d96"),
+		faint:     ui.Hex("#6b736d"),
+		accent:    ui.Hex("#8ee5a1"),
+		accentDim: ui.RGBA(142, 229, 161, 0.5),
+		line:      ui.RGBA(220, 240, 225, 0.035),
+		selection: ui.RGBA(77, 156, 97, 0.32),
+		gutter:    ui.Hex("#646d66"),
+		gutterNow: ui.Hex("#b3bab4"),
+		status:    ui.Hex("#242624"),
+		statusFg:  ui.Hex("#949d96"),
+		modified:  ui.Hex("#faad14"),
+		danger:    ui.Hex("#ff6b70"),
+		match:     ui.RGBA(250, 173, 20, 0.20),
+		matchNow:  ui.RGBA(250, 173, 20, 0.38),
+		matchRing: ui.RGBA(250, 173, 20, 0.85),
+		guide:     ui.RGBA(220, 240, 225, 0.065),
+		guideNow:  ui.RGBA(220, 240, 225, 0.22),
+		bracket:   ui.RGBA(220, 240, 225, 0.30),
+		word:      ui.RGBA(220, 240, 225, 0.075),
+		shadow:    ui.RGBA(0, 0, 0, 0.35),
+		added:     ui.Hex("#73cd94"),
+		changed:   ui.Hex("#5a9fe0"),
+		removed:   ui.Hex("#e86a70"),
+		// Forest Dark's primary button, as it is under the pointer and
+		// pressed, with a near-black label, as Qoder's, at 5.9:1; and its
+		// error, a button as bright, with the same.
+		fill:           ui.Hex("#4d9c61"),
+		fillHover:      ui.Hex("#62ad78"),
+		fillPressed:    ui.Hex("#428955"),
+		fillText:       ui.Hex("#080807"),
+		dangerFill:     ui.Hex("#ff4d4f"),
+		dangerText:     ui.Hex("#080807"),
+		surface:        ui.Hex("#222523"),
+		surfaceHover:   ui.Hex("#2d332e"),
+		surfacePressed: ui.Hex("#363d37"),
+		scrollbar:      ui.RGBA(220, 240, 225, 0.16),
+		inverse:        ui.Hex("#303632"),
+		inverseText:    ui.Hex("#eeeeeb"),
+		// Forest's terminal, but for its black, which would not show on
+		// a dark one.
+		ansi: [16]ui.Color{
+			ui.Hex("#2b302c"), ui.Hex("#ff6b70"), ui.Hex("#73cd94"), ui.Hex("#ffd666"),
+			ui.Hex("#75beff"), ui.Hex("#d59bd1"), ui.Hex("#79e0d4"), ui.Hex("#f4f5f3"),
+			ui.Hex("#8b918d"), ui.Hex("#ff8a8e"), ui.Hex("#9be6b3"), ui.Hex("#ffe58f"),
+			ui.Hex("#a3d3ff"), ui.Hex("#e6b9e2"), ui.Hex("#a2ede5"), ui.Hex("#ffffff"),
+		},
+	}
+	s := &p.syntax
+	s[highlight.Plain] = p.text
+	s[highlight.Keyword] = ui.Hex("#73cd94")
+	s[highlight.Type] = ui.Hex("#82d2ce")
+	s[highlight.Function] = ui.Hex("#87c3ff")
+	s[highlight.String] = ui.Hex("#d8c07a")
+	s[highlight.Number] = ui.Hex("#efb080")
+	s[highlight.Comment] = ui.Hex("#758077")
+	s[highlight.Operator] = ui.Hex("#a3aba5")
+	s[highlight.Punctuation] = ui.Hex("#8a948c")
+	s[highlight.Constant] = ui.Hex("#efb080")
+	s[highlight.Builtin] = ui.Hex("#aaa0fa")
+	s[highlight.Tag] = ui.Hex("#e394dc")
+	s[highlight.Attribute] = ui.Hex("#aaa0fa")
+	s[highlight.Variable] = ui.Hex("#e4e7e4")
+	s[highlight.Heading] = ui.Hex("#8ee5a1")
+	s[highlight.Deleted] = ui.Hex("#ff6b70")
+	s[highlight.Inserted] = ui.Hex("#73cd94")
+	return p
+}
+
 var (
 	black, white = ui.Hex("#000000"), ui.Hex("#ffffff")
 
@@ -455,13 +615,17 @@ var (
 
 	claudeLightPal = claudeLightPalette().derive()
 	claudeDarkPal  = claudeDarkPalette().derive()
+
+	qoderLightPal = qoderLightPalette().derive()
+	qoderDarkPal  = qoderDarkPalette().derive()
 )
 
 // The Themes of the settings beside Mayoi's own, "": The Matrix, which is
-// always dark, and Claude, light or dark as the Appearance is.
+// always dark, and Claude and Qoder, light or dark as the Appearance is.
 const (
 	themeMatrix = "matrix"
 	themeClaude = "claude"
+	themeQoder  = "qoder"
 )
 
 // paletteFor returns the palette of a theme of the settings, in a window
@@ -474,6 +638,10 @@ func paletteFor(theme string, dark bool) *palette {
 		return claudeDarkPal
 	case theme == themeClaude:
 		return claudeLightPal
+	case theme == themeQoder && dark:
+		return qoderDarkPal
+	case theme == themeQoder:
+		return qoderLightPal
 	case dark:
 		return darkPal
 	}

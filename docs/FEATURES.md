@@ -303,14 +303,16 @@ The command returns immediately, and starts Mayoi if it isn't running.
 
 ## Appearance and persistence
 
-**View → Theme** picks a theme, Mayoi, The Matrix or Claude, and apart from it whether the window follows the system's
+**View → Theme** picks a theme, Mayoi, The Matrix, Claude or Qoder, and apart from it whether the window follows the system's
 light or dark mode or is always Light or Dark. Light and Dark are greyed out under The Matrix, which is always dark.
 The Matrix is phosphor green on black, with the whole window in the code's font, file icons in greens, and red and amber
 kept for what is removed, failed or changed. Digital rain falls behind the welcome page while the window has the
 keyboard, and holds still without it or when the system asks for reduced motion. Claude is Anthropic's ivory and warm
 near-black with Claude's orange, in a light and a dark kind. Clawd, Claude Code's character, takes the logo's place on
 the welcome page and sits at the start of the status bar: it blinks now and then, and hops while a Git command or a search of the files
-runs, and holds still as the rain does. **View → Sidebar on Right**
+runs, and holds still as the rain does. Qoder is Qoder's Forest theme: white or green-tinged greys with forest green,
+in a light and a dark kind, and its code in Forest's greens, blues, teals and ambers. Qoduck, Qoder's duck, takes the
+logo's place and the status bar's start as Clawd does, and blinks, bobs and hops as it does. **View → Sidebar on Right**
 moves the sidebar to the right of the editors. It remembers the sidebar's side, the sidebar and panel sizes, and every
 window with its folder, frame, columns and tabs, each tab with its caret, selection, scroll position and own word wrap,
 and the folders open in the Explorer. Started without a folder, Mayoi reopens the windows that were open when it quit.

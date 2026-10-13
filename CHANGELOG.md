@@ -5,6 +5,12 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- The Qoder theme: **View → Theme → Qoder** takes Qoder's Forest colors,
+  light or dark as the Appearance is, with its code in Forest's greens,
+  blues, teals and ambers. Qoduck, Qoder's duck, takes the logo's place on
+  the welcome page and sits at the start of the status bar, blinking now
+  and then and hopping while Git or a search works, as Clawd does in
+  Claude.
 - Better on Windows and Linux: the menus' shortcuts work there, with VS
   Code's keys where Ctrl for ⌘ would collide or be AltGr (F3 and
   Shift+F3 find the next and previous match, Ctrl+H replaces, Alt+1 to

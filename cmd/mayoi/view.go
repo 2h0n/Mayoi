@@ -714,8 +714,8 @@ func (a *app) statusBar(c *ui.Context) {
 			b.Children(func() { text(label) })
 			b.Menu(build)
 		}
-		if a.settings.Theme == themeClaude {
-			a.statusClawd(c)
+		if m := a.themeMascot(); m != nil {
+			a.statusMascot(c, m)
 		}
 		if b := a.branch(); b != "" {
 			bb := ui.ButtonBase(c.Key("status:branch")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
@@ -731,8 +731,8 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		if busy := a.git.busy; busy != "" {
 			ui.Row(c.Key("status:busy")).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
-				// In Claude, Clawd hops for it instead.
-				if a.settings.Theme != themeClaude {
+				// In a theme with a character, it hops for it instead.
+				if a.themeMascot() == nil {
 					ui.Spinner(c).Size(11, 11)
 				}
 				text(busy)
@@ -890,15 +890,8 @@ func (a *app) welcome(c *ui.Context) {
 			}
 			content.Children(func() {
 				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
-					if a.settings.Theme == themeClaude {
-						// Clawd in the logo's place.
-						const cell = 4
-						w, h := clawdSize(cell)
-						still := a.clawdStill(c)
-						bg := p.editor
-						ui.Row(c.Key("welcome:clawd")).Size(w, h).Tooltip(a.clawdTip()).Draw(func(pt *ui.Painter, r ui.Rect) {
-							a.drawClawd(pt, r, cell, bg, still)
-						})
+					if m := a.themeMascot(); m != nil {
+						a.welcomeMascot(c, m)
 					} else {
 						// Clipped to the icon's squircle: 185 of its 824 DIPs.
 						ui.Column(c).Size(52, 52).Radius(52.0 * 185 / 824).Clip().Children(func() {

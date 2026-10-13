@@ -130,8 +130,8 @@ type app struct {
 
 	panelMax    bool // the panel takes the editor's room
 	welcomeView ui.Handle
-	rain        rainState  // The Matrix's, behind the welcome page
-	clawd       clawdState // Claude's character
+	rain        rainState   // The Matrix's, behind the welcome page
+	mascot      mascotState // the theme's character, Claude's or Qoder's
 	// blurred is set while the window has not the keyboard.
 	blurred  bool
 	colsView ui.Handle // the columns, whose width their weights share
