@@ -5,7 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
-- Offer opening an existing worktree in the current or a new window when switching to a branch checked out there.
+- Switching to a branch checked out in another worktree offers to open
+  that worktree, in this window or a new one; when its folder was deleted,
+  to prune it and switch.
 
 - Better on Windows and Linux: the menus' shortcuts work there, with VS
   Code's keys where Ctrl for ⌘ would collide or be AltGr (F3 and

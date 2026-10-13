@@ -36,3 +36,10 @@ func worktreeForBranch(root, out, branch string) string {
 	}
 	return ""
 }
+
+// PruneWorktrees forgets the worktrees whose folders are gone, which keep
+// their branches checked out until it does.
+func (r *Repo) PruneWorktrees() error {
+	_, err := r.run(nil, "worktree", "prune")
+	return err
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"path/filepath"
 	"strings"
 
@@ -77,13 +78,17 @@ func (a *app) promptView(c *ui.Context) {
 }
 
 // confirm asks whether to go on with something, as discarding changes:
-// run runs once the button named ok is chosen.
+// run runs once the button named ok is chosen, runAlternate once the
+// one named alternate is. okShort and alternateShort name them when the
+// window is too narrow for three buttons.
 type confirm struct {
 	title, message, ok string
 	danger             bool
 	run                func()
 	alternate          string
 	runAlternate       func()
+	okShort            string
+	alternateShort     string
 }
 
 func (a *app) confirmView(c *ui.Context) {
@@ -97,8 +102,7 @@ func (a *app) confirmView(c *ui.Context) {
 	okLabel, alternate := cf.ok, cf.alternate
 	compact := cf.alternate != "" && viewport < 560
 	if compact {
-		okLabel = strings.TrimPrefix(okLabel, "Open in ")
-		alternate = strings.TrimPrefix(alternate, "Open in ")
+		okLabel, alternate = cmp.Or(cf.okShort, okLabel), cmp.Or(cf.alternateShort, alternate)
 	}
 	if cf.alternate != "" {
 		width = 560
@@ -111,7 +115,8 @@ func (a *app) confirmView(c *ui.Context) {
 			box.Children(func() {
 				ui.Text(c, cf.title).FontSize(13).FontWeight(600).TextColor(p.text)
 				if cf.message != "" {
-					ui.Text(c, cf.message).FontSize(12.5).TextColor(p.muted)
+					// Clipped, so that a path too long to break cannot widen the box.
+					ui.Text(c, cf.message).FontSize(12.5).TextColor(p.muted).ClipX()
 				}
 				buttons := ui.Row(c).Gap(8).Justify(ui.End)
 				buttons.Children(func() {
