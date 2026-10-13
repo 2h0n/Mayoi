@@ -4,7 +4,8 @@
 
 A lazy file tree that follows the disk, with Git-ignored files shown faint. You can create, rename, trash and reveal files
 from it. In a Git work tree, a changed file shows its letter (M, A, D, U for untracked, C for a conflict) and its name in a
-color, and a folder with changes inside gets a dot.
+color, and a folder with changes inside gets a dot. While the pointer is over the sidebar, the folder's row at the top
+has New File, New Folder, Refresh and Collapse Folders.
 
 A click on the space below the files, or Escape, unselects the file or folder chosen, so new files go in the workspace's
 folder. A right click there opens the workspace's menu: New File…, New Folder…, Reveal in Finder, Open in Terminal and
@@ -110,8 +111,8 @@ tree, with a count of them. Files are grouped as merge changes, staged changes, 
   the summary line shows its length, in a warning color past 72.
 - The arrow beside the commit button has **Commit & Push**, **Amend Last Commit** (which fills in the last message) and
   **Undo Last Commit**, which takes the commit back but keeps its changes staged and its message in the box.
-- The **⋯** menu by the title has the commit commands, stage, unstage and discard all, fetch, pull and push, and
-  **View as Tree**, which lists each group's files under their folders. A folder with only one folder in it shows as
+- The **⋯** menu by the title has the commit commands, stage, unstage and discard all, fetch, pull and push, Refresh,
+  and **View as Tree**, which lists each group's files under their folders. A folder with only one folder in it shows as
   one row, as `internal/git`, and a folder's buttons stage, unstage or discard every file in it.
 - A thin bar under the title moves while a Git command runs. A toast says when a commit is made, with an **Undo**
   button, and when a push or a pull is done.

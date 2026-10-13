@@ -106,7 +106,14 @@ func (a *app) confirmView(c *ui.Context) {
 					}
 					ok := ui.PrimaryButton(c, cf.ok).AutoFocus()
 					if cf.danger {
-						ok.Background(p.danger)
+						bg := p.dangerFill
+						switch {
+						case ok.Pressed():
+							bg = p.dangerPressed
+						case ok.Hovered():
+							bg = p.dangerHover
+						}
+						ok.Background(bg).TextColor(p.dangerText)
 					}
 					if ok.Clicked() {
 						a.confirm = nil

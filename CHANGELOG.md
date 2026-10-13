@@ -13,6 +13,15 @@ needs a `## <version>` section here, or its build fails.
 - New commands: **Sort Lines Ascending** and **Descending**, **Transform
   to Camel Case**, **Copy Path of Active File**, **Reveal Active File in
   Finder** and **Indent Using Tabs** or **Spaces**.
+- The sidebar's title is no longer cut short: the Explorer's buttons show
+  on the folder's row, source control's Refresh is in its **⋯** menu, and
+  in a narrow sidebar the title reads **GIT** rather than **SOURCE C…**.
+- Quick open's footer shows the prefixes it takes, **>** for commands,
+  **:** for a line and **@** for a symbol, as keys, and its placeholder no
+  longer repeats them.
+- A button that loses something, as **Discard**, is a deeper red that its
+  white label reads on in a dark window, and shades under the pointer
+  as the other buttons do.
 
 ## 0.6.0
 

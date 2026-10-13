@@ -27,24 +27,56 @@ func (a *app) sidebar(c *ui.Context) {
 				a.sidebarSwitch(c, iconSearch, "Search (⇧⌘F)", search, 0, func() { a.showSearch(false) })
 				a.sidebarSwitch(c, iconBranch, "Source Control (⌃⇧G)", scm, a.changeCount(), a.showSourceControl)
 			}
-			title := "EXPLORER"
+			title, short, actions := "EXPLORER", "", 0
 			switch {
 			case scm:
-				title = "SOURCE CONTROL"
+				title, short = "SOURCE CONTROL", "GIT"
+				if a.git.repo != nil {
+					actions = 1
+				}
 			case search:
 				title = "SEARCH"
+				if hovered {
+					actions = 3
+				}
 			}
-			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Grow(1).
+			// The switches, the gaps, the paddings and the actions' buttons
+			// take the rest of the row.
+			room := a.settings.SidebarWidth - 1 - 14 - 6 - float32(actions)*28
+			if a.root != "" {
+				room -= 3*26 + 2*3
+			}
+			title = fitTitle(c, title, short, room)
+			ui.Text(c, title).FontSize(11).FontWeight(600).LetterSpacing(titleSpacing).TextColor(p.muted).Grow(1).
 				Padding(0, 0, 0, 6).SingleLine()
 			if scm {
-				a.scmTitleActions(c, hovered)
+				a.scmTitleActions(c)
 				return
 			}
 			if search {
 				a.searchTitleActions(c, hovered)
 				return
 			}
-			if a.root == "" || !hovered && !a.files.List.FocusWithin(c) {
+		})
+		if a.root == "" {
+			a.noFolder(c)
+			return
+		}
+		if scm {
+			a.scmView(c)
+			return
+		}
+		if search {
+			a.searchView(c)
+			return
+		}
+		// The folder's row, with the explorer's actions while the pointer
+		// is over the sidebar or the tree has the keyboard: on the title's
+		// row, they would leave the title no room.
+		ui.Row(c).Height(24).Padding(0, 6, 0, 16).Gap(2).AlignItems(ui.Center).Children(func() {
+			ui.Text(c, strings.ToUpper(filepath.Base(a.root))).FontSize(11).FontWeight(700).LetterSpacing(0.4).
+				TextColor(p.text).SingleLine().Grow(1)
+			if !hovered && !a.files.List.FocusWithin(c) {
 				return
 			}
 			if a.iconButton(c, iconFilePlus, "New File…", false).Clicked() {
@@ -61,24 +93,25 @@ func (a *app) sidebar(c *ui.Context) {
 				a.files.Open.Clear()
 			}
 		})
-		if a.root == "" {
-			a.noFolder(c)
-			return
-		}
-		if scm {
-			a.scmView(c)
-			return
-		}
-		if search {
-			a.searchView(c)
-			return
-		}
-		ui.Row(c).Height(24).Padding(0, 16).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, strings.ToUpper(filepath.Base(a.root))).FontSize(11).FontWeight(700).LetterSpacing(0.4).
-				TextColor(p.text).SingleLine()
-		})
 		a.fileTree(c)
 	})
+}
+
+// titleSpacing is the letter spacing of the sidebar's title.
+const titleSpacing = 0.6
+
+// fitTitle returns the sidebar's title, or its short form when the title
+// would not fit in room, as the sidebar is narrow or the buttons beside it
+// are many: cut short, it would read as neither.
+func fitTitle(c *ui.Context, title, short string, room float32) string {
+	if short == "" {
+		return title
+	}
+	w, _ := c.MeasureText(0, ui.Span{Text: title, Size: 11, Weight: 600})
+	if w+titleSpacing*float32(len(title)) <= room {
+		return title
+	}
+	return short
 }
 
 // sidebarSwitch is a button at the top of the sidebar that shows a view
@@ -87,7 +120,7 @@ func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, 
 	p := a.pal
 	// No tooltip: it would show over the title bar, and the title beside
 	// the buttons names the view.
-	b := ui.ButtonBase(c.Key(label)).Size(28, 24).Radius(5).Justify(ui.Center).AlignItems(ui.Center).Label(label)
+	b := ui.ButtonBase(c.Key(label)).Size(26, 24).Radius(5).Justify(ui.Center).AlignItems(ui.Center).Label(label)
 	col := p.muted
 	if on {
 		b.Background(p.active)

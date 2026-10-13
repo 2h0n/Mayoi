@@ -1,12 +1,14 @@
 package main
 
 import (
+	"math"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
 // matrixHarness is a dark window in The Matrix.
@@ -282,5 +284,45 @@ func TestThemeMenu(t *testing.T) {
 	}
 	if find("Mayoi").Checked || !find("The Matrix").Checked {
 		t.Error("The Matrix is not the theme checked")
+	}
+}
+
+// contrast is the WCAG contrast ratio of two opaque colors.
+func contrast(x, y ui.Color) float64 {
+	lum := func(c ui.Color) float64 {
+		ch := func(v uint8) float64 {
+			f := float64(v) / 255
+			if f <= 0.03928 {
+				return f / 12.92
+			}
+			return math.Pow((f+0.055)/1.055, 2.4)
+		}
+		return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
+	}
+	a, b := lum(x)+0.05, lum(y)+0.05
+	return max(a, b) / min(a, b)
+}
+
+// A button's label reads on its face, the accent's and danger's, at the
+// 4.5:1 of WCAG's AA in every theme, and under the pointer, a moment, at
+// least at the 3:1 AA asks of large or bold text.
+func TestButtonContrast(t *testing.T) {
+	pals := map[string]*palette{"light": lightPal, "dark": darkPal, "matrix": matrixPal, "claude light": claudeLightPal, "claude dark": claudeDarkPal}
+	for name, p := range pals {
+		for _, pair := range []struct {
+			what     string
+			fg, back ui.Color
+			least    float64
+		}{
+			{"fill", p.fillText, p.fill, 4.5},
+			{"danger", p.dangerText, p.dangerFill, 4.5},
+			{"text", p.text, p.editor, 4.5},
+			{"fill hovered", p.fillText, p.fillHover, 3},
+			{"danger hovered", p.dangerText, p.dangerHover, 3},
+		} {
+			if r := contrast(pair.fg, pair.back); r < pair.least {
+				t.Errorf("%s: %s reads at %.2f:1", name, pair.what, r)
+			}
+		}
 	}
 }

@@ -1126,19 +1126,13 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 	}
 }
 
-// scmTitleActions are the buttons beside the view's title: the menu of
-// the view's actions, and while the pointer is on the sidebar, one to read
-// the status again.
-func (a *app) scmTitleActions(c *ui.Context, hovered bool) {
-	g := &a.git
-	if g.repo == nil {
+// scmTitleActions is the button beside the view's title: the menu of the
+// view's actions, Refresh among them. A button of its own for Refresh
+// would leave the title no room.
+func (a *app) scmTitleActions(c *ui.Context) {
+	if a.git.repo == nil {
 		return
 	}
-	if hovered && a.iconButton(c, iconRefresh, "Refresh", false).Clicked() {
-		a.gitChanged()
-	}
-	// Keyed, for Refresh coming and going with the pointer not to move
-	// it: the item chosen goes to the menu of the button it opened from.
 	a.iconButton(c.Key("scm:more"), iconMore, "More Actions", false).Menu(a.scmMenu)
 }
 
