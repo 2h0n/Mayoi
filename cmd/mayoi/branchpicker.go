@@ -203,7 +203,7 @@ func (a *app) branchPickerView(c *ui.Context) {
 					ui.Text(c, "No matching branches").FontSize(13).TextColor(p.muted).Padding(12, 16)
 				}
 				b.moved = false
-				a.quickFooter(c, false, "switch", "Type a new name to create a branch")
+				a.quickFooter(c, false, "switch", "Type a new name to create a branch", false)
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeBranchPicker()

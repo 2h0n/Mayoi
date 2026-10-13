@@ -33,6 +33,10 @@ type palette struct {
 	// fill is the accent as a button's background, under fillText, and
 	// fillHover and fillPressed the button under the pointer and pressed.
 	fill, fillHover, fillPressed, fillText ui.Color
+	// dangerFill is danger as a button's background, under dangerText,
+	// for a button that loses something, as Discard; dangerHover and
+	// dangerPressed are derived from it.
+	dangerFill, dangerHover, dangerPressed, dangerText ui.Color
 	// The faces of controls, as the theme's Surface, SurfaceHover and
 	// SurfacePressed.
 	surface, surfaceHover, surfacePressed ui.Color
@@ -106,8 +110,12 @@ func darkPalette() *palette {
 		// The dark accent is light, for marks on a dark ground: white on
 		// it would be hard to read, so buttons take a deeper purple, with
 		// white on it at 4.6:1.
-		fill:           ui.Hex("#7260e3"),
-		fillText:       ui.Hex("#ffffff"),
+		fill:     ui.Hex("#7260e3"),
+		fillText: ui.Hex("#ffffff"),
+		// The danger of a dark window is light, as the accent is: white
+		// on it would be hard to read.
+		dangerFill:     ui.Hex("#bb3253"),
+		dangerText:     ui.Hex("#ffffff"),
 		surface:        ui.Hex("#202027"),
 		surfaceHover:   ui.Hex("#272730"),
 		surfacePressed: ui.Hex("#2e2e38"),
@@ -177,6 +185,8 @@ func lightPalette() *palette {
 		removed:        ui.Hex("#d6456a"),
 		fill:           ui.Hex("#6d5bd0"),
 		fillText:       ui.Hex("#ffffff"),
+		dangerFill:     ui.Hex("#d0365a"),
+		dangerText:     ui.Hex("#ffffff"),
 		surface:        ui.Hex("#ffffff"),
 		surfaceHover:   ui.Hex("#f2f2f6"),
 		surfacePressed: ui.Hex("#eaeaf0"),
@@ -251,6 +261,8 @@ func matrixPalette() *palette {
 		// Black on the green, as a terminal's inverted text.
 		fill:           ui.Hex("#00d43a"),
 		fillText:       ui.Hex("#000000"),
+		dangerFill:     ui.Hex("#ff4a5a"),
+		dangerText:     ui.Hex("#000000"),
 		surface:        ui.Hex("#08140b"),
 		surfaceHover:   ui.Hex("#0c1d10"),
 		surfacePressed: ui.Hex("#102615"),
@@ -325,6 +337,8 @@ func claudeDarkPalette() *palette {
 		// deeper one, with white on it at 4.6:1.
 		fill:           ui.Hex("#b8573a"),
 		fillText:       ui.Hex("#ffffff"),
+		dangerFill:     ui.Hex("#b5402f"),
+		dangerText:     ui.Hex("#ffffff"),
 		surface:        ui.Hex("#262523"),
 		surfaceHover:   ui.Hex("#2d2b29"),
 		surfacePressed: ui.Hex("#34322f"),
@@ -397,6 +411,8 @@ func claudeLightPalette() *palette {
 		removed:        ui.Hex("#c4513c"),
 		fill:           ui.Hex("#b8573a"),
 		fillText:       ui.Hex("#ffffff"),
+		dangerFill:     ui.Hex("#bf4d3a"),
+		dangerText:     ui.Hex("#ffffff"),
 		surface:        ui.Hex("#ffffff"),
 		surfaceHover:   ui.Hex("#f5f3ec"),
 		surfacePressed: ui.Hex("#ece9df"),
@@ -476,6 +492,11 @@ func themeSource(theme, appearance string) mygo.ThemeSource {
 
 // derive fills in the colors made from the others.
 func (p *palette) derive() *palette {
+	if p.dark {
+		p.dangerHover, p.dangerPressed = p.dangerFill.Mix(white, 0.1), p.dangerFill.Mix(black, 0.15)
+	} else {
+		p.dangerHover, p.dangerPressed = p.dangerFill.Mix(black, 0.1), p.dangerFill.Mix(black, 0.22)
+	}
 	p.selected = p.selection.Over(p.editor)
 	p.selectedDim = p.selection.Alpha(0.5).Over(p.editor)
 	p.cursor = p.accent.Alpha(0.5)

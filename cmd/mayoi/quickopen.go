@@ -98,8 +98,14 @@ func (a *app) quickOpenView(c *ui.Context) {
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconSearch).FontSize(15).TextColor(p.muted)
+					// With a folder, the footer shows the prefixes that
+					// change what is searched.
+					placeholder := "Search files by name"
+					if a.root == "" {
+						placeholder = "Type > for commands"
+					}
 					in := a.textKeys(ui.TextInputBase(c.Key("quick-input"), &q.query)).Grow(1).FontSize(14).AutoFocus().
-						Placeholder("Search files by name, > for commands, : for a line, @ for symbols").Label("Quick Open")
+						Placeholder(placeholder).Label("Quick Open")
 					if in.Shortcut(0, ui.KeyDown) {
 						q.sel, q.moved = min(q.sel+1, len(q.results)-1), true
 					}
@@ -118,11 +124,8 @@ func (a *app) quickOpenView(c *ui.Context) {
 					}
 				})
 				a.quickBody(c, isLine, line, col, choose)
-				tip := ""
-				if a.root != "" {
-					tip = "Type > for commands, : for a line, @ for a symbol"
-				}
-				a.quickFooter(c, isLine, "open", tip)
+				a.quickFooter(c, isLine, "open", "", a.root != "")
+
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()
@@ -184,8 +187,9 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 	q.moved = false
 }
 
-// quickFooter shows the keys of quick open, and a tip at its end.
-func (a *app) quickFooter(c *ui.Context, isLine bool, open, tip string) {
+// quickFooter shows the keys of quick open, and at its end a tip, or with
+// prefixes the prefixes that make quick open search something else.
+func (a *app) quickFooter(c *ui.Context, isLine bool, open, tip string, prefixes bool) {
 	p := a.pal
 	ui.Row(c).Height(30).Padding(0, 14).Gap(14).AlignItems(ui.Center).Background(p.hover).
 		BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
@@ -203,8 +207,14 @@ func (a *app) quickFooter(c *ui.Context, isLine bool, open, tip string) {
 		}
 		hint("esc", "close")
 		ui.Spacer(c)
-		if !isLine && tip != "" {
+		switch {
+		case isLine:
+		case tip != "":
 			ui.Text(c, tip).FontSize(11.5).TextColor(p.faint).SingleLine()
+		case prefixes:
+			hint(">", "commands")
+			hint(":", "line")
+			hint("@", "symbol")
 		}
 	})
 }
@@ -381,7 +391,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 					})
 					q.moved = false
 				}
-				a.quickFooter(c, false, "go to", "")
+				a.quickFooter(c, false, "go to", "", false)
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()

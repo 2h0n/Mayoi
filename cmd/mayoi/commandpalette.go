@@ -254,7 +254,7 @@ func (a *app) quickCommands(c *ui.Context, query string) {
 					})
 				}
 				q.moved = false
-				a.quickFooter(c, false, "run", "")
+				a.quickFooter(c, false, "run", "", false)
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeQuick()
