@@ -322,87 +322,21 @@ again with its tabs, columns and Explorer as they were. Closing the last window 
 ## Settings
 
 **File → Open Settings** (⌘,) opens `settings.json` in a tab. Saving it applies its preferences in every window at once:
-the fonts, `theme`, `appearance`, `autoSave`, `wordWrap`, `diffLayout`, `scmTree`, `scmAllBranches`, `blame`, `vim`,
-`vimCtrlKeys` and `sidebarRight`. A file that does not parse is left alone until it does. Mayoi keeps the windows, tabs, recent folders
-and layout itself, in `state.json` beside it.
-
-The font keys:
-
-| Key                  | Default       | What it does                                                                      |
-| -------------------- | ------------- | --------------------------------------------------------------------------------- |
-| `fontFamily`         | `"monospace"` | The code's font. A comma-separated list falls back in order, as `"Iosevka, monospace"`. |
-| `fontSize`           | `13`          | 9 to 28. ⌘= and ⌘- change it, and ⌘0 sets it back to 13.                          |
-| `fontWeight`         | `400`         | 100 (thin) to 900 (black), of the weights the font has.                           |
-| `fontFeatures`       | none          | OpenType features: `["calt=0"]` turns off most coding ligatures, `["ss01"]` a stylistic set on. |
-| `lineHeight`         | `1.55`        | The height of a line of code, a multiple of `fontSize`, from 1 to 3.              |
-| `terminalFontFamily` | `""`          | The terminal's font, else `fontFamily`.                                           |
-| `terminalFontSize`   | `0`           | The terminal's size, else half a point under `fontSize`. Zoom leaves a set size alone. |
-
-The terminal takes `fontWeight` and `fontFeatures` too. The editor lines up columns, indent guides and the caret in
-cells as wide as the font's `0`, so a font whose letters differ in width lines them up only roughly.
-
-```json
-{
-  "fontFamily": "JetBrains Mono, monospace",
-  "fontSize": 14,
-  "fontFeatures": ["calt=0"],
-  "lineHeight": 1.6,
-  "terminalFontSize": 12
-}
-```
+the code's and the terminal's fonts, weight, ligatures and line height, the theme and appearance, auto save, word wrap,
+the diff layout, vim and more. Mayoi keeps the windows, tabs, recent folders and layout itself, in `state.json` beside
+it. See [SETTINGS.md](SETTINGS.md) for every key and where the files are.
 
 ## Keyboard shortcuts
 
-**File → Open Keyboard Shortcuts** opens `keybindings.json`, beside `settings.json`, in VS Code's format, so a VS Code
-or Cursor file can be pasted in. Saving it applies it in every window at once. A file that does not parse is left alone
-until it does, and a key or a condition Mayoi can't read is named in a toast.
-
-- **`key`** is a key, as `"cmd+1"`, or a chord, as `"ctrl+. g c"`. Its modifiers are `cmd`, `ctrl`, `alt` and `shift`.
-  While a chord is waiting for its next key, the status bar shows its keys. A key it has no binding of does nothing and
-  ends it, and Escape ends it too.
-- **`command`** is a command of Mayoi's, by its id as `view.sidebar`, or VS Code's name for it, as
-  `workbench.action.toggleSidebarVisibility`. A command named with a `-` first takes the key away from that command.
-  `runCommands` runs its `commands` in order, each once the edits and the Git commands of the one before are done, and
-  stops at an error. `vscode.open` opens the file of its `args`: an absolute path, one from `~`, or one in the folder.
-  `type` types the `text` of its `args` in the editor or the terminal, and `workbench.action.terminal.sendSequence`
-  sends it to the terminal. Pressing the key of a command Mayoi doesn't have says so.
-- **`when`** is when it applies: `editorTextFocus`, `editorFocus`, `inputFocus`, `textInputFocus`,
-  `filesExplorerFocus`, `terminalFocus`, `terminalHasBeenCreated`, `terminalIsOpen`, `sideBarVisible`,
-  `editorHasSelection`, `isMac`, `isLinux` and `isWindows`, with `!`, `&&`, `||` and parentheses. Other names don't hold.
-
-The keys of the file take the place of Mayoi's own: the menus drop a key the file binds, ⌘1 to ⌘9 and ⌃R let the file
-have theirs, and the command palette shows the file's keys. The shortcuts apply in the editor, the terminal, the
-Explorer, diffs, pictures, and the text fields of find, search, quick open and the commit message.
-
-```json
-[
-  { "key": "ctrl+. s", "command": "editor.action.indentUsingSpaces" },
-  { "key": "ctrl+. g p", "command": "git.push" },
-  { "key": "d", "command": "deleteFile", "when": "filesExplorerFocus && !inputFocus" },
-  { "key": "cmd+1", "command": "workbench.action.toggleSidebarVisibility" }
-]
-```
+**File → Open Keyboard Shortcuts** opens `keybindings.json`, in VS Code's format, so a VS Code or Cursor file can be
+pasted in. Saving it applies it in every window at once. It binds keys and chords to Mayoi's commands or VS Code's
+names for them, with `when` conditions. See [SETTINGS.md](SETTINGS.md#keybindingsjson) for the format, and for the
+shortcuts that differ on Windows and Linux.
 
 Some commands are only in the command palette: **Copy Path of Active File**, **Copy Relative Path of Active File**,
 **Reveal Active File in Finder** (File Explorer on Windows), **Indent Using Tabs** and **Indent Using 2, 4 or 8 Spaces**. **Selection → Sort Lines
 Ascending**, **Sort Lines Descending** and **Transform to Camel Case** work on the lines selected, or every line, and on
 the words selected, or the caret's.
-
-### Windows and Linux
-
-The shortcuts are macOS's with Ctrl for ⌘, and the hints show them so, but for those VS Code has others for:
-
-| Command                                  | macOS     | Windows and Linux |
-| ---------------------------------------- | --------- | ----------------- |
-| Find Next, Find Previous                 | ⌘G, ⇧⌘G   | F3, Shift+F3      |
-| Replace                                  | ⌥⌘F       | Ctrl+H            |
-| Show the tab 1 to 8, the last            | ⌘1 to ⌘9  | Alt+1 to Alt+9    |
-| Save All, Open Folder in New Window      | ⌥⌘S, ⌥⌘O  | none              |
-| Focus Next Column, Focus Previous Column | ⌥⌘→, ⌥⌘←  | none              |
-
-Ctrl with Alt is AltGr there, which types text, so no shortcut takes it: bind those commands in `keybindings.json`,
-as `{ "key": "ctrl+k s", "command": "workbench.action.files.saveAll" }`. A file can tell the systems apart with
-`isWindows`, `isLinux` and `isMac`.
 
 ## Updates
 

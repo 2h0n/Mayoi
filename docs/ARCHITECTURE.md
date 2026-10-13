@@ -16,10 +16,11 @@ settings and the menu bar. A menu item runs the command of the window it was cho
 all run the same commands. The menu bar is built anew when a window comes to the front or the recent folders change, so
 that **Open Recent** leaves out the front window's folder.
 
-**`internal/settings`.** The settings are one JSON file that the app writes a moment after each change. It watches the
-file's folder too, and when the file changes into something it did not write, it reads the preferences from it (`Prefs`,
-which the settings embed) and `main.go` applies them on the main thread, in every window. The windows and the layout
-stay as the app has them. Each frame, a window checks the code's font and the terminals' against the settings and
+**`internal/settings`.** The settings are two JSON files that the app writes a moment after each change: the preferences
+a person chooses in `settings.json`, and the windows, tabs, recent folders and layout in `state.json` beside it. It
+watches the folder too, and when the file changes into something it did not write, it reads the preferences from it
+(`Prefs`, which the settings embed) and `main.go` applies them on the main thread, in every window. The windows and the
+layout stay as the app has them. Each frame, a window checks the code's font and the terminals' against the settings and
 measures them anew when they differ.
 
 **`internal/keymap`, `keymap.go`.** `keybindings.json` is read in VS Code's format, comments and all, and watched as the

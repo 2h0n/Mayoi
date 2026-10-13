@@ -29,8 +29,8 @@
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the bottom panel or in a tab
 - **Image viewer:** PNG, JPEG, GIF, WebP and BMP, plus a live SVG preview
 - **Auto save,** light, dark, The Matrix, Claude and Qoder themes, one window per folder, and a `mayoi` shell command
-- **Settings:** a JSON file applied as you save it, with the code's and the terminal's fonts, weight, ligatures and
-  line height
+- **Settings:** JSON files applied as you save them, with the code's and the terminal's fonts, weight, ligatures and
+  line height, and keyboard shortcuts in VS Code's format (see [docs/SETTINGS.md](docs/SETTINGS.md))
 
 See [docs/FEATURES.md](docs/FEATURES.md) for the details, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a tour of the
 source and how fast it runs, and [CONTRIBUTING.md](CONTRIBUTING.md) to build, test and release Mayoi.
