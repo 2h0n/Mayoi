@@ -8,6 +8,7 @@ require (
 	github.com/alecthomas/chroma/v2 v2.27.0
 	github.com/egoist/mygo v0.4.1
 	github.com/fsnotify/fsnotify v1.10.1
+	github.com/yuin/goldmark v1.7.13
 	golang.org/x/image v0.46.0
 )
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"sort"
 	"strings"
@@ -167,11 +166,11 @@ func (a *app) whenContext(where keyPlace) func(string) bool {
 		case "editorReadonly":
 			return false
 		case "isMac":
-			return runtime.GOOS == "darwin"
+			return hostOS == "darwin"
 		case "isLinux":
-			return runtime.GOOS == "linux"
+			return hostOS == "linux"
 		case "isWindows":
-			return runtime.GOOS == "windows"
+			return hostOS == "windows"
 		}
 		return false
 	}
@@ -492,7 +491,7 @@ func (a *app) copyActivePath(rel bool) {
 	a.services.WriteClipboard(path)
 }
 
-// revealActive shows the file of the tab shown in the Finder.
+// revealActive shows the file of the tab shown in the file manager.
 func (a *app) revealActive() {
 	if path := a.activeFile(); path != "" {
 		a.host.reveal(path)
@@ -504,7 +503,7 @@ func (a *app) revealActive() {
 func chordCaps(keys []keymap.Stroke) []string {
 	var caps []string
 	for _, s := range keys {
-		caps = append(caps, strings.Join(accelCaps(s.Accel(), runtime.GOOS == "darwin"), ""))
+		caps = append(caps, capsText(accelCaps(s.Accel(), macKeys())))
 	}
 	return caps
 }
