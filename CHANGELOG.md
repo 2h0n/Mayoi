@@ -5,6 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- MyGo 0.4.8: shortcuts work on keyboard layouts that type no Latin
+  letters, a selection paints above the text's highlights, and long files
+  lay out and draw with less work.
 - The Qoder theme: **View → Theme → Qoder** takes Qoder's Forest colors,
   light or dark as the Appearance is, with its code in Forest's greens,
   blues, teals and ambers. Qoduck, Qoder's round-faced duck, its beak
