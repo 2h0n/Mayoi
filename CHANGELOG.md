@@ -11,6 +11,9 @@ needs a `## <version>` section here, or its build fails.
   the welcome page and sits at the start of the status bar, blinking now
   and then and hopping while Git or a search works, as Clawd does in
   Claude.
+- Switching to a branch checked out in another worktree offers to open
+  that worktree, in this window or a new one; when its folder was deleted,
+  to prune it and switch.
 - Better on Windows and Linux: the menus' shortcuts work there, with VS
   Code's keys where Ctrl for ⌘ would collide or be AltGr (F3 and
   Shift+F3 find the next and previous match, Ctrl+H replaces, Alt+1 to

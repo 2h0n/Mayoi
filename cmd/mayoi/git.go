@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -346,6 +347,11 @@ func (a *app) gitDo(busy string, fn func(r *git.Repo) error, then func()) {
 
 // gitFailed says why a git command failed.
 func (a *app) gitFailed(err error) {
+	var occupied *git.WorktreeInUse
+	if errors.As(err, &occupied) {
+		a.askOpenWorktree(occupied.Branch, occupied.Path)
+		return
+	}
 	msg := err.Error()
 	if len(msg) > 400 {
 		msg = msg[:400] + "…"
