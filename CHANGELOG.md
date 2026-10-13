@@ -26,6 +26,11 @@ needs a `## <version>` section here, or its build fails.
   editor's font. A body longer than twelve lines folds under **Show More**.
   The message can be selected and copied, and a click on the hash copies
   it. A long subject in the breadcrumbs ends in an ellipsis.
+- A click on the empty space below the files in the Explorer, or Escape,
+  unselects the file or folder chosen, so new files and pasted ones go in
+  the workspace's folder. A right click there opens a menu for the
+  workspace: **New File…**, **New Folder…**, **Reveal in Finder**,
+  **Open in Terminal** and **Paste**.
 
 ## 0.5.1
 

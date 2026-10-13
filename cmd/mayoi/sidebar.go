@@ -169,10 +169,18 @@ func (a *app) fileTree(c *ui.Context) {
 	c.SetTheme(&quiet)
 	var clicked, kept string
 	var action func()
+	// end is where the last row ends, while it shows: a click below it is
+	// on no file.
+	end := float32(-1)
 	out := ui.Outline(c.Key("files"), &a.files, t.Children(a.root), children, func(path string) {
 		isDir := t.IsDir(path)
 		name := filepath.Base(path)
 		row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(17)
+		if n := a.files.Rows(); n > 0 && a.files.Item(n-1) == path {
+			if r := row.Bounds(); r.H > 0 {
+				end = r.Y + r.H
+			}
+		}
 		if row.Clicked() {
 			clicked = path
 		}
@@ -277,6 +285,45 @@ func (a *app) fileTree(c *ui.Context) {
 				TextColor(gitColor(p, letter)).Shrink(0)
 		})
 	}).Grow(1).Padding(0, 6, 8, 6).Gap(0).HandleInput(a.explorerInput)
+	// The space below the files, while the last shows: a click there
+	// chooses none, so that new files go in the workspace, and its menu is
+	// the workspace's. The pointer is followed only then.
+	below := false
+	if end >= 0 {
+		_, y, over := out.PointerPosition()
+		below = over && out.Bounds().Y+y > end
+	}
+	if out.Clicked() && clicked == "" && below {
+		a.fileRow = -1
+	}
+	out.ContextMenu(func(m *ui.Menu) {
+		// Beside a row, as by its arrow, no menu: an empty one does not
+		// open.
+		if !below {
+			return
+		}
+		a.fileRow = -1
+		if m.Item("New File…").Chosen() {
+			action = func() { a.askNewEntry(a.root, false) }
+		}
+		if m.Item("New Folder…").Chosen() {
+			action = func() { a.askNewEntry(a.root, true) }
+		}
+		m.Separator()
+		if m.Item("Reveal in Finder").Chosen() {
+			action = func() { a.host.reveal(a.root) }
+		}
+		if m.Item("Open in Terminal").Chosen() {
+			action = func() { a.newTerminalIn(a.root) }
+		}
+		m.Separator()
+		if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
+			action = func() { a.pasteFiles(a.root) }
+		}
+	})
+	if a.files.List.Shortcut(c, 0, ui.KeyEscape) {
+		a.fileRow = -1
+	}
 	c.SetTheme(base)
 	if action != nil {
 		action()

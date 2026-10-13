@@ -6,6 +6,10 @@ A lazy file tree that follows the disk, with Git-ignored files shown faint. You 
 from it. In a Git work tree, a changed file shows its letter (M, A, D, U for untracked, C for a conflict) and its name in a
 color, and a folder with changes inside gets a dot.
 
+A click on the space below the files, or Escape, unselects the file or folder chosen, so new files go in the workspace's
+folder. A right click there opens the workspace's menu: New File…, New Folder…, Reveal in Finder, Open in Terminal and
+Paste.
+
 ## Editor
 
 Tabs, line numbers, a highlighted caret line, and Chroma syntax highlighting. Files changed on disk reload unless you
