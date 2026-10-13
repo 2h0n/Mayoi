@@ -22,6 +22,13 @@ needs a `## <version>` section here, or its build fails.
 - A button that loses something, as **Discard**, is a deeper red that its
   white label reads on in a dark window, and shades under the pointer
   as the other buttons do.
+- **⇧⌘V**, or the button at the end of the breadcrumbs, previews a
+  Markdown file as well as an SVG: headings, lists and task lists, quotes,
+  code highlighted as in the editor, tables, cached local bitmap and SVG
+  images, inline badges and links, with comments and front matter hidden, in
+  the editor's fonts and colors. It follows your edits, and with the same
+  file in another column shows its source beside it. An image or link
+  starting with `/` is found from the repository's root, as on GitHub.
 
 ## 0.6.0
 

@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"io"
 	"math"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/egoist/mygo/ui"
@@ -44,9 +46,9 @@ var zoomSteps = []float32{0.05, 0.1, 0.25, 1.0 / 3, 0.5, 2.0 / 3, 1, 1.5, 2, 3, 
 
 // viewer shows a picture, fitted to its pane until zoomed, and moved by
 // dragging it once it is larger: an image file in a tab of its own, or
-// the preview of an SVG document's text.
+// the preview of an SVG or Markdown document.
 type viewer struct {
-	path string // the image file; "" for an SVG's preview
+	path string // the image file; "" for a document preview
 	src  ui.ImageSource
 	// w and h are the picture's size in DIPs, a pixel each for an image,
 	// and size the bytes of the file.
@@ -72,18 +74,22 @@ type viewer struct {
 	// late is dropped.
 	loading int
 
-	// svg is the document an SVG preview shows, version the version of
-	// its text parsed last, and wait the timer of a parse after an edit.
-	svg     *document
+	// doc is the document an SVG or Markdown preview shows, version the
+	// version of its text parsed last, and wait the timer of a parse after
+	// an edit.
+	doc     *document
 	version uint64
 	wait    *time.Timer
+	// markdown is a Markdown preview's parsed text and place, nil for
+	// an image or an SVG.
+	markdown *markdownPreview
 }
 
 // newImageViewer makes the viewer of an image file, which load reads.
 func newImageViewer(path string) *viewer { return &viewer{path: path} }
 
-// newSVGViewer makes the preview of an SVG document.
-func newSVGViewer(d *document) *viewer { return &viewer{svg: d} }
+// newPreviewViewer makes the preview of an SVG or Markdown document.
+func newPreviewViewer(d *document) *viewer { return &viewer{doc: d} }
 
 func (v *viewer) name() string { return filepath.Base(v.path) }
 
@@ -115,14 +121,7 @@ func (a *app) loadImage(v *viewer) {
 // decodeImage reads an image file into a bitmap, at most maxBitmapSide
 // on a side, and returns its own size.
 func decodeImage(path string) (bm *ui.Bitmap, w, h int, size int64, err error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, 0, 0, 0, err
-	}
-	if info.Size() > maxOpenBytes {
-		return nil, 0, 0, 0, errors.New("the image is too large to show")
-	}
-	data, err := os.ReadFile(path)
+	data, err := readImage(path)
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
@@ -150,13 +149,39 @@ func decodeImage(path string) (bm *ui.Bitmap, w, h int, size int64, err error) {
 	return bm, w, h, int64(len(data)), nil
 }
 
+// readImage reads an image file that a document names, so may be a FIFO
+// or a device: it opens without blocking, takes only a regular file, as
+// the file opened says, and reads at most maxOpenBytes of it.
+func readImage(path string) ([]byte, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, errors.New("the image is not a regular file")
+	}
+	if info.Size() > maxOpenBytes {
+		return nil, errors.New("the image is too large to show")
+	}
+	data, err := io.ReadAll(io.LimitReader(f, maxOpenBytes+1))
+	if err == nil && int64(len(data)) > maxOpenBytes {
+		err = errors.New("the image is too large to show")
+	}
+	return data, err
+}
+
 // svgDelay is how long after an edit an SVG's preview parses its text.
 const svgDelay = 250 * time.Millisecond
 
 // followSVG parses the text of an SVG's preview again once it changed,
 // a moment after the last edit, keeping the last picture that parsed.
 func (a *app) followSVG(v *viewer) {
-	d := v.svg
+	d := v.doc
 	ver := d.buf.Version()
 	if v.loaded && ver == v.version || v.wait != nil {
 		return
@@ -198,6 +223,9 @@ func (v *viewer) stop() {
 		v.wait = nil
 	}
 	v.loading++
+	if v.markdown != nil {
+		v.markdown.generation.Add(1)
+	}
 }
 
 // fitScale is the scale that fits the picture in a pane w×h, never above
@@ -330,12 +358,16 @@ func (a *app) viewerInput(v *viewer, ev ui.InputEvent) bool {
 // viewerView is the pane of a viewer: the picture on a checkerboard,
 // which shows what is transparent, or what kept it from showing.
 func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
+	if v.markdown != nil {
+		a.markdownView(c, v, name)
+		return
+	}
 	p := a.pal
 	label := "Image " + name
-	if v.svg != nil {
+	if v.doc != nil {
 		label = "Preview " + name
 	}
-	if v.svg != nil {
+	if v.doc != nil {
 		a.followSVG(v)
 	}
 	b := v.pane.Bounds(c)
@@ -448,14 +480,16 @@ func sizeText(n int64) string {
 	}
 }
 
-// setPreview shows an SVG document as a picture in an editor's place, or
-// its text again.
+// setPreview shows a document rendered in its editor's place, or its text again.
 func (a *app) setPreview(d *editor, on bool) {
-	if on == (d.preview != nil) || on && !isSVG(d.document) {
+	if on == (d.preview != nil) || on && !canPreview(d.document) {
 		return
 	}
 	if on {
-		d.preview = newSVGViewer(d.document)
+		d.preview = newPreviewViewer(d.document)
+		if isMarkdown(d.document) {
+			d.preview.markdown = &markdownPreview{}
+		}
 	} else {
 		d.preview.stop()
 		d.preview = nil
@@ -466,16 +500,16 @@ func (a *app) setPreview(d *editor, on bool) {
 	a.rememberTabs()
 }
 
-// togglePreview shows the SVG shown as a picture, or as text.
+// togglePreview switches between a document's source and rendered view.
 func (a *app) togglePreview() {
-	if d := a.activeEditor(); d != nil && isSVG(d.document) {
+	if d := a.activeEditor(); d != nil && canPreview(d.document) {
 		a.setPreview(d, d.preview == nil)
 		a.focusColumn()
 	}
 }
 
 // textEditor returns the editor shown, showing its text in place of the
-// preview of an SVG, for commands that work on the text. Nil when the
+// rendered preview, for commands that work on the text. Nil when the
 // column shows no editor.
 func (a *app) textEditor() *editor {
 	d := a.activeEditor()
@@ -495,6 +529,10 @@ func (a *app) viewerStatus(c *ui.Context, v *viewer, item func(key, label, tip s
 			ui.Icon(c, iconTrash).FontSize(12).TextColor(p.danger)
 			text("Deleted on disk").TextColor(p.danger)
 		})
+	}
+	if v.markdown != nil {
+		item("preview", "Preview", "", nil, nil)
+		return
 	}
 	if v.src == nil {
 		return

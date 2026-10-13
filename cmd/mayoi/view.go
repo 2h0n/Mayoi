@@ -416,7 +416,7 @@ func (a *app) columnView(c *ui.Context, col *column) {
 						a.diffViewUI(c, t.diff)
 					}
 				case t == shown && t.ed.preview != nil:
-					// The text keeps its place, out of sight, under the picture.
+					// The text keeps its place, out of sight, under the preview.
 					ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Invisible().Children(func() {
 						a.hiddenEditor(c, t.ed)
 					})
@@ -637,7 +637,7 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)
 			}
 		}
-		if d != nil && isSVG(d.document) {
+		if d != nil && canPreview(d.document) {
 			ui.Spacer(c)
 			a.previewButton(c, t, d)
 		}
@@ -648,7 +648,7 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 	})
 }
 
-// previewButton shows an SVG as a picture, or as text again.
+// previewButton switches between a document's preview and source.
 func (a *app) previewButton(c *ui.Context, t *colTab, d *editor) {
 	p := a.pal
 	label, icon := "Show Preview (⇧⌘V)", iconImage

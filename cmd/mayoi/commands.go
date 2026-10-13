@@ -123,7 +123,7 @@ func (a *app) commands() []command {
 		{"view.wordWrap", "Word Wrap", "", a.toggleWordWrap},
 		{"view.vim", "Vim Mode", "", a.toggleVim},
 		{"view.wordWrapTab", "Toggle Word Wrap in Tab", "Alt+Z", a.toggleTabWrap},
-		{"view.togglePreview", "Toggle SVG Preview", "Shift+CmdOrCtrl+V", a.togglePreview},
+		{"view.togglePreview", "Toggle Preview", "Shift+CmdOrCtrl+V", a.togglePreview},
 		// The text, or the picture shown.
 		{"view.zoomIn", "Zoom In", "CmdOrCtrl+=", func() { a.zoom(1) }},
 		{"view.zoomOut", "Zoom Out", "CmdOrCtrl+-", func() { a.zoom(-1) }},
@@ -235,7 +235,7 @@ func (a *app) openSettings() {
 // zoom makes the picture shown bigger or smaller, or fits it for 0, and
 // otherwise the text.
 func (a *app) zoom(by float32) {
-	if v := a.activeViewer(); v != nil {
+	if v := a.activeViewer(); v != nil && v.markdown == nil {
 		v.zoomBy(int(by))
 		return
 	}
