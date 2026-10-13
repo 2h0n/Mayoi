@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.7.0
 
 - MyGo 0.4.8: shortcuts work on keyboard layouts that type no Latin
   letters, a selection paints above the text's highlights, and long files
