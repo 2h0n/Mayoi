@@ -5,6 +5,8 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Offer opening an existing worktree in the current or a new window when switching to a branch checked out there.
+
 - Keyboard shortcuts of your own: **File → Open Keyboard Shortcuts** opens
   `keybindings.json`, in VS Code's format, so those of VS Code or Cursor
   can be pasted in. It takes chords, as `ctrl+. g c`, the names of VS

@@ -82,6 +82,8 @@ type confirm struct {
 	title, message, ok string
 	danger             bool
 	run                func()
+	alternate          string
+	runAlternate       func()
 }
 
 func (a *app) confirmView(c *ui.Context) {
@@ -90,21 +92,50 @@ func (a *app) confirmView(c *ui.Context) {
 		return
 	}
 	p := a.pal
+	width := float32(420)
+	viewport, _ := c.Size()
+	okLabel, alternate := cf.ok, cf.alternate
+	compact := cf.alternate != "" && viewport < 560
+	if compact {
+		okLabel = strings.TrimPrefix(okLabel, "Open in ")
+		alternate = strings.TrimPrefix(alternate, "Open in ")
+	}
+	if cf.alternate != "" {
+		width = 560
+	}
 	ui.Overlay(c, func() {
 		back := a.dialogBack(c, "confirm:"+cf.title)
 		back.Children(func() {
-			box := a.floating(c, ui.Column(c).Width(420).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10), true).
+			box := a.floating(c, ui.Column(c).Width(width).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Padding(14, 16).Gap(10).Radius(10), true).
 				Role(ui.RoleDialog).Label(cf.title)
 			box.Children(func() {
 				ui.Text(c, cf.title).FontSize(13).FontWeight(600).TextColor(p.text)
 				if cf.message != "" {
 					ui.Text(c, cf.message).FontSize(12.5).TextColor(p.muted)
 				}
-				ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-					if ui.Button(c, "Cancel").Clicked() {
+				buttons := ui.Row(c).Gap(8).Justify(ui.End)
+				buttons.Children(func() {
+					cancel := ui.Button(c, "Cancel")
+					if compact {
+						cancel.FontSize(12).Padding(6, 8)
+					}
+					if cancel.Clicked() {
 						a.confirm = nil
 					}
-					ok := ui.PrimaryButton(c, cf.ok).AutoFocus()
+					if alternate != "" {
+						button := ui.Button(c, alternate)
+						if compact {
+							button.FontSize(12).Padding(6, 8)
+						}
+						if button.Clicked() {
+							a.confirm = nil
+							cf.runAlternate()
+						}
+					}
+					ok := ui.PrimaryButton(c, okLabel).AutoFocus()
+					if compact {
+						ok.FontSize(12).Padding(6, 8)
+					}
 					if cf.danger {
 						bg := p.dangerFill
 						switch {
