@@ -326,29 +326,40 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 	art := filepath.Join(dir, "art.png")
 	writePNG(t, art, 80, 40)
 	os.WriteFile(filepath.Join(dir, "logo.svg"), []byte(testSVG), 0o644)
-	cache := map[markdownImageKey]markdownInline{}
+	c := &markdownCache{}
 	imageSource := []byte("![art](art.png) ![logo](logo.svg)")
-	first := parseMarkdown(imageSource, path, "", nil, cache)
-	second := parseMarkdown(imageSource, path, "", nil, cache)
+	first := parseMarkdown(imageSource, path, "", nil, c)
+	second := parseMarkdown(imageSource, path, "", nil, c)
 	if len(first) != 2 || first[0].runs[0].bitmap != second[0].runs[0].bitmap || first[1].runs[0].w != 64 || first[1].runs[0].h != 32 {
 		t.Fatal("image cache or SVG")
 	}
 	// A reused pointer proves a second bitmap was not decoded.
 	future := time.Now().Add(time.Second)
 	os.Chtimes(art, future, future)
-	third := parseMarkdown(imageSource, path, "", nil, cache)
-	if third[0].runs[0].bitmap == first[0].runs[0].bitmap || len(cache) != 2 {
+	third := parseMarkdown(imageSource, path, "", nil, c)
+	if third[0].runs[0].bitmap == first[0].runs[0].bitmap || len(c.images) != 2 {
 		t.Fatal("mtime did not invalidate/prune cache")
 	}
-	parseMarkdown([]byte("no images"), path, "", nil, cache)
-	if len(cache) != 0 {
+	parseMarkdown([]byte("no images"), path, "", nil, c)
+	if len(c.images) != 0 {
 		t.Fatal("unused images retained")
 	}
 	// A superseded parse skips images but leaves them cached for the next.
-	parseMarkdown(imageSource, path, "", nil, cache)
-	parseMarkdown(imageSource, path, "", func() bool { return false }, cache)
-	if len(cache) != 2 {
+	parseMarkdown(imageSource, path, "", nil, c)
+	parseMarkdown(imageSource, path, "", func() bool { return false }, c)
+	if len(c.images) != 2 {
 		t.Fatal("superseded parse pruned the cache")
+	}
+	// Code highlighted once is reused as long as the document has it.
+	code := []byte("```go\nfunc main() {}\n```\n")
+	first = parseMarkdown(code, path, "", nil, c)
+	second = parseMarkdown(append([]byte("Edited.\n\n"), code...), path, "", nil, c)
+	if &first[0].runs[0] != &second[1].runs[0] || len(c.code) != 1 {
+		t.Fatal("code highlighted again")
+	}
+	parseMarkdown([]byte("no code"), path, "", nil, c)
+	if len(c.code) != 0 {
+		t.Fatal("unused code retained")
 	}
 	// A leading / resolves against the repository's root.
 	os.Mkdir(filepath.Join(hs.root, ".git"), 0o755)

@@ -29,7 +29,7 @@ import (
 // markdownPreview keeps parsed blocks and the pane's place between edits.
 type markdownPreview struct {
 	blocks     []markdownBlock
-	images     map[markdownImageKey]markdownInline
+	cache      markdownCache
 	root       string
 	measure    float32
 	measured   ui.Font
@@ -67,6 +67,14 @@ type markdownImageKey struct {
 	path  string
 	mtime time.Time
 	size  int64
+}
+
+// markdownCache keeps the images a parse decoded and the code it
+// highlighted, by language and text, for the next parse of the document,
+// which drops those it no longer has.
+type markdownCache struct {
+	images map[markdownImageKey]markdownInline
+	code   map[[2]string][]markdownInline
 }
 
 // markdownBlock is a paragraph-sized row, including its enclosing lists and quotes.
@@ -161,12 +169,20 @@ func markdownParser() parser.Parser {
 
 // parseMarkdown converts the AST once, away from the UI thread.
 // A parse that current reports superseded keeps the images it skipped cached.
-func parseMarkdown(source []byte, path, root string, current func() bool, caches ...map[markdownImageKey]markdownInline) []markdownBlock {
-	cache := map[markdownImageKey]markdownInline{}
+func parseMarkdown(source []byte, path, root string, current func() bool, caches ...*markdownCache) []markdownBlock {
+	c := &markdownCache{}
 	if len(caches) > 0 && caches[0] != nil {
-		cache = caches[0]
+		c = caches[0]
 	}
+	if c.images == nil {
+		c.images = map[markdownImageKey]markdownInline{}
+	}
+	if c.code == nil {
+		c.code = map[[2]string][]markdownInline{}
+	}
+	cache := c.images
 	used := map[markdownImageKey]bool{}
+	usedCode := map[[2]string]bool{}
 	defer func() {
 		if current != nil && !current() {
 			return
@@ -176,7 +192,24 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				delete(cache, k)
 			}
 		}
+		for k := range c.code {
+			if !usedCode[k] {
+				delete(c.code, k)
+			}
+		}
 	}()
+	// code highlights a block of code, as the last parse did if it had it.
+	code := func(text, language string) []markdownInline {
+		key := [2]string{language, text}
+		usedCode[key] = true
+		runs, ok := c.code[key]
+		if !ok {
+			runs = markdownCode(text, language)
+			runs = runs[:len(runs):len(runs)]
+			c.code[key] = runs
+		}
+		return runs
+	}
 	// Front matter is recognized only at the start, with exact delimiter lines
 	// around what looks like YAML.
 	if lines := strings.SplitAfter(string(source), "\n"); strings.TrimSuffix(strings.TrimSuffix(lines[0], "\n"), "\r") == "---" {
@@ -309,10 +342,10 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 			b.kind = markdownRule
 		case *ast.FencedCodeBlock:
 			b.kind, b.language = markdownCodeBlock, string(x.Language(source))
-			b.runs = markdownCode(string(x.Lines().Value(source)), b.language)
+			b.runs = code(string(x.Lines().Value(source)), b.language)
 		case *ast.CodeBlock:
 			b.kind = markdownCodeBlock
-			b.runs = markdownCode(string(x.Lines().Value(source)), "")
+			b.runs = code(string(x.Lines().Value(source)), "")
 		case *ast.HTMLBlock:
 			raw := string(x.Lines().Value(source))
 			if x.HasClosure() {
@@ -501,16 +534,13 @@ func (a *app) followMarkdown(v *viewer) {
 		m.running = true
 		source, path, workspace := []byte(d.buf.String()), d.path, a.folder()
 		// Give the worker its own cache snapshot; publish it on the UI thread.
-		images := maps.Clone(m.images)
-		if images == nil {
-			images = map[markdownImageKey]markdownInline{}
-		}
+		cache := &markdownCache{maps.Clone(m.cache.images), maps.Clone(m.cache.code)}
 		go func() {
 			root := markdownRoot(path, workspace)
-			blocks := parseMarkdown(source, path, root, func() bool { return m.generation.Load() == generation }, images)
+			blocks := parseMarkdown(source, path, root, func() bool { return m.generation.Load() == generation }, cache)
 			a.post(func() {
 				m.running, m.pending = false, false
-				m.images = images
+				m.cache = *cache
 				m.root = root
 				if v.loading != loading || !slices.Contains(a.docs, d) {
 					return
