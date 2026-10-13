@@ -27,7 +27,8 @@ needs a `## <version>` section here, or its build fails.
   code highlighted as in the editor, tables, cached local bitmap and SVG
   images, inline badges and links, with comments and front matter hidden, in
   the editor's fonts and colors. It follows your edits, and with the same
-  file in another column shows its source beside it.
+  file in another column shows its source beside it. An image or link
+  starting with `/` is found from the repository's root, as on GitHub.
 
 ## 0.6.0
 

@@ -77,10 +77,12 @@ type viewer struct {
 	// doc is the document an SVG or Markdown preview shows, version the
 	// version of its text parsed last, and wait the timer of a parse after
 	// an edit.
+	doc     *document
+	version uint64
+	wait    *time.Timer
+	// markdown is a Markdown preview's parsed text and place, nil for
+	// an image or an SVG.
 	markdown *markdownPreview
-	doc      *document
-	version  uint64
-	wait     *time.Timer
 }
 
 // newImageViewer makes the viewer of an image file, which load reads.

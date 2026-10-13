@@ -94,7 +94,7 @@ break. <em>HTML stays text</em>
 
 func TestMarkdownBlocks(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "docs", "readme.md")
-	blocks := parseMarkdown([]byte(markdownFixture), path, nil)
+	blocks := parseMarkdown([]byte(markdownFixture), path, "", nil)
 	kinds := map[markdownKind]int{}
 	levels := map[int]bool{}
 	var bold, italic, both, strike, code, link, nested, task, quote, language, table, image, raw bool
@@ -118,23 +118,26 @@ func TestMarkdownBlocks(t *testing.T) {
 			link = link || r.link == "https://example.com"
 			task = task || b.marker == "☑" || strings.Contains(r.text, "☑")
 			raw = raw || r.raw
-			image = image || (r.image == "art.png" && markdownPath(path, r.image) == filepath.Join(filepath.Dir(path), "art.png"))
+			image = image || (r.image == "art.png" && markdownPath("", path, r.image) == filepath.Join(filepath.Dir(path), "art.png"))
 		}
 	}
 	if len(levels) != 6 || !bold || !italic || !both || !strike || !code || !link || !nested || !task || !quote || !language || !table || !image || !raw || kinds[markdownRule] != 1 {
 		t.Fatalf("conversion: levels %v, styles %v %v %v %v %v, link %v nested %v task %v quote %v language %v table %v image %v raw %v kinds %v", levels, bold, italic, both, strike, code, link, nested, task, quote, language, table, image, raw, kinds)
 	}
 	for _, ending := range []string{"---", "..."} {
-		bs := parseMarkdown([]byte("---\ntitle: hidden\n"+ending+"\nVisible <!-- hidden\ncomment -->text<br>next<br/>last<br />end"), path, nil)
+		bs := parseMarkdown([]byte("---\ntitle: hidden\n"+ending+"\nVisible <!-- hidden\ncomment -->text<br>next<br/>last<br />end"), path, "", nil)
 		if len(bs) != 1 || markdownRunsText(bs[0].runs) != "Visible text\nnext\nlast\nend" {
 			t.Fatalf("front matter/comments/br: %+v", bs)
 		}
 	}
-	badges := parseMarkdown([]byte("[![CI](https://example.com/ci)](https://example.com) [![npm](missing)](https://example.org)"), path, nil)
+	if bs := parseMarkdown([]byte("---\nIntro text.\n\n---\nAfter"), path, "", nil); len(bs) != 4 {
+		t.Fatalf("rules taken for front matter: %+v", bs)
+	}
+	badges := parseMarkdown([]byte("[![CI](https://example.com/ci)](https://example.com) [![npm](missing)](https://example.org)"), path, "", nil)
 	if len(badges) != 1 || badges[0].kind != markdownParagraph || badges[0].runs[0].link == "" || !badges[0].runs[0].raw {
 		t.Fatal("badges not inline muted links")
 	}
-	bs := parseMarkdown([]byte("99. first\n\n    continuation\n\n    ~~~\n    code\n    ~~~\n\n    > quote\n\n    - nested\n\n100. second\n\n- literal ☑ text\n- [x] task"), path, nil)
+	bs := parseMarkdown([]byte("99. first\n\n    continuation\n\n    ~~~\n    code\n    ~~~\n\n    > quote\n\n    - nested\n\n100. second\n\n- literal ☑ text\n- [x] task"), path, "", nil)
 	if bs[0].markerWidth < 2.5 || bs[0].marker != "99." {
 		t.Fatalf("ordered width: %+v", bs)
 	}
@@ -146,7 +149,7 @@ func TestMarkdownBlocks(t *testing.T) {
 	if bs[len(bs)-2].marker != "•" || bs[len(bs)-1].marker != "☑" {
 		t.Fatal("task checkbox detection")
 	}
-	if markdownPath(path, "https://example.com/a.png") != "" || markdownPath(path, "//example.com/a.png") != "" || markdownPath(path, "/tmp/a%20b.png") != "/tmp/a b.png" {
+	if markdownPath("", path, "https://example.com/a.png") != "" || markdownPath("", path, "//example.com/a.png") != "" || markdownPath("", path, "/tmp/a%20b.png") != "/tmp/a b.png" {
 		t.Fatal("destination resolution")
 	}
 }
@@ -289,10 +292,10 @@ func TestShotMarkdown(t *testing.T) {
 	// Render the actual Markdown inline builder at two device pixels per
 	// point, with enough space for italic overhangs and no editor chrome.
 	hs := newHarness(t, false)
-	blocks := parseMarkdown([]byte("中文斜体 *中文斜体* italic *italic*"), "", nil)
+	blocks := parseMarkdown([]byte("中文斜体 *中文斜体* italic *italic*"), "", "", nil)
 	img := ui.Render(func(c *ui.Context) {
 		ui.Box(c).Fill().Background(hs.a.pal.editor).Padding(16).Children(func() {
-			hs.a.markdownText(c, blocks[0].runs, 24, false, "", false)
+			hs.a.markdownText(c, blocks[0].runs, 24, false, "", "", false)
 		})
 	}, 640, 72, 2)
 	f, err := os.Create(filepath.Join(os.Getenv("SHOTS"), "mayoi-md-italic.png"))
@@ -325,27 +328,43 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "logo.svg"), []byte(testSVG), 0o644)
 	cache := map[markdownImageKey]markdownInline{}
 	imageSource := []byte("![art](art.png) ![logo](logo.svg)")
-	first := parseMarkdown(imageSource, path, nil, cache)
-	second := parseMarkdown(imageSource, path, nil, cache)
+	first := parseMarkdown(imageSource, path, "", nil, cache)
+	second := parseMarkdown(imageSource, path, "", nil, cache)
 	if len(first) != 2 || first[0].runs[0].bitmap != second[0].runs[0].bitmap || first[1].runs[0].w != 64 || first[1].runs[0].h != 32 {
 		t.Fatal("image cache or SVG")
 	}
 	// A reused pointer proves a second bitmap was not decoded.
 	future := time.Now().Add(time.Second)
 	os.Chtimes(art, future, future)
-	third := parseMarkdown(imageSource, path, nil, cache)
+	third := parseMarkdown(imageSource, path, "", nil, cache)
 	if third[0].runs[0].bitmap == first[0].runs[0].bitmap || len(cache) != 2 {
 		t.Fatal("mtime did not invalidate/prune cache")
 	}
-	parseMarkdown([]byte("no images"), path, nil, cache)
+	parseMarkdown([]byte("no images"), path, "", nil, cache)
 	if len(cache) != 0 {
 		t.Fatal("unused images retained")
+	}
+	// A superseded parse skips images but leaves them cached for the next.
+	parseMarkdown(imageSource, path, "", nil, cache)
+	parseMarkdown(imageSource, path, "", func() bool { return false }, cache)
+	if len(cache) != 2 {
+		t.Fatal("superseded parse pruned the cache")
+	}
+	// A leading / resolves against the repository's root.
+	os.Mkdir(filepath.Join(hs.root, ".git"), 0o755)
+	root := markdownRoot(path, "")
+	if root != hs.root || markdownPath(root, path, "/docs/art.png") != art {
+		t.Fatalf("root-relative: %q", root)
+	}
+	rooted := parseMarkdown([]byte("![art](/docs/art.png)"), path, root, nil)
+	if len(rooted) != 1 || rooted[0].runs[0].bitmap == nil {
+		t.Fatal("root-relative image not decoded")
 	}
 	src := "[![Relative](art.png)](../main.go)\n\n![Absolute](" + art + ")\n\n[Open local](../main.go#text)\n\n[![Remote](https://example.com/art.png)](https://example.com)\n\n![Missing](missing.png)\n\n| Picture |\n| --- |\n| [![Cell](art.png)](../main.go) |\n| [![Cell remote](https://example.com/art.png)](https://example.org) |\n"
 	if err := os.WriteFile(path, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	blocks := parseMarkdown([]byte(src), path, nil)
+	blocks := parseMarkdown([]byte(src), path, "", nil)
 	images := 0
 	for _, b := range blocks {
 		if b.kind == markdownTable && b.cells[0][0].text == "Cell" && b.cells[0][0].bitmap == nil {
@@ -364,7 +383,7 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 			t.Fatal("remote or missing image loaded")
 		}
 	}
-	for _, b := range parseMarkdown([]byte(src), path, func() bool { return false }) {
+	for _, b := range parseMarkdown([]byte(src), path, "", func() bool { return false }) {
 		for _, r := range b.runs {
 			if r.bitmap != nil {
 				t.Fatal("stale parse decoded an image")
@@ -537,7 +556,7 @@ func TestMarkdownFontAndZoom(t *testing.T) {
 	for _, size := range []float32{13, 18} {
 		a.settings.FontSize = size
 		tt := ui.NewTester(func(c *ui.Context) {
-			a.markdownText(c, []markdownInline{{text: "link", bold: true, italic: true, strike: true, code: true, link: "https://example.com"}}, size, false, "", false)
+			a.markdownText(c, []markdownInline{{text: "link", bold: true, italic: true, strike: true, code: true, link: "https://example.com"}}, size, false, "", "", false)
 		}, 300, 80)
 		link, ok := tt.Find("Open link https://example.com")
 		if !ok || link.H < size {
@@ -568,7 +587,7 @@ func TestMarkdownFontAndZoom(t *testing.T) {
 
 func TestMarkdownListSpacing(t *testing.T) {
 	hs := newHarness(t, false)
-	blocks := parseMarkdown([]byte("- tight one\n  - nested\n- tight two\n\nParagraph.\n\n1. loose one\n\n2. loose two\n"), "test.md", nil)
+	blocks := parseMarkdown([]byte("- tight one\n  - nested\n- tight two\n\nParagraph.\n\n1. loose one\n\n2. loose two\n"), "test.md", "", nil)
 	var tight, loose bool
 	for _, b := range blocks {
 		if b.indent == 0 {
@@ -593,7 +612,7 @@ func TestMarkdownListSpacing(t *testing.T) {
 }
 
 func TestMarkdownImageSpacing(t *testing.T) {
-	blocks := parseMarkdown([]byte("![remote](https://example.com/a.png)\n![missing](missing.png)\n![missing too](missing2.png)\n"), "test.md", nil)
+	blocks := parseMarkdown([]byte("![remote](https://example.com/a.png)\n![missing](missing.png)\n![missing too](missing2.png)\n"), "test.md", "", nil)
 	if len(blocks) != 1 {
 		t.Fatalf("images gained empty paragraphs: %+v", blocks)
 	}
@@ -603,7 +622,7 @@ func TestMarkdownImageSpacing(t *testing.T) {
 		}
 	}
 	for _, source := range []string{"- ![one](a.png) ![two](b.png) text", "1. text ![one](a.png) ![two](b.png) tail"} {
-		blocks = parseMarkdown([]byte(source), "test.md", nil)
+		blocks = parseMarkdown([]byte(source), "test.md", "", nil)
 		for i, b := range blocks {
 			if (b.marker != "") != (i == 0) {
 				t.Fatalf("repeated or missing marker: %+v", blocks)

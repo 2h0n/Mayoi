@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"html"
 	"maps"
 	"net/url"
@@ -29,6 +30,9 @@ import (
 type markdownPreview struct {
 	blocks     []markdownBlock
 	images     map[markdownImageKey]markdownInline
+	root       string
+	measure    float32
+	measured   ui.Font
 	list       ui.ListState
 	scroll     ui.ScrollState
 	observed   uint64
@@ -85,15 +89,58 @@ func isMarkdown(d *document) bool {
 func canPreview(d *document) bool { return isSVG(d) || isMarkdown(d) }
 
 // markdownPath resolves local destinations without fetching remote resources.
-func markdownPath(path, dest string) string {
+// A leading / means root, as it means the repository's on GitHub, or the
+// filesystem's when there is no root.
+func markdownPath(root, path, dest string) string {
 	u, err := url.Parse(dest)
 	if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
 		return ""
 	}
 	if filepath.IsAbs(u.Path) {
-		return filepath.Clean(u.Path)
+		return filepath.Join(cmp.Or(root, "/"), filepath.FromSlash(u.Path))
 	}
 	return filepath.Join(filepath.Dir(path), filepath.FromSlash(u.Path))
+}
+
+// markdownRoot is the Git repository holding path, or else the workspace
+// when it holds path, or "".
+func markdownRoot(path, workspace string) string {
+	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir
+		}
+		if parent := filepath.Dir(dir); parent == dir {
+			break
+		}
+	}
+	if rel, err := filepath.Rel(workspace, path); workspace != "" && err == nil && filepath.IsLocal(rel) {
+		return workspace
+	}
+	return ""
+}
+
+// markdownFrontMatter reports whether lines, those between front matter's
+// delimiters, look like YAML, so a document opening with a rule keeps the
+// text up to its next rule.
+func markdownFrontMatter(lines []string) bool {
+	keys := false
+	for _, line := range lines {
+		line = strings.TrimRight(line, "\r\n")
+		switch {
+		case strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#"):
+		case strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") || line == "-" || strings.HasPrefix(line, "- "):
+			if !keys {
+				return false
+			}
+		default:
+			key, rest, ok := strings.Cut(line, ":")
+			if !ok || strings.TrimSpace(key) == "" || rest != "" && rest[0] != ' ' && rest[0] != '\t' {
+				return false
+			}
+			keys = true
+		}
+	}
+	return keys
 }
 
 // markdownParser parses GitHub's Markdown: goldmark's parser with the
@@ -113,31 +160,38 @@ func markdownParser() parser.Parser {
 }
 
 // parseMarkdown converts the AST once, away from the UI thread.
-func parseMarkdown(source []byte, path string, current func() bool, caches ...map[markdownImageKey]markdownInline) []markdownBlock {
+// A parse that current reports superseded keeps the images it skipped cached.
+func parseMarkdown(source []byte, path, root string, current func() bool, caches ...map[markdownImageKey]markdownInline) []markdownBlock {
 	cache := map[markdownImageKey]markdownInline{}
 	if len(caches) > 0 && caches[0] != nil {
 		cache = caches[0]
 	}
 	used := map[markdownImageKey]bool{}
 	defer func() {
+		if current != nil && !current() {
+			return
+		}
 		for k := range cache {
 			if !used[k] {
 				delete(cache, k)
 			}
 		}
 	}()
-	// Front matter is recognized only at the start, with exact delimiter lines.
+	// Front matter is recognized only at the start, with exact delimiter lines
+	// around what looks like YAML.
 	if lines := strings.SplitAfter(string(source), "\n"); strings.TrimSuffix(strings.TrimSuffix(lines[0], "\n"), "\r") == "---" {
 		for i := 1; i < len(lines); i++ {
 			line := strings.TrimSuffix(strings.TrimSuffix(lines[i], "\n"), "\r")
 			if line == "---" || line == "..." {
-				source = []byte(strings.Join(lines[i+1:], ""))
+				if markdownFrontMatter(lines[1:i]) {
+					source = []byte(strings.Join(lines[i+1:], ""))
+				}
 				break
 			}
 		}
 	}
 
-	root := markdownParser().Parse(text.NewReader(source))
+	tree := markdownParser().Parse(text.NewReader(source))
 	var blocks []markdownBlock
 	var inline func(ast.Node, markdownInline) []markdownInline
 	inline = func(n ast.Node, style markdownInline) []markdownInline {
@@ -182,7 +236,7 @@ func parseMarkdown(source []byte, path string, current func() bool, caches ...ma
 			case *ast.Image:
 				s.text = string(x.Text(source))
 				s.image = string(x.Destination)
-				if local := markdownPath(path, s.image); local != "" && (current == nil || current()) {
+				if local := markdownPath(root, path, s.image); local != "" && (current == nil || current()) {
 					if info, err := os.Stat(local); err == nil && info.Mode().IsRegular() {
 						key := markdownImageKey{local, info.ModTime(), info.Size()}
 						used[key] = true
@@ -358,7 +412,7 @@ func parseMarkdown(source []byte, path string, current func() bool, caches ...ma
 		}
 		blocks = append(blocks, b)
 	}
-	walk(root, 0, 0, "", false, 0, 0)
+	walk(tree, 0, 0, "", false, 0, 0)
 	return blocks
 }
 
@@ -445,17 +499,19 @@ func (a *app) followMarkdown(v *viewer) {
 		}
 		v.wait = nil
 		m.running = true
-		source, path := []byte(d.buf.String()), d.path
+		source, path, workspace := []byte(d.buf.String()), d.path, a.folder()
 		// Give the worker its own cache snapshot; publish it on the UI thread.
 		images := maps.Clone(m.images)
 		if images == nil {
 			images = map[markdownImageKey]markdownInline{}
 		}
 		go func() {
-			blocks := parseMarkdown(source, path, func() bool { return m.generation.Load() == generation }, images)
+			root := markdownRoot(path, workspace)
+			blocks := parseMarkdown(source, path, root, func() bool { return m.generation.Load() == generation }, images)
 			a.post(func() {
 				m.running, m.pending = false, false
 				m.images = images
+				m.root = root
 				if v.loading != loading || !slices.Contains(a.docs, d) {
 					return
 				}
@@ -528,7 +584,7 @@ func (a *app) markdownSpacing(b markdownBlock) (top, bottom float32) {
 	return
 }
 
-func (a *app) markdownText(c *ui.Context, runs []markdownInline, size float32, muted bool, path string, blockCode bool) {
+func (a *app) markdownText(c *ui.Context, runs []markdownInline, size float32, muted bool, root, path string, blockCode bool) {
 	p := a.pal
 	color := p.text
 	if muted {
@@ -542,7 +598,7 @@ func (a *app) markdownText(c *ui.Context, runs []markdownInline, size float32, m
 		for _, r := range runs {
 			span := a.markdownSpan(r, color, blockCode)
 			if r.link != "" {
-				if e := a.markdownLink(c, r.link, path, false); e.Valid() {
+				if e := a.markdownLink(c, r.link, root, path, false); e.Valid() {
 					e.Children(func() { ui.RichText(c, span) })
 					continue
 				}
@@ -552,10 +608,10 @@ func (a *app) markdownText(c *ui.Context, runs []markdownInline, size float32, m
 	})
 }
 
-func (a *app) markdownLink(c *ui.Context, dest, path string, image bool) ui.Element {
+func (a *app) markdownLink(c *ui.Context, dest, root, path string, image bool) ui.Element {
 	u, err := url.Parse(dest)
 	remote := err == nil && (u.Scheme == "http" || u.Scheme == "https")
-	local := markdownPath(path, dest)
+	local := markdownPath(root, path, dest)
 	if !remote && local == "" {
 		return ui.Element{}
 	}
@@ -572,13 +628,13 @@ func (a *app) markdownLink(c *ui.Context, dest, path string, image bool) ui.Elem
 	return e.OnClick(func() { a.openFile(local, true) })
 }
 
-func (a *app) markdownImage(c *ui.Context, r markdownInline, width float32, path string) {
+func (a *app) markdownImage(c *ui.Context, r markdownInline, width float32, root, path string) {
 	draw := func() {
 		w := min(r.w, max(1, width))
 		ui.Image(c, r.bitmap).Width(w).Height(w * r.h / r.w).Fit(ui.Contain)
 	}
 
-	if e := a.markdownLink(c, r.link, path, true); e.Valid() {
+	if e := a.markdownLink(c, r.link, root, path, true); e.Valid() {
 		e.Children(draw)
 	} else {
 		draw()
@@ -594,7 +650,11 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 	if p.mono {
 		font.Weight, font.Features = a.settings.FontWeight, strings.Join(a.settings.FontFeatures, ",")
 	}
-	width, _ := ui.ShapeText(strings.Repeat("0", 80), font, 0).Size()
+	if m.measured != font || m.measure == 0 {
+		m.measured = font
+		m.measure, _ = ui.ShapeText(strings.Repeat("0", 80), font, 0).Size()
+	}
+	width := m.measure
 	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label("Preview "+name).Padding(editorPadY, textPadR).Rows(func(row ui.ListRow) {
 		c := row.Context
 		b := m.blocks[row.Index]
@@ -627,10 +687,10 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 						ui.Box(c).Height(1).WidthPercent(100).Background(p.border).Margin(size*a.settings.LineHeight*0.375, 0)
 					case markdownImageBlock:
 						imageWidth := max(1, min(width, v.pane.Bounds(c).W-2*textPadR)-(b.offset+b.markerWidth)*size-float32(b.quote)*size)
-						a.markdownImage(c, b.runs[0], imageWidth, v.doc.path)
+						a.markdownImage(c, b.runs[0], imageWidth, m.root, v.doc.path)
 					case markdownCodeBlock, markdownHTML:
 						ui.Column(c).WidthPercent(100).Padding(size*0.5, size*0.75).Background(p.chrome).Radius(6).Children(func() {
-							a.markdownText(c, b.runs, size, b.kind == markdownHTML, v.doc.path, true)
+							a.markdownText(c, b.runs, size, b.kind == markdownHTML, m.root, v.doc.path, true)
 						})
 					case markdownTable, markdownTableHeader:
 						ui.Row(c).WidthPercent(100).Children(func() {
@@ -666,10 +726,10 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 												n++
 											}
 											if n > 0 {
-												a.markdownText(c, cell[:n], size, false, v.doc.path, false)
+												a.markdownText(c, cell[:n], size, false, m.root, v.doc.path, false)
 											}
 											if n < len(cell) {
-												a.markdownImage(c, cell[n], width/float32(len(b.cells))-size, v.doc.path)
+												a.markdownImage(c, cell[n], width/float32(len(b.cells))-size, m.root, v.doc.path)
 												n++
 											}
 											cell = cell[n:]
@@ -679,7 +739,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							}
 						})
 					default:
-						a.markdownText(c, b.runs, a.markdownSize(b), b.kind == markdownHeading && b.level == 6, v.doc.path, false)
+						a.markdownText(c, b.runs, a.markdownSize(b), b.kind == markdownHeading && b.level == 6, m.root, v.doc.path, false)
 					}
 				})
 			})
