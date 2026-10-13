@@ -1,7 +1,9 @@
 # Architecture
 
 Mayoi is a single Go package (`main`) with three internal packages, drawn by [MyGo](https://github.com/egoist/mygo).
-This page walks through the source by area.
+Chroma highlights code on a background goroutine, libghostty-vt runs the terminal, and fsnotify keeps the file tree and
+the quick-open index current. Undo history, editing commands and decorations belong to the app rather than the text
+area, so every column showing a file shares its text and history. This page walks through the source by area.
 
 ## Windows and commands
 
@@ -179,3 +181,12 @@ worked out from the time alone, a step every 70 ms. `mascot.go` places a theme's
 the status bar, its pose also worked out from the time, asking for a frame only when the pose next changes: `clawd.go`
 paints Claude's from cells, and `qoduck.go` Qoder's duck from vector shapes. It also styles what floats over
 the window, dialogs and the boxes over an editor, and fades them in as they show.
+
+## Performance
+
+These figures come from the tests, run on an M-series Mac:
+
+- A 100,000-line file opens in about 20 ms.
+- Scrolling and typing cost under 2 ms per frame, or about 3 ms with find open.
+- Highlighting again after a keystroke in a 6,000-line file takes under 1 ms.
+- Quick open searches 100,000 paths in about 1.5 ms.

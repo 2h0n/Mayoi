@@ -32,7 +32,8 @@
 - **Settings:** a JSON file applied as you save it, with the code's and the terminal's fonts, weight, ligatures and
   line height
 
-See [docs/FEATURES.md](docs/FEATURES.md) for the details.
+See [docs/FEATURES.md](docs/FEATURES.md) for the details, [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a tour of the
+source and how fast it runs, and [CONTRIBUTING.md](CONTRIBUTING.md) to build, test and release Mayoi.
 
 ## Requirements
 
@@ -49,42 +50,6 @@ go tool mygo build                   # build build/darwin-arm64/Mayoi.app and a 
 ```
 
 To open folders from a shell, choose **File → Install 'mayoi' Command**, then run `mayoi .` or `mayoi <file>`.
-
-## Development
-
-```sh
-scripts/dev.sh                                              # run Mayoi Dev with live reload, with its own settings
-go test ./...                                               # headless UI tests
-go test -short ./...                                        # skip the tests that start a shell
-go test -short -run XXX -bench Frame ./cmd/mayoi            # benchmark an editor frame
-SHOTS=$PWD/docs go test -run TestShotReadme ./cmd/mayoi     # redraw the README screenshots
-go run ./tools/icongen                                      # redraw resources/icon.png
-```
-
-## Releasing
-
-Write the release notes under `## Unreleased` in `CHANGELOG.md` and commit them, then:
-
-```sh
-scripts/bump.sh patch    # or minor, major, or a version such as 0.2.0
-```
-
-It sets the version in `mygo.json`, renames `## Unreleased` to `## <version>` in `CHANGELOG.md`, commits and tags `v<version>`, and after asking pushes `main` and the tag. The
-[Release workflow](.github/workflows/release.yml) then builds macOS (arm64 and Intel, signed and notarized), Windows and
-Linux, uploads them with their signed updates, and publishes the release. Installed apps check for it once a day, and
-from **Mayoi → Check for Updates…**; the update window shows the changelog section.
-
-The workflow needs these repository secrets:
-
-| Secret | What |
-|---|---|
-| `MYGO_UPDATER_PRIVATE_KEY` | `mygo-update.key` from `go tool mygo keygen`, whose public key is in `mygo.json` |
-| `MACOS_CERTIFICATE` | the Developer ID Application certificate and its key, as a base64 `.p12` |
-| `MACOS_CERTIFICATE_PASSWORD` | the password of the `.p12` |
-| `APPLE_ID`, `APPLE_TEAM_ID` | the Apple ID of the developer account, and its team ID |
-| `APPLE_APP_PASSWORD` | an app-specific password of the Apple ID, from account.apple.com |
-
-Local builds stay signed ad hoc; only the workflow signs with the Developer ID. Windows builds are not signed.
 
 ## Keyboard shortcuts
 
@@ -107,24 +72,6 @@ Local builds stay signed ad hoc; only the workflow signs with the Developer ID. 
 | ⌘= / ⌘- / ⌘0 | Zoom text or image in / out / reset |
 | ⇧⌘V | Toggle SVG preview |
 | ⌥Z | Toggle word wrap for the current tab |
-
-## Architecture
-
-Mayoi is a single Go program. MyGo provides the windows, the GPU renderer and the text area. Chroma highlights code on a
-background goroutine, libghostty-vt runs the terminal, and fsnotify keeps the file tree and the quick-open index current.
-Undo history, editing commands and decorations belong to the app rather than the text area, so every column showing a
-file shares its text and history.
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for a tour of the source.
-
-## Performance
-
-These figures come from the tests, run on an M-series Mac:
-
-- A 100,000-line file opens in about 20 ms.
-- Scrolling and typing cost under 2 ms per frame, or about 3 ms with find open.
-- Highlighting again after a keystroke in a 6,000-line file takes under 1 ms.
-- Quick open searches 100,000 paths in about 1.5 ms.
 
 ## License
 
