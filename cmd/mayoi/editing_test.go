@@ -399,3 +399,28 @@ func lineOf(d *editor) int {
 	s := d.buf.Snapshot()
 	return s.LineAt(min(d.sel[1], s.Len()))
 }
+
+// A swipe mostly sideways, as a trackpad's goes a little down too, moves
+// the text sideways on every event, and not down.
+func TestSwipeSidewaysAlongItsAxis(t *testing.T) {
+	var text strings.Builder
+	for range 200 {
+		text.WriteString(strings.Repeat("long line ", 40) + "\n")
+	}
+	hs, d := editHarness(t, "long.txt", text.String())
+	hs.tt.Move(400, 300)
+	for i := range 30 {
+		x, y := d.hscroll.X, d.vscroll.Y
+		hs.tt.Scroll(400, 300, 6, float32(i%2))
+		hs.tt.Frame()
+		if d.hscroll.X != x+6 || d.vscroll.Y != y {
+			t.Fatalf("swipe %d: at %v, %v from %v, %v", i, d.hscroll.X, d.vscroll.Y, x, y)
+		}
+	}
+	// Mostly down, it scrolls down.
+	hs.tt.Scroll(400, 300, 1, 20)
+	hs.tt.Frame()
+	if d.vscroll.Y == 0 {
+		t.Fatal("did not scroll down")
+	}
+}

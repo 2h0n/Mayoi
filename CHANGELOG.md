@@ -46,6 +46,9 @@ needs a `## <version>` section here, or its build fails.
   the editor's fonts and colors. It follows your edits, and with the same
   file in another column shows its source beside it. An image or link
   starting with `/` is found from the repository's root, as on GitHub.
+- A sideways swipe on a trackpad scrolls a long line smoothly, as in VS
+  Code: it moves the text sideways only, rather than stopping every few
+  frames and drifting up or down.
 
 ## 0.6.0
 

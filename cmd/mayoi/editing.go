@@ -463,6 +463,17 @@ func home(d *editor, extend bool) {
 // editorKey takes the keys of the editor that the app handles itself,
 // before its text area: they queue an edit for the next frame.
 func (a *app) editorKey(d *editor, ev ui.InputEvent) bool {
+	if ev.Kind == ui.InputScroll && ev.Mods&ui.Shift == 0 && max(ev.DX, -ev.DX) > max(ev.DY, -ev.DY) {
+		// A swipe mostly sideways moves the text sideways only, as in VS
+		// Code: the text area would take the whole of it for the little it
+		// goes down, and the text stop and drift.
+		// Taken at an edge too, or wrapped, so that the text stays put.
+		if x := max(0, min(d.hscroll.X+ev.DX, d.hscroll.MaxX)); x != d.hscroll.X {
+			d.hscroll.X = x
+			a.invalidate()
+		}
+		return true
+	}
 	if ev.Kind == ui.InputPointerDown && ev.Button == 0 && len(d.sticky) > 0 && a.font.lineH > 0 {
 		// A click on a line stuck at the top goes to it.
 		if k := int(ev.Y / a.font.lineH); ev.Y >= 0 && k < len(d.sticky) {
