@@ -20,6 +20,12 @@ needs a `## <version>` section here, or its build fails.
   the marker shows, on a column after the tab shown, or on the edge of a
   column in a new column there. A search match opens selected. Dropped on
   a terminal, the file types its path.
+- A commit's tab wraps its message to the width of the view instead of
+  cutting it at the right edge: the subject on up to three lines, the line
+  of its author, date, hash and branches onto a second, and the body in the
+  editor's font. A body longer than twelve lines folds under **Show More**.
+  The message can be selected and copied, and a click on the hash copies
+  it. A long subject in the breadcrumbs ends in an ellipsis.
 
 ## 0.5.1
 

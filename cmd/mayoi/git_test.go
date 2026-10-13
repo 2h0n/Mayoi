@@ -936,8 +936,8 @@ func TestHistoryAndCommitTabs(t *testing.T) {
 	if got := kinds(v); !strings.HasPrefix(got, "CF") {
 		t.Errorf("rows %s", got)
 	}
-	if body := cardBody(v.commit); len(body) != 1 || body[0] != "And rename the README." || commitCardLines(v.commit) != 5 {
-		t.Errorf("the message's body %q", body)
+	if !hs.tt.HasText("And rename the README.") || v.rows[0].h < 4 {
+		t.Errorf("the message's body, its card %d lines: %q", v.rows[0].h, hs.tt.Texts())
 	}
 	// It does not take the place of the changes of the work tree.
 	if col, _ := a.changesTab(); col != nil {
@@ -1311,5 +1311,59 @@ func TestScmMenuChosenAway(t *testing.T) {
 		if got := hs.tt.HasText("Show Current Branch Only"); got != want {
 			t.Errorf("toggle shown %v with all branches %v: %q", got, want, tt.Texts())
 		}
+	}
+}
+
+// A long message wraps in the card of its commit, which grows as its view
+// narrows, folds a long body until asked, and copies its hash on a click.
+func TestCommitCardWraps(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	a, tt := hs.a, hs.tt
+	os.WriteFile(hs.path("main.go"), []byte("package main\n\nfunc main() {}\n"), 0o644)
+	subject := strings.Repeat("Close a tab after the frame so its column goes ", 2)
+	body := strings.Repeat("- a line\n", 30)
+	git("commit", "-qam", subject+"\n\n"+body)
+	a.run("view.scm")
+	hs.settleGit()
+	a.showCommit(a.git.history[0], true)
+	hs.settleGit()
+	hs.settle()
+	v := a.activeTab().diff
+	if v == nil || v.rows[0].kind != rowCommit {
+		t.Fatalf("no card")
+	}
+	wide := v.rows[0].h
+	if !tt.HasText("Show More") {
+		t.Errorf("a long body does not fold: %q", tt.Texts())
+	}
+	// Narrower, the subject and the body wrap to more lines.
+	tt.SetSize(800, 760)
+	hs.settle()
+	if v.rows[0].h <= wide {
+		t.Errorf("the card is %d lines narrow, %d wide", v.rows[0].h, wide)
+	}
+	narrow := v.rows[0].h
+	if err := tt.Click("Show More"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if !v.commit.unfolded || v.rows[0].h <= narrow || !tt.HasText("Show Less") {
+		t.Errorf("Show More: unfolded %v, %d lines after %d", v.commit.unfolded, v.rows[0].h, narrow)
+	}
+	if err := tt.Click("Show Less"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if v.commit.unfolded || v.rows[0].h != narrow {
+		t.Errorf("Show Less: unfolded %v, %d lines", v.commit.unfolded, v.rows[0].h)
+	}
+	hash := a.git.history[0].Hash
+	if err := tt.Click(hash[:7]); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if got := tt.Clipboard(); got != hash {
+		t.Errorf("clipboard %q, not the hash %q", got, hash)
 	}
 }

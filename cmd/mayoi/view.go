@@ -604,7 +604,8 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 			}
 			t := ui.Text(c, part).FontSize(12).SingleLine().TextColor(p.muted).Shrink(0)
 			if last {
-				t.TextColor(p.text)
+				// A long name, as a commit's subject, ends in an ellipsis.
+				t.TextColor(p.text).Shrink(1).MinWidth(24)
 			}
 			if !last || len(scope) > 0 {
 				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)

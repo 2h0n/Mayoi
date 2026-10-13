@@ -201,6 +201,10 @@ type commitDiff struct {
 	files           []git.CommitFile
 	loading, loaded bool
 	err             string
+	// lines is how many lines tall its card is, as laid out last, and
+	// unfolded whether the card shows all of the message.
+	lines    int
+	unfolded bool
 }
 
 // diffTarget is a file of a diff to scroll to: path, as compared against
@@ -221,6 +225,7 @@ type diffBuild struct {
 	gen               int
 	split, wrap, full bool
 	cols              [2]int
+	card              int // how many lines tall the card of a commit is
 	font              codeFont
 }
 
@@ -767,6 +772,9 @@ func (a *app) splits(v *diffView, viewW float32) bool {
 // scrolling to the file to reveal once it is listed.
 func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	b := diffBuild{gen: v.gen, split: v.split, wrap: a.wrapsDiff(v), full: v.full, font: a.font}
+	if v.commit != nil {
+		b.card = v.commit.lines
+	}
 	if b.wrap {
 		b.cols = l.cols
 	}
@@ -819,7 +827,7 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	}
 	reveal := -1
 	if cm := v.commit; cm != nil && len(v.files) > 0 {
-		v.rows = append(v.rows, diffRow{kind: rowCommit, old: -1, new: -1, hunk: -1, peer: -1, gap: -1, h: commitCardLines(cm)})
+		v.rows = append(v.rows, diffRow{kind: rowCommit, old: -1, new: -1, hunk: -1, peer: -1, gap: -1, h: max(cm.lines, 3)})
 	}
 	for i, f := range v.files {
 		if v.commit != nil {

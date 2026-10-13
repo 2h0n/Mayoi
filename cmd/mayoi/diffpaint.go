@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -104,6 +105,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	}
 	v.split = a.splits(v, v.viewW)
 	l := a.diffGeometry(v, v.split, v.viewW)
+	var card *commitCard
+	if v.commit != nil {
+		card = a.layOutCommitCard(c, v, cardWidth(v.viewW))
+		v.commit.lines = card.lines
+	}
 	a.layoutRows(v, l)
 	rows := v.rows
 	wrap := v.built.wrap
@@ -204,8 +210,12 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				}
 			}
 		}
-		var buttons, hunkButtons ui.Rect
+		var buttons, hunkButtons, cardRect ui.Rect
 		box.Children(func() {
+			if card != nil && first == 0 && rows[0].kind == rowCommit {
+				cardRect = ui.Rect{X: v.scroll.X, Y: editorPadY + float32(v.tops[0])*lineH, W: view.W, H: float32(rows[0].h) * lineH}
+				a.commitCardUI(c, v, card, cardRect.X, cardRect.Y, cardRect.W, cardRect.H)
+			}
 			for _, i := range []int{hovered, v.cursor} {
 				if i != sticky && (i < first || i > last) || i < 0 || rows[i].kind != rowFile || buttons.W > 0 {
 					continue
@@ -232,7 +242,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		// A click chooses a row, and opens a gap or folds a file; a double
 		// click opens the file at a line, unless its first click did that.
 		if clicked, double := box.Clicked(), box.DoubleClicked(); clicked || double {
-			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) {
+			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) && !cardRect.Contains(x, y) {
 				i := v.rowAt(y, lineH)
 				stuck := onSticky(y)
 				if stuck {
@@ -292,7 +302,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				case rowSpace:
 					continue
 				case rowCommit:
-					a.paintCommitCard(pt, v.commit, full, len(v.files))
+					a.paintCommitCard(pt, full)
 				case rowFile:
 					a.paintFileHeader(pt, file, full, i == hovered, txt)
 				case rowSection:
@@ -606,30 +616,233 @@ func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bo
 	}
 }
 
-// maxCardBody is how many lines of a commit's message after its subject
-// the card at the top of its diff shows.
-const maxCardBody = 12
+// maxCardSubject is how many lines a commit's subject wraps to in the
+// card at the top of its diff before it is cut, and maxCardBody how many
+// the rest of its message shows until asked for all of it.
+const (
+	maxCardSubject = 3
+	maxCardBody    = 12
+)
 
-// cardBody returns the lines of a commit's message after its subject, as
-// many as its card shows.
-func cardBody(cm *commitDiff) []string {
-	if cm.info.Body == "" {
-		return nil
-	}
-	lines := strings.Split(cm.info.Body, "\n")
-	if len(lines) > maxCardBody {
-		lines = append(lines[:maxCardBody-1:maxCardBody-1], "…")
-	}
-	return lines
+// The room around and between the parts of a commit's card.
+const (
+	cardPadX    = 12
+	cardPadY    = 8
+	cardGap     = 4  // under the subject
+	cardBodyGap = 10 // over the body
+	cardMetaH   = 20 // a line of who made it, when, its hash and refs
+	cardMoreH   = 20 // the button that shows the rest of the body
+)
+
+// cardPiece is a piece of the line of a commit's card under its subject,
+// which wraps between pieces: how wide it is, whether a dot sets it off
+// from the piece before it on its line, and what shows it.
+type cardPiece struct {
+	w    float32
+	dot  bool
+	show func()
 }
 
-// commitCardLines is how many lines tall the card of a commit is: its
-// subject, who made it and when, and the rest of its message.
-func commitCardLines(cm *commitDiff) int {
-	if n := len(cardBody(cm)); n > 0 {
-		return 4 + n
+// commitCard is the card of a commit laid out at a width: its subject
+// wrapped, the pieces of each line under it, and the rest of its message.
+type commitCard struct {
+	w        float32 // the width of its text
+	subject  ui.Span
+	subjectH float32
+	cut      bool // the subject is longer than it shows
+	meta     [][]cardPiece
+	body     ui.Span
+	bodyH    float32
+	folds    bool // the body is longer than it shows folded
+	lines    int  // how many lines of the diff tall it is
+}
+
+// cardWidth is the width of the text of a commit's card in a view w wide.
+func cardWidth(w float32) float32 {
+	return max(w-diffRailW-2*cardPadX, 120)
+}
+
+// layOutCommitCard lays out the card at the top of a commit's diff, its
+// text w wide.
+func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCard {
+	p := a.pal
+	cm := v.commit
+	info := cm.info
+	k := &commitCard{w: w}
+	lineOf := func(s ui.Span) float32 {
+		s.Text = "M"
+		_, h := c.MeasureText(0, s)
+		return h
 	}
-	return 3
+	k.subject = ui.Span{Text: info.Subject, Size: 15, Weight: 600, Color: p.text}
+	_, k.subjectH = c.MeasureText(w, k.subject)
+	if one := lineOf(k.subject); k.subjectH > maxCardSubject*one+0.5 {
+		k.subjectH, k.cut = maxCardSubject*one, true
+	}
+	// Who, when, which: in pieces that wrap to the next line.
+	measure := func(s ui.Span) float32 {
+		w, _ := c.MeasureText(0, s)
+		return w
+	}
+	label := func(s string, weight int, col ui.Color) ui.Span {
+		return ui.Span{Text: s, Size: headerFontSize, Weight: weight, Color: col}
+	}
+	text := func(s ui.Span, dot bool) cardPiece {
+		return cardPiece{w: measure(s), dot: dot, show: func() {
+			ui.RichText(c, s).SingleLine().Shrink(1).MinWidth(0)
+		}}
+	}
+	var pieces []cardPiece
+	author := label(info.Author, 600, p.text)
+	col := avatarColor(p, info.Email+info.Author)
+	pieces = append(pieces, cardPiece{w: 18 + 6 + measure(author), show: func() {
+		ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
+			ui.Box(c).Size(18, 18).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
+				pt.Fill(b, col.Alpha(0.22), 9)
+				ini := ui.Span{Text: initials(info.Author), Size: 8.5, Weight: 700, Color: col}
+				iw, ih := pt.MeasureText(0, ini)
+				pt.RichText(b.X+(b.W-iw)/2, b.Y+(b.H-ih)/2, 0, ini)
+			})
+			ui.RichText(c, author).SingleLine().Shrink(1).MinWidth(0)
+		})
+	}})
+	if !info.Time.IsZero() {
+		when := "committed " + ago(info.Time, time.Now()) + " · " + info.Time.Format("Jan 2, 2006 15:04")
+		pieces = append(pieces, text(label(when, 400, p.muted), false))
+	}
+	hash := ui.Span{Text: git.ShortHash(cm.hash), Font: a.font.family, Size: a.font.size - 1, Color: p.accent}
+	pieces = append(pieces, cardPiece{w: measure(hash) + 12, dot: true, show: func() {
+		b := ui.ButtonBase(c.Key("card-hash")).Height(18).Padding(0, 6).Radius(5).AlignItems(ui.Center).
+			Background(p.accent.Alpha(0.1)).Label("Copy Commit Hash").Tooltip("Copy Commit Hash")
+		if b.Hovered() {
+			b.Background(p.accent.Alpha(0.2))
+		}
+		if b.Clicked() {
+			a.post(func() { a.copyCommitHash(cm.hash) })
+		}
+		b.Children(func() { ui.RichText(c, hash).SingleLine() })
+	}})
+	for i, b := range refBadges(info.Refs) {
+		fg, bg := p.accent, p.accent.Alpha(0.14)
+		switch b.Kind {
+		case git.RefRemote:
+			fg, bg = mix(p.accent, p.muted, 0.4), p.accent.Alpha(0.07)
+		case git.RefTag:
+			fg, bg = p.text, p.hover
+		}
+		weight := 500
+		if b.Head || b.Kind == git.RefHead {
+			weight = 700
+		}
+		s := label(b.label(), weight, fg)
+		s.Size = headerFontSize - 0.5
+		if b.Kind == git.RefTag {
+			s.Text = "◆ " + s.Text
+		}
+		pieces = append(pieces, cardPiece{w: measure(s) + 12, dot: i == 0, show: func() {
+			ui.Row(c).Height(18).Padding(0, 6).Radius(5).AlignItems(ui.Center).Background(bg).Shrink(1).MinWidth(0).Children(func() {
+				ui.RichText(c, s).SingleLine().Shrink(1).MinWidth(0)
+			})
+		}})
+	}
+	if len(info.Parents) > 1 {
+		pieces = append(pieces, text(label("merge of "+plural(len(info.Parents), "parent"), 400, p.muted), true))
+	}
+	pieces = append(pieces, text(label(plural(len(v.files), "file")+" changed", 400, p.muted), true))
+	dotW := measure(label("·", 400, p.faint))
+	var line []cardPiece
+	lineW := float32(0)
+	for _, pc := range pieces {
+		add := pc.w
+		if len(line) > 0 {
+			add += 6
+			if pc.dot {
+				add += dotW + 6
+			}
+		}
+		if len(line) > 0 && lineW+add > w {
+			k.meta = append(k.meta, line)
+			line, lineW, add = nil, 0, pc.w
+		}
+		line, lineW = append(line, pc), lineW+add
+	}
+	k.meta = append(k.meta, line)
+	h := 2*cardPadY + k.subjectH + cardGap + float32(len(k.meta))*cardMetaH
+	// The rest of the message, folded past its first lines.
+	if body := strings.TrimRight(info.Body, "\n"); body != "" {
+		k.body = ui.Span{Text: body, Font: a.font.family, Size: a.font.size - 1, Color: p.muted}
+		_, k.bodyH = c.MeasureText(w, k.body)
+		if one := lineOf(k.body); k.bodyH > maxCardBody*one+0.5 {
+			k.folds = true
+			if !cm.unfolded {
+				k.bodyH = maxCardBody * one
+			}
+			h += cardMoreH
+		}
+		h += cardBodyGap + k.bodyH
+	}
+	k.lines = max(int(math.Ceil(float64(h/a.font.lineH))), 3)
+	return k
+}
+
+// copyCommitHash puts the hash of a commit on the clipboard.
+func (a *app) copyCommitHash(hash string) {
+	a.services.WriteClipboard(hash)
+	a.tell(note{message: "Copied " + git.ShortHash(hash)})
+}
+
+// commitCardUI shows the card at the top of a commit's diff at (x, y), w
+// wide and h tall, its text selectable: its subject, who made it and
+// when, its hash, which copies, and the rest of its message, which unfolds.
+func (a *app) commitCardUI(c *ui.Context, v *diffView, k *commitCard, x, y, w, h float32) {
+	p := a.pal
+	cm := v.commit
+	ui.Column(c.Key("commit-card")).Absolute().Left(x).Top(y).Width(w).Height(h).Clip().
+		Padding(cardPadY, cardPadX, cardPadY, diffRailW+cardPadX).Justify(ui.Center).AlignItems(ui.Start).Selectable().Children(func() {
+		subject := ui.RichText(c, k.subject).Width(k.w).MaxLines(maxCardSubject).Shrink(0)
+		if k.cut {
+			subject.Tooltip(cm.info.Subject)
+		}
+		ui.Box(c).Height(cardGap).Shrink(0)
+		dot := ui.Span{Text: "·", Size: headerFontSize, Color: p.faint}
+		for _, line := range k.meta {
+			ui.Row(c).Width(k.w).Height(cardMetaH).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+				for i, pc := range line {
+					if i > 0 && pc.dot {
+						ui.RichText(c, dot).SingleLine().Shrink(0)
+					}
+					pc.show()
+				}
+			})
+		}
+		if k.body.Text == "" {
+			return
+		}
+		ui.Box(c).Height(cardBodyGap).Shrink(0)
+		body := ui.RichText(c, k.body).Width(k.w).Shrink(0)
+		if k.folds && !cm.unfolded {
+			body.MaxLines(maxCardBody)
+		}
+		if !k.folds {
+			return
+		}
+		label := "Show More"
+		if cm.unfolded {
+			label = "Show Less"
+		}
+		b := ui.ButtonBase(c.Key("card-more")).Height(cardMoreH).AlignItems(ui.Center).Shrink(0).Label(label)
+		col := p.accent
+		if b.Hovered() {
+			col = mix(p.accent, p.text, 0.3)
+		}
+		if b.Clicked() {
+			a.post(func() {
+				cm.unfolded = !cm.unfolded
+				v.changed()
+			})
+		}
+		b.Children(func() { ui.Text(c, label).FontSize(headerFontSize).TextColor(col).SingleLine() })
+	})
 }
 
 // avatarColor is the color of the circle of an author's initials, the
@@ -659,68 +872,12 @@ func initials(name string) string {
 	return string(out)
 }
 
-// paintCommitCard paints the card at the top of a commit's diff: its
-// subject, who made it and when, its hash, and the rest of its message.
-func (a *app) paintCommitCard(pt *ui.Painter, cm *commitDiff, r ui.Rect, files int) {
+// paintCommitCard paints the ground of the card at the top of a commit's
+// diff, which commitCardUI fills.
+func (a *app) paintCommitCard(pt *ui.Painter, r ui.Rect) {
 	p := a.pal
-	lineH := a.font.lineH
 	pt.Fill(r, p.chrome, 0)
 	pt.Fill(ui.Rect{X: r.X, Y: r.Y + r.H - 1, W: r.W, H: 1}, p.border, 0)
-	x := r.X + diffRailW + 12
-	info := cm.info
-	pt.Clip(ui.Rect{X: x, Y: r.Y, W: r.W - x + r.X - 12, H: r.H}, 0, func() {
-		uiText(pt, x, r.Y+lineH*0.35, lineH, info.Subject, 15, 600, p.text)
-		// Who, when, which.
-		y := r.Y + lineH*1.45
-		mid := y + lineH/2
-		col := avatarColor(p, info.Email+info.Author)
-		pt.Fill(ui.Rect{X: x, Y: mid - 9, W: 18, H: 18}, col.Alpha(0.22), 9)
-		ini := ui.Span{Text: initials(info.Author), Size: 8.5, Weight: 700, Color: col}
-		iw, ih := pt.MeasureText(0, ini)
-		pt.RichText(x+9-iw/2, mid-ih/2, 0, ini)
-		at := x + 26
-		at += uiText(pt, at, y, lineH, info.Author, headerFontSize, 600, p.text)
-		when := ""
-		if !info.Time.IsZero() {
-			when = " committed " + ago(info.Time, time.Now()) + " · " + info.Time.Format("Jan 2, 2006 15:04")
-		}
-		at += uiText(pt, at, y, lineH, when, headerFontSize, 400, p.muted)
-		at += uiText(pt, at, y, lineH, "  ·  ", headerFontSize, 400, p.faint)
-		hash := ui.Span{Text: git.ShortHash(cm.hash), Font: a.font.family, Size: a.font.size - 1, Color: p.accent}
-		hw, hh := pt.MeasureText(0, hash)
-		pt.Fill(ui.Rect{X: at, Y: mid - 9, W: hw + 12, H: 18}, p.accent.Alpha(0.1), 5)
-		pt.RichText(at+6, mid-hh/2, 0, hash)
-		at += hw + 12
-		for _, b := range refBadges(info.Refs) {
-			fg, bg := p.accent, p.accent.Alpha(0.14)
-			switch b.Kind {
-			case git.RefRemote:
-				fg, bg = mix(p.accent, p.muted, 0.4), p.accent.Alpha(0.07)
-			case git.RefTag:
-				fg, bg = p.text, p.hover
-			}
-			weight := 500
-			if b.Head || b.Kind == git.RefHead {
-				weight = 700
-			}
-			span := ui.Span{Text: b.label(), Size: headerFontSize - 0.5, Weight: weight, Color: fg}
-			if b.Kind == git.RefTag {
-				span.Text = "◆ " + span.Text
-			}
-			bw, bh := pt.MeasureText(0, span)
-			at += 6
-			pt.Fill(ui.Rect{X: at, Y: mid - 9, W: bw + 12, H: 18}, bg, 5)
-			pt.RichText(at+6, mid-bh/2, 0, span)
-			at += bw + 12
-		}
-		if len(info.Parents) > 1 {
-			at += uiText(pt, at, y, lineH, "  ·  merge of "+plural(len(info.Parents), "parent"), headerFontSize, 400, p.muted)
-		}
-		uiText(pt, at, y, lineH, "  ·  "+plural(files, "file")+" changed", headerFontSize, 400, p.muted)
-		for k, line := range cardBody(cm) {
-			uiText(pt, x, r.Y+lineH*(3+float32(k)), lineH, line, 12.5, 400, p.muted)
-		}
-	})
 }
 
 // paintSection paints the header of the changes staged, or of those not:
