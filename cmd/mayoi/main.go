@@ -81,8 +81,15 @@ func (h *desktop) confirmClose(name string, done func(int)) {
 
 func (h *desktop) trash(path string) error { return mygo.Shell.TrashItem(path) }
 func (h *desktop) reveal(path string)      { mygo.Shell.ShowItemInFolder(path) }
-func (h *desktop) setTitle(title string)   { h.win.SetTitle(title) }
-func (h *desktop) closeWindow()            { h.win.Close() }
+func (h *desktop) copyFiles(paths []string) error {
+	return mygo.Clipboard.WriteFiles(paths...)
+}
+func (h *desktop) clipboardFiles() []string {
+	paths, _ := mygo.Clipboard.ReadFiles()
+	return paths
+}
+func (h *desktop) setTitle(title string) { h.win.SetTitle(title) }
+func (h *desktop) closeWindow()          { h.win.Close() }
 func (h *desktop) setTheme(theme, appearance string) {
 	mygo.Theme.SetSource(themeSource(theme, appearance))
 	// From one theme to another the native appearance may stay, so the

@@ -28,6 +28,10 @@ type host interface {
 	confirmClose(name string, done func(choice int))
 	trash(path string) error
 	reveal(path string)
+	// copyFiles puts files on the clipboard, as the Finder copies them,
+	// and clipboardFiles are the local files the clipboard has.
+	copyFiles(paths []string) error
+	clipboardFiles() []string
 	setTitle(title string)
 	closeWindow()
 	// setTheme gives the windows a theme and an appearance of the

@@ -204,6 +204,13 @@ func (a *app) fileTree(c *ui.Context) {
 				}
 				m.Separator()
 			}
+			if m.Item("Copy").Chosen() {
+				action = func() { a.copyFiles(path) }
+			}
+			if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
+				action = func() { a.pasteFiles(dir) }
+			}
+			m.Separator()
 			if m.Item("Copy Path").Chosen() {
 				action = func() { a.services.WriteClipboard(path) }
 			}
@@ -261,7 +268,7 @@ func (a *app) fileTree(c *ui.Context) {
 			ui.Text(c, string(letter)).FontSize(11).FontWeight(600).Font(a.font.family).Padding(0, 4, 0, 0).
 				TextColor(gitColor(p, letter)).Shrink(0)
 		})
-	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
+	}).Grow(1).Padding(0, 6, 8, 6).Gap(0).HandleInput(a.explorerInput)
 	c.SetTheme(base)
 	if action != nil {
 		action()

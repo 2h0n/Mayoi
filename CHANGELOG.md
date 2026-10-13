@@ -3,6 +3,13 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **⌘C** in the Explorer copies the file or folder chosen, and **⌘V**
+  pastes the files copied, in another window or in the Finder, into the
+  folder chosen; a name taken gets "copy" added, as in the Finder. The
+  menu of a file or folder has **Copy** and **Paste** too.
+
 ## 0.5.1
 
 - **COMMITS** in source control draws the history as a graph, each branch

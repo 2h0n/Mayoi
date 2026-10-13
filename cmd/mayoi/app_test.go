@@ -34,6 +34,8 @@ type fakeHost struct {
 	folders []string
 	// recentChanges counts the changes of the recent folders.
 	recentChanges int
+	// clipboard are the files on the clipboard.
+	clipboard []string
 }
 
 func (h *fakeHost) openFolder(done func(string)) { done(h.folder) }
@@ -51,8 +53,13 @@ func (h *fakeHost) trash(path string) error {
 }
 func (h *fakeHost) reveal(path string)    { h.revealed = append(h.revealed, path) }
 func (h *fakeHost) setTitle(title string) { h.title = title }
-func (h *fakeHost) closeWindow()          { h.closed = true }
-func (h *fakeHost) setTheme(_, _ string)  {}
+func (h *fakeHost) copyFiles(paths []string) error {
+	h.clipboard = paths
+	return nil
+}
+func (h *fakeHost) clipboardFiles() []string { return h.clipboard }
+func (h *fakeHost) closeWindow()             { h.closed = true }
+func (h *fakeHost) setTheme(_, _ string)     {}
 func (h *fakeHost) showFolder(dir string) bool {
 	return slices.Contains(h.others, dir)
 }
