@@ -159,7 +159,7 @@ func (a *app) whenContext(where keyPlace) func(string) bool {
 		case "terminalIsOpen":
 			return a.window.PanelOpen
 		case "sideBarVisible", "explorerViewletVisible":
-			return a.settings.SidebarOpen
+			return !a.window.SidebarClosed
 		case "editorHasSelection":
 			d := a.activeEditor()
 			return where == placeEditor && d != nil && d.sel[0] != d.sel[1]

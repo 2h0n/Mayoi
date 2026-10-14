@@ -13,15 +13,42 @@ import (
 func TestRoundTrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "s.json")
 	s := Load(path)
-	s.SidebarWidth = 300
 	w := s.NewWindow()
 	w.Folder, w.Columns = "/tmp/x", []Column{{Tabs: []Tab{{File: "/tmp/x/a.go"}}}}
-	s.NewWindow().Folder = "/tmp/y"
+	w.SidebarWidth = 300
+	// Laid out as the window focused last, then as it chooses.
+	y := s.NewWindow()
+	y.Folder = "/tmp/y"
+	y.SidebarView = "git"
 	s.Flush()
 	got := Load(path)
-	if got.SidebarWidth != 300 || len(got.Windows) != 2 || got.Windows[0].Folder != "/tmp/y" || got.Windows[0].ID != 1 ||
+	if len(got.Windows) != 2 || got.Windows[0].Folder != "/tmp/y" || got.Windows[0].ID != 1 ||
 		got.Windows[1].Folder != "/tmp/x" || len(got.Windows[1].Columns) != 1 {
 		t.Errorf("loaded %+v", got)
+	}
+	if x, y := got.Windows[1].Layout, got.Windows[0].Layout; x.SidebarWidth != 300 || x.SidebarView != "" ||
+		y.SidebarWidth != 300 || y.SidebarView != "git" || y.PanelHeight != DefaultLayout.PanelHeight {
+		t.Errorf("layouts %+v and %+v", x, y)
+	}
+}
+
+// The layout an older version kept for every window becomes each
+// window's, and each session's.
+func TestMigrateTheLayout(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "settings.json")
+	os.WriteFile(filepath.Join(dir, "state.json"), []byte(`{"sidebarOpen": false, "sidebarView": "git",
+		"sidebarWidth": 320, "panelHeight": 400, "recent": ["/tmp/x", "/tmp/y"],
+		"windows": [{"id": 0, "folder": "/tmp/x"}],
+		"sessions": {"/tmp/y": {"expanded": ["src"]}}}`), 0o644)
+	s := Load(path)
+	want := Layout{SidebarView: "git", SidebarClosed: true, SidebarWidth: 320, PanelHeight: 400}
+	if len(s.Windows) != 1 || s.Windows[0].Layout != want || s.Sessions["/tmp/y"] == nil || s.Sessions["/tmp/y"].Layout != want {
+		t.Fatalf("windows %+v, sessions %+v", s.Windows, s.Sessions)
+	}
+	_, state := s.Encode()
+	if strings.Contains(string(state), `"sidebarOpen"`) {
+		t.Errorf("state %s", state)
 	}
 }
 
@@ -36,8 +63,8 @@ func TestMigrateTheWindow(t *testing.T) {
 	data, _ := json.Marshal(old)
 	os.WriteFile(path, data, 0o644)
 	s := Load(path)
-	if len(s.Windows) != 1 || s.SidebarWidth != 300 {
-		t.Fatalf("windows %d, sidebar %v", len(s.Windows), s.SidebarWidth)
+	if len(s.Windows) != 1 || s.Windows[0].SidebarWidth != 300 {
+		t.Fatalf("windows %+v", s.Windows)
 	}
 	w := s.Windows[0]
 	if w.ID != 0 || w.Folder != "/tmp/x" || !w.PanelOpen || !w.TerminalOpen || len(w.Columns) != 1 ||
@@ -50,8 +77,8 @@ func TestMigrateTheWindow(t *testing.T) {
 			t.Errorf("%s still kept in the settings", key)
 		}
 	}
-	if got := Load(path); len(got.Windows) != 1 || got.SidebarWidth != 300 {
-		t.Errorf("loaded again: windows %d, sidebar %v", len(got.Windows), got.SidebarWidth)
+	if got := Load(path); len(got.Windows) != 1 || got.Windows[0].SidebarWidth != 300 {
+		t.Errorf("loaded again: windows %+v", got.Windows)
 	}
 }
 
@@ -64,7 +91,7 @@ func TestStateMovesToItsFile(t *testing.T) {
 	os.WriteFile(path, []byte(`{"fontSize": 15, "sidebarWidth": 320, "recent": ["/tmp/x"],
 		"windows": [{"id": 0, "folder": "/tmp/x", "columns": [{"tabs": [{"file": "/tmp/x/a.go"}], "active": 0, "weight": 1}]}]}`), 0o644)
 	s := Load(path)
-	if s.FontSize != 15 || s.SidebarWidth != 320 || len(s.Windows) != 1 || len(s.Recent) != 1 {
+	if s.FontSize != 15 || len(s.Windows) != 1 || s.Windows[0].SidebarWidth != 320 || len(s.Recent) != 1 {
 		t.Fatalf("loaded %+v", s)
 	}
 	prefs, _ := os.ReadFile(path)

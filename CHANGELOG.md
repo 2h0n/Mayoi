@@ -3,6 +3,15 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Each project keeps its own sidebar and panel: whether the sidebar
+  shows the Explorer, Search or Source Control, whether it is open, how
+  wide it is, and how tall the terminal panel is. Switching project tabs,
+  or windows, no longer carries one project's layout to the others. A
+  project opened anew starts with the layout of the one in front, and a
+  folder opened again gets back the layout it had.
+
 ## 0.8.1
 
 - The rail of project tabs is redrawn: a pill along its edge grows from

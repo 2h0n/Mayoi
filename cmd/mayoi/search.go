@@ -128,7 +128,7 @@ func (a *app) showSearch(replace bool) {
 		}
 	}
 	s.replacing = s.replacing || replace
-	a.settings.SidebarOpen, a.settings.SidebarView = true, "search"
+	a.window.SidebarClosed, a.window.SidebarView = false, "search"
 	a.settings.Changed()
 	s.input.Focus()
 }

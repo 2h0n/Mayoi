@@ -47,8 +47,8 @@ func TestSearchInFiles(t *testing.T) {
 	a, tt := hs.a, hs.tt
 	hs.searchFor("main")
 	s := &a.inFiles
-	if a.settings.SidebarView != "search" || !tt.HasText("SEARCH") {
-		t.Fatalf("sidebar shows %q", a.settings.SidebarView)
+	if a.window.SidebarView != "search" || !tt.HasText("SEARCH") {
+		t.Fatalf("sidebar shows %q", a.window.SidebarView)
 	}
 	if got := strings.Join(resultFiles(s), " "); got != "main.go" || s.count != 3 {
 		t.Fatalf("results %q, %d matches; want main.go, 3", got, s.count)

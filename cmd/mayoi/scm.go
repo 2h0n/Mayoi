@@ -837,7 +837,7 @@ const (
 // badgesShown is how many branches and tags a commit's row shows before
 // it counts the rest: more as the sidebar widens.
 func (a *app) badgesShown() int {
-	return min(max(1+int((a.settings.SidebarWidth-240)/90), 1), 3)
+	return min(max(1+int((a.window.SidebarWidth-240)/90), 1), 3)
 }
 
 // historyGraph returns the lanes of the history, laid out once for each
@@ -1575,13 +1575,13 @@ func (a *app) initRepo() {
 
 // showExplorer shows the files in the sidebar.
 func (a *app) showExplorer() {
-	a.settings.SidebarOpen, a.settings.SidebarView = true, ""
+	a.window.SidebarClosed, a.window.SidebarView = false, ""
 	a.settings.Changed()
 }
 
 // showSourceControl shows the changes in the sidebar.
 func (a *app) showSourceControl() {
-	a.settings.SidebarOpen, a.settings.SidebarView = true, "git"
+	a.window.SidebarClosed, a.window.SidebarView = false, "git"
 	a.settings.Changed()
 }
 

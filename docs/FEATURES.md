@@ -300,7 +300,8 @@ Each folder gets its own window.
   keys that show it. The rail shows once the window has two.
 - Drag a square along the rail to reorder the projects, and drop a folder from the Finder on the rail to add it.
 - Clicking a square shows that project, with its tabs, columns, terminals, Explorer and source control as it left
-  them, each editor with its caret and scroll position. ⇧⌘] and ⇧⌘[ (**Go → Next Project** and **Previous
+  them, each editor with its caret and scroll position. Each project keeps its own layout: what its sidebar shows,
+  whether it is open and how wide, and the panel's height. A new project starts with the layout of the one shown. ⇧⌘] and ⇧⌘[ (**Go → Next Project** and **Previous
   Project**) step along the rail, and ⌃⌘1…9 (Ctrl+Alt+1…9 on Windows and Linux) show one by its place.
 - Opening a folder, with ⌘O, ⌥⌘O, Open Recent, the welcome page or `mayoi <dir>`, adds it to the rail, or shows
   it if it is there already. The `+` after the squares opens one too.

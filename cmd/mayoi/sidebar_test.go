@@ -37,7 +37,7 @@ func TestSidebarTitleFits(t *testing.T) {
 	a.run("view.scm")
 	hs.settleGit()
 	whole("SOURCE CONTROL")
-	a.settings.SidebarWidth = 180
+	a.window.SidebarWidth = 180
 	hs.settle()
 	whole("GIT")
 }

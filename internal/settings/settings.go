@@ -37,16 +37,10 @@ type Settings struct {
 }
 
 // State is what Mayoi keeps itself, not what a person chooses: the
-// layout, the recent folders, the windows with the folder and the files
+// recent folders, the windows with the folder, the layout and the files
 // open in each, and the sessions of the folders closed.
 type State struct {
-	SidebarOpen bool `json:"sidebarOpen"`
-	// SidebarView is what the sidebar shows: "" the explorer, "git" the
-	// changes for source control.
-	SidebarView  string   `json:"sidebarView,omitempty"`
-	SidebarWidth float32  `json:"sidebarWidth"`
-	PanelHeight  float32  `json:"panelHeight"`
-	Recent       []string `json:"recent"`
+	Recent []string `json:"recent"`
 	// Windows are the windows open, the one focused last first.
 	Windows []*Window `json:"windows,omitempty"`
 	// Rail is the order of the windows' IDs on the rail of project tabs,
@@ -56,6 +50,15 @@ type State struct {
 	// window has open, by folder, which the next window to open one gets
 	// back.
 	Sessions map[string]*Session `json:"sessions,omitempty"`
+}
+
+// oldLayout is the layout an older version kept for every window, in the
+// state, which the windows and the sessions without one of their own get.
+type oldLayout struct {
+	SidebarOpen  *bool   `json:"sidebarOpen"`
+	SidebarView  string  `json:"sidebarView"`
+	SidebarWidth float32 `json:"sidebarWidth"`
+	PanelHeight  float32 `json:"panelHeight"`
 }
 
 // legacy is what an older version kept in the settings' file besides the
@@ -138,8 +141,9 @@ type Window struct {
 
 // Session is what a window shows of its folder: the columns of its editor
 // area and what their tabs show, Column the one that had the keyboard,
-// the panel, and the folders open in the explorer.
+// the panel, the folders open in the explorer, and its layout.
 type Session struct {
+	Layout
 	Columns      []Column `json:"columns,omitempty"`
 	Column       int      `json:"column,omitempty"`
 	PanelOpen    bool     `json:"panelOpen,omitempty"`
@@ -147,6 +151,30 @@ type Session struct {
 	// Expanded are the explorer's folders showing their files, relative to
 	// the window's folder.
 	Expanded []string `json:"expanded,omitempty"`
+}
+
+// Layout is how a window lays its folder out: what its sidebar shows,
+// whether it is closed and how wide it is, and how tall its panel is.
+type Layout struct {
+	// SidebarView is what the sidebar shows: "" the explorer, "search"
+	// the search in the files, "git" the changes for source control.
+	SidebarView   string  `json:"sidebarView,omitempty"`
+	SidebarClosed bool    `json:"sidebarClosed,omitempty"`
+	SidebarWidth  float32 `json:"sidebarWidth,omitempty"`
+	PanelHeight   float32 `json:"panelHeight,omitempty"`
+}
+
+// DefaultLayout is the layout of a first launch.
+var DefaultLayout = Layout{SidebarWidth: 248, PanelHeight: 260}
+
+// Normalize keeps the layout in its bounds, as base has it where it has
+// none, as a session an older version kept.
+func (l *Layout) Normalize(base Layout) {
+	if l.SidebarWidth == 0 {
+		*l = base
+	}
+	l.SidebarWidth = clamp(l.SidebarWidth, 160, 600)
+	l.PanelHeight = clamp(l.PanelHeight, 100, 2000)
 }
 
 // Column is a column of the editor area, as the settings keep it.
@@ -192,7 +220,6 @@ func Default() *Settings {
 			FontSize: 13, FontFamily: "monospace", FontWeight: 400, LineHeight: 1.55,
 			AutoSave: true, Blame: true,
 		},
-		State: State{SidebarOpen: true, SidebarWidth: 248, PanelHeight: 260},
 	}
 }
 
@@ -206,6 +233,7 @@ func Load(path string) *Settings {
 		s.statePath = filepath.Join(filepath.Dir(path), "state.json")
 	}
 	var old legacy
+	var layout oldLayout
 	data, err := os.ReadFile(path)
 	if err == nil {
 		json.Unmarshal(data, &s.Prefs)
@@ -214,21 +242,46 @@ func Load(path string) *Settings {
 	moved := false
 	if state, serr := os.ReadFile(s.statePath); serr == nil {
 		json.Unmarshal(state, &s.State)
+		json.Unmarshal(state, &layout)
 	} else if err == nil {
 		json.Unmarshal(data, &s.State)
+		json.Unmarshal(data, &layout)
 		moved = true
 	}
-	s.SidebarWidth = clamp(s.SidebarWidth, 160, 600)
-	s.PanelHeight = clamp(s.PanelHeight, 100, 2000)
 	if old.DiffSplit && s.DiffLayout == "" {
 		s.DiffLayout = "split"
 	}
 	s.normalize()
 	if moved {
 		s.migrate(old)
+	}
+	s.layOut(layout)
+	if moved {
 		s.Flush()
 	}
 	return s
+}
+
+// layOut gives the windows and the sessions an older version kept the
+// layout it kept for them all, and keeps each in its bounds.
+func (s *Settings) layOut(old oldLayout) {
+	base := DefaultLayout
+	if old.SidebarWidth != 0 {
+		base.SidebarWidth = old.SidebarWidth
+	}
+	if old.PanelHeight != 0 {
+		base.PanelHeight = old.PanelHeight
+	}
+	base.SidebarView = old.SidebarView
+	if old.SidebarOpen != nil {
+		base.SidebarClosed = !*old.SidebarOpen
+	}
+	for _, w := range s.Windows {
+		w.Normalize(base)
+	}
+	for _, ses := range s.Sessions {
+		ses.Normalize(base)
+	}
 }
 
 // normalize keeps the preferences in their bounds, the defaults where the
@@ -282,13 +335,18 @@ func (s *Settings) migrate(old legacy) {
 func (s *Settings) Path() string { return s.path }
 
 // NewWindow keeps a new window, focused first, and names its frame by
-// the first ID no other window has.
+// the first ID no other window has. It is laid out as the window focused
+// last is.
 func (s *Settings) NewWindow() *Window {
 	id := 0
 	for slices.ContainsFunc(s.Windows, func(w *Window) bool { return w.ID == id }) {
 		id++
 	}
 	w := &Window{ID: id}
+	w.Layout = DefaultLayout
+	if len(s.Windows) > 0 {
+		w.Layout = s.Windows[0].Layout
+	}
 	s.Windows = slices.Insert(s.Windows, 0, w)
 	s.Changed()
 	return w

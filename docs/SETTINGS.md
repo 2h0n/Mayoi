@@ -121,7 +121,8 @@ so it overwrites any change you make to one while it's open. To start fresh, qui
 
 - **`state.json`** holds the open windows with their folders, columns and tabs, each tab with its caret, selection,
   scroll position and own word wrap. It also holds the folders open in the Explorer, the recent folders and the sessions
-  Mayoi restores when one opens again, the sidebar's view and width, and the panel's height. Deleting it forgets all of
+  Mayoi restores when one opens again, and each window's layout: its sidebar's view, whether it is open and its width,
+  and its panel's height. Deleting it forgets all of
   that.
 - **`window-state.json`** holds each window's position and size.
 - **`updater.json`** holds your choices in the update window. See [Updates](FEATURES.md#updates).

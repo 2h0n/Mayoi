@@ -15,7 +15,7 @@ func (a *app) sidebar(c *ui.Context) {
 	p := a.pal
 	sb := ui.Column(c).Fill().Background(p.chrome)
 	hovered := sb.Hovered()
-	view := a.settings.SidebarView
+	view := a.window.SidebarView
 	if a.root == "" {
 		view = ""
 	}
@@ -42,7 +42,7 @@ func (a *app) sidebar(c *ui.Context) {
 			}
 			// The switches, the gaps, the paddings and the actions' buttons
 			// take the rest of the row.
-			room := a.settings.SidebarWidth - 1 - 14 - 6 - float32(actions)*28
+			room := a.window.SidebarWidth - 1 - 14 - 6 - float32(actions)*28
 			if a.root != "" {
 				room -= 3*26 + 2*3
 			}

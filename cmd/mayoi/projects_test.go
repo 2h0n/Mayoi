@@ -119,6 +119,51 @@ func TestHiddenProjectRunsItsPosts(t *testing.T) {
 	}
 }
 
+// Each project keeps its own layout: what its sidebar shows, whether it
+// is closed, how wide it is, and its panel's height, as another shows
+// meanwhile.
+func TestProjectKeepsItsLayout(t *testing.T) {
+	root, other := workspaceFixture(t), workspaceFixture(t)
+	f, hs, tt := railFixture(t, root, other)
+	a, b := hs[0].a, hs[1].a
+	a.showSourceControl()
+	a.window.SidebarWidth, a.window.PanelHeight = 320, 400
+	tt.Frame()
+	if !tt.HasText("SOURCE CONTROL") {
+		t.Fatalf("A's sidebar: %v", tt.Texts())
+	}
+	f.active = hs[1]
+	tt.Frame()
+	tt.Frame()
+	if tt.HasText("SOURCE CONTROL") || !tt.HasText("EXPLORER") || b.window.SidebarWidth == 320 || b.window.PanelHeight == 400 {
+		t.Fatalf("B's sidebar: %+v, %v", b.window.Layout, tt.Texts())
+	}
+	b.toggleSidebar()
+	f.active = hs[0]
+	tt.Frame()
+	tt.Frame()
+	if !tt.HasText("SOURCE CONTROL") || a.window.SidebarClosed || a.window.SidebarWidth != 320 || a.window.PanelHeight != 400 {
+		t.Fatalf("A's sidebar again: %+v, %v", a.window.Layout, tt.Texts())
+	}
+}
+
+// A folder opens again with the layout it had as it closed.
+func TestFolderKeepsItsLayout(t *testing.T) {
+	root := workspaceFixture(t)
+	s := settings.Default()
+	s.AddRecent(root)
+	w := s.NewWindow()
+	w.Folder, w.Expanded = root, []string{"src"}
+	w.SidebarView, w.SidebarWidth = "git", 320
+	s.Forget(w)
+	x := s.NewWindow()
+	a := newApp(&fakeHost{folder: root}, s, x)
+	a.openSession(root)
+	if x.SidebarView != "git" || x.SidebarWidth != 320 {
+		t.Fatalf("layout %+v", x.Layout)
+	}
+}
+
 // A project of the rail not shown since the app started keeps the session
 // the settings have of it as the app quits.
 func TestUnshownProjectKeepsItsSession(t *testing.T) {

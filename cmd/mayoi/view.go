@@ -94,14 +94,14 @@ func (a *app) view(c *ui.Context) {
 			if a.rail != nil {
 				a.rail(c)
 			}
-			s := a.settings
+			s, w := a.settings, a.window
 			sidebar := func() {
-				if !s.SidebarOpen {
+				if w.SidebarClosed {
 					return
 				}
 				// Its splitter is along the edge facing the editors.
 				at, dir := edgeRight, float32(1)
-				box := ui.Column(c.Key("sidebar")).Width(s.SidebarWidth).Shrink(0).BorderColor(p.border)
+				box := ui.Column(c.Key("sidebar")).Width(w.SidebarWidth).Shrink(0).BorderColor(p.border)
 				if s.SidebarRight {
 					at, dir = edgeLeft, -1
 					box.BorderWidth(0, 0, 0, 1)
@@ -111,8 +111,8 @@ func (a *app) view(c *ui.Context) {
 				box.Children(func() {
 					a.sidebar(c)
 					a.splitter(c, at, func(d float32) {
-						w, _ := c.Size()
-						s.SidebarWidth = clamp(s.SidebarWidth+dir*d, 160, max(w-320, 160))
+						width, _ := c.Size()
+						w.SidebarWidth = clamp(w.SidebarWidth+dir*d, 160, max(width-320, 160))
 					})
 				})
 			}
@@ -153,7 +153,7 @@ func (a *app) view(c *ui.Context) {
 
 // main is the columns of editors and, below them, the panel.
 func (a *app) main(c *ui.Context) {
-	p, s := a.pal, a.settings
+	p, w := a.pal, a.window
 	panel := a.window.PanelOpen
 	editor := ui.Column(c.Key("editor")).Grow(1).MinHeight(0).Background(p.editor).Clip()
 	if panel && a.panelMax {
@@ -166,7 +166,7 @@ func (a *app) main(c *ui.Context) {
 	}
 	_, h := c.Size()
 	room := h - titleBarH - statusBarH
-	height := clamp(s.PanelHeight, 80, max(room-80, 80))
+	height := clamp(w.PanelHeight, 80, max(room-80, 80))
 	box := ui.Column(c.Key("panel")).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(p.border)
 	if a.panelMax {
 		box.Grow(1)
@@ -177,7 +177,7 @@ func (a *app) main(c *ui.Context) {
 		a.panel(c)
 		if !a.panelMax {
 			a.splitter(c, edgeTop, func(d float32) {
-				s.PanelHeight = clamp(height-d, 80, max(room-80, 80))
+				w.PanelHeight = clamp(height-d, 80, max(room-80, 80))
 			})
 		}
 	})
@@ -242,7 +242,7 @@ func (a *app) titleBar(c *ui.Context) {
 			if right {
 				icon = iconSidebarRight
 			}
-			if a.iconButton(c, icon, a.withKey("Toggle Sidebar", "view.sidebar"), a.settings.SidebarOpen).Clicked() {
+			if a.iconButton(c, icon, a.withKey("Toggle Sidebar", "view.sidebar"), !a.window.SidebarClosed).Clicked() {
 				a.toggleSidebar()
 			}
 		}
@@ -1107,7 +1107,7 @@ func (a *app) caps(c *ui.Context, caps []string) {
 }
 
 func (a *app) toggleSidebar() {
-	a.settings.SidebarOpen = !a.settings.SidebarOpen
+	a.window.SidebarClosed = !a.window.SidebarClosed
 	a.settings.Changed()
 }
 

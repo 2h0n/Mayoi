@@ -35,8 +35,8 @@ func TestTabRevealsItsFileInTheExplorer(t *testing.T) {
 		t.Fatalf("%v: %q", err, tt.Menu())
 	}
 	hs.settle()
-	if a.settings.SidebarView != "" || !a.settings.SidebarOpen {
-		t.Fatalf("sidebar shows %q, open %v", a.settings.SidebarView, a.settings.SidebarOpen)
+	if a.window.SidebarView != "" || a.window.SidebarClosed {
+		t.Fatalf("sidebar shows %q, closed %v", a.window.SidebarView, a.window.SidebarClosed)
 	}
 	if !a.files.Open.Has(dir) {
 		t.Error("the folder above the file did not open")

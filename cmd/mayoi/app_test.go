@@ -536,14 +536,14 @@ func TestLayoutChangesKeepEditorState(t *testing.T) {
 func TestSplittersResize(t *testing.T) {
 	hs := newHarness(t, true)
 	a, tt := hs.a, hs.tt
-	w := a.settings.SidebarWidth
+	w := a.window.SidebarWidth
 	x := w - 3 // the sidebar's right edge
 	tt.Press(x, 300)
 	tt.Move(x+40, 300)
 	tt.Move(x+60, 300)
 	tt.Release(x+60, 300)
 	hs.settle()
-	if got := a.settings.SidebarWidth; got < w+50 || got > w+70 {
+	if got := a.window.SidebarWidth; got < w+50 || got > w+70 {
 		t.Errorf("sidebar %v after dragging 60 from %v", got, w)
 	}
 }
@@ -557,14 +557,14 @@ func TestSidebarOnTheRight(t *testing.T) {
 	a.openFile(hs.path("main.go"), true)
 	hs.settle()
 	hs.shot("sidebar-right")
-	w := a.settings.SidebarWidth
+	w := a.window.SidebarWidth
 	x := 1200 - w + 2 // the sidebar's left edge
 	tt.Press(x, 300)
 	tt.Move(x-40, 300)
 	tt.Move(x-60, 300)
 	tt.Release(x-60, 300)
 	hs.settle()
-	if got := a.settings.SidebarWidth; got < w+50 || got > w+70 {
+	if got := a.window.SidebarWidth; got < w+50 || got > w+70 {
 		t.Errorf("sidebar %v after dragging 60 left from %v", got, w)
 	}
 }
