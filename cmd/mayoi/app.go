@@ -135,6 +135,8 @@ type app struct {
 	termTheme string
 	// termFont is the font the terminals have.
 	termFont terminal.Font
+	// termCopy is whether the terminals copy what is selected.
+	termCopy bool
 
 	panelMax    bool // the panel takes the editor's room
 	welcomeView ui.Handle

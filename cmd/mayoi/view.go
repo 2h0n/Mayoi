@@ -50,6 +50,7 @@ func (a *app) view(c *ui.Context) {
 	a.pal = a.applyTheme(c)
 	a.themeTerminals()
 	a.fontTerminals()
+	a.copyTerminals()
 	p := a.pal
 	if p := a.settings.Prefs; !a.font.is(p) {
 		a.font = newCodeFont(p)

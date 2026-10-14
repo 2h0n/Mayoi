@@ -94,6 +94,9 @@ type Prefs struct {
 	// those of the code when empty and zero.
 	TerminalFontFamily string  `json:"terminalFontFamily,omitempty"`
 	TerminalFontSize   float32 `json:"terminalFontSize,omitempty"`
+	// TerminalCopyOnSelect copies what is selected in a terminal to the
+	// clipboard as the selection ends.
+	TerminalCopyOnSelect bool `json:"terminalCopyOnSelect"`
 	// AutoSave saves changed files a moment after an edit, and as the
 	// keyboard leaves them.
 	AutoSave bool `json:"autoSave"`
@@ -218,7 +221,7 @@ func Default() *Settings {
 	return &Settings{
 		Prefs: Prefs{
 			FontSize: 13, FontFamily: "monospace", FontWeight: 400, LineHeight: 1.55,
-			AutoSave: true, Blame: true,
+			AutoSave: true, Blame: true, TerminalCopyOnSelect: true,
 		},
 	}
 }

@@ -5,6 +5,10 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Selecting text in a terminal copies it to the clipboard, as in Ghostty
+  and iTerm2: a drag, a double or triple click, a Shift-drag in a
+  program that takes the mouse, or Select All. Set
+  `terminalCopyOnSelect` to `false` in settings.json to turn it off.
 - Each project keeps its own sidebar and panel: whether the sidebar
   shows the Explorer, Search or Source Control, whether it is open, how
   wide it is, and how tall the terminal panel is. Switching project tabs,

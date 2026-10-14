@@ -37,27 +37,28 @@ MAYOI_DATA_DIR=~/mayoi-test /Applications/Mayoi.app/Contents/MacOS/Mayoi
 **File → Open Settings** (⌘,) opens `settings.json` in a tab. Each key below is optional, and a key you leave out
 takes its default.
 
-| Key                  | Default       | Values                                                      | Also set by                                    |
-| -------------------- | ------------- | ----------------------------------------------------------- | ---------------------------------------------- |
-| `fontFamily`         | `"monospace"` | Font names, separated by commas                             |                                                |
-| `fontSize`           | `13`          | 9 to 28                                                     | ⌘= and ⌘- change it, and ⌘0 resets it to 13    |
-| `fontWeight`         | `400`         | 100 (thin) to 900 (black)                                   |                                                |
-| `fontFeatures`       | none          | A list of OpenType features                                 |                                                |
-| `lineHeight`         | `1.55`        | 1 to 3, as a multiple of `fontSize`                         |                                                |
-| `terminalFontFamily` | `""`          | Font names, separated by commas                             |                                                |
-| `terminalFontSize`   | `0`           | 0, or 9 to 28                                               |                                                |
-| `theme`              | `""`          | `""` (Mayoi), `"matrix"`, `"claude"`, `"qoder"`             | **View → Theme**                               |
-| `appearance`         | `""`          | `""` (follow the system), `"light"`, `"dark"`               | **View → Theme**                               |
-| `sidebarRight`       | `false`       | `true`, `false`                                             | **View → Sidebar on Right**                    |
-| `projectTabs`        | `false`       | `true`, `false`                                             | **View → Project Tabs**                        |
-| `autoSave`           | `true`        | `true`, `false`                                             | **File → Auto Save**                           |
-| `wordWrap`           | `false`       | `true`, `false`                                             | **View → Word Wrap**                           |
-| `vim`                | `false`       | `true`, `false`                                             | **View → Vim Mode**                            |
-| `vimCtrlKeys`        | `false`       | `true`, `false`                                             | Only this file                                 |
-| `blame`              | `true`        | `true`, `false`                                             | **Git → Inline Blame**                         |
-| `diffLayout`         | `""`          | `""` (side by side when wide enough), `"split"`, `"inline"` | A diff's **Layout** button                     |
-| `scmTree`            | `false`       | `true`, `false`                                             | **View as Tree** in Source Control's menu      |
-| `scmAllBranches`     | `false`       | `true`, `false`                                             | **Show All Branches** in Source Control's menu |
+| Key                    | Default       | Values                                                      | Also set by                                    |
+| ---------------------- | ------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| `fontFamily`           | `"monospace"` | Font names, separated by commas                             |                                                |
+| `fontSize`             | `13`          | 9 to 28                                                     | ⌘= and ⌘- change it, and ⌘0 resets it to 13    |
+| `fontWeight`           | `400`         | 100 (thin) to 900 (black)                                   |                                                |
+| `fontFeatures`         | none          | A list of OpenType features                                 |                                                |
+| `lineHeight`           | `1.55`        | 1 to 3, as a multiple of `fontSize`                         |                                                |
+| `terminalFontFamily`   | `""`          | Font names, separated by commas                             |                                                |
+| `terminalFontSize`     | `0`           | 0, or 9 to 28                                               |                                                |
+| `terminalCopyOnSelect` | `true`        | `true`, `false`                                             |                                                |
+| `theme`                | `""`          | `""` (Mayoi), `"matrix"`, `"claude"`, `"qoder"`             | **View → Theme**                               |
+| `appearance`           | `""`          | `""` (follow the system), `"light"`, `"dark"`               | **View → Theme**                               |
+| `sidebarRight`         | `false`       | `true`, `false`                                             | **View → Sidebar on Right**                    |
+| `projectTabs`          | `false`       | `true`, `false`                                             | **View → Project Tabs**                        |
+| `autoSave`             | `true`        | `true`, `false`                                             | **File → Auto Save**                           |
+| `wordWrap`             | `false`       | `true`, `false`                                             | **View → Word Wrap**                           |
+| `vim`                  | `false`       | `true`, `false`                                             | **View → Vim Mode**                            |
+| `vimCtrlKeys`          | `false`       | `true`, `false`                                             | Only this file                                 |
+| `blame`                | `true`        | `true`, `false`                                             | **Git → Inline Blame**                         |
+| `diffLayout`           | `""`          | `""` (side by side when wide enough), `"split"`, `"inline"` | A diff's **Layout** button                     |
+| `scmTree`              | `false`       | `true`, `false`                                             | **View as Tree** in Source Control's menu      |
+| `scmAllBranches`       | `false`       | `true`, `false`                                             | **Show All Branches** in Source Control's menu |
 
 ### Fonts
 
@@ -77,6 +78,8 @@ differ in width lines them up only roughly.
 - **`theme`** is Mayoi's own theme, The Matrix, Claude or Qoder. The Matrix is always dark, so it ignores `appearance`.
 - **`projectTabs`** keeps every folder open in one window, as project tabs on a rail on its left, rather than a
   window for each. Changing it gathers the windows into one, or parts them, at once.
+- **`terminalCopyOnSelect`** copies what you select in a terminal to the clipboard as you let go of the pointer,
+  and what Select All selects. Changing it applies to the terminals already open.
 - **`autoSave`** saves a changed file a moment after you stop typing, and when you leave it.
 - **`wordWrap`** wraps long lines at the edge of the editor. **⌥Z** wraps or unwraps one tab only, until this
   setting changes.

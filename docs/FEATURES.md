@@ -229,7 +229,9 @@ search match opens with the match selected.
 Ghostty's emulator (libghostty-vt), in the bottom panel or in a column tab. You can run several terminals, move one
 between the panel and a column by dragging it or from its menu, and maximize the panel. Terminal colors follow the theme.
 Files dropped on a terminal type their paths, quoted for the shell. ⌘V with only an image on the clipboard sends an empty
-bracketed paste, as VS Code's terminal does, so that Claude Code pastes the screenshot.
+bracketed paste, as VS Code's terminal does, so that Claude Code pastes the screenshot. Selecting text copies it, as
+in Ghostty and iTerm2: a drag, a double click for a word, a triple click for a line, Shift with a drag in a program
+that takes the mouse, or Select All. `terminalCopyOnSelect` turns it off.
 
 On Windows and Linux the shell has the keys with Ctrl, which edit its line, except the workbench's: Quick Open, the
 Command Palette, the terminal and the sidebar toggles, Next and Previous Tab, Alt+1 to Alt+9 and zoom, and every

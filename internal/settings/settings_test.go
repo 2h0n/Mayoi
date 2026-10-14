@@ -252,6 +252,22 @@ func TestFontPrefs(t *testing.T) {
 	}
 }
 
+// The terminal copies what is selected unless the file turns it off.
+func TestTerminalCopyOnSelect(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	if !Load(path).TerminalCopyOnSelect {
+		t.Fatal("off by default")
+	}
+	os.WriteFile(path, []byte(`{"fontSize": 14}`), 0o644)
+	if !Load(path).TerminalCopyOnSelect {
+		t.Fatal("off in a file that leaves it out")
+	}
+	os.WriteFile(path, []byte(`{"terminalCopyOnSelect": false}`), 0o644)
+	if Load(path).TerminalCopyOnSelect {
+		t.Fatal("on in a file that turns it off")
+	}
+}
+
 // An edit of the file changes the preferences it watches, but not the
 // windows; the settings' own writes and a file that does not parse
 // change nothing.
