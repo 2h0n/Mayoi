@@ -199,6 +199,18 @@ func TestSmartHome(t *testing.T) {
 	expectSel(t, d, 0, 2)
 }
 
+// A selection made backwards goes on from its anchor: ⌘⇧← takes it to the
+// start of the line, as in VS Code, and does not drop what was selected.
+func TestHomeExtendsBackwardSelection(t *testing.T) {
+	hs, d := editHarness(t, "a.txt", "abcde\n")
+	hs.place(d, 5, 2)
+	expectSel(t, d, 5, 2)
+	hs.key(ui.Cmd|ui.Shift, ui.KeyLeft)
+	expectSel(t, d, 5, 0)
+	hs.key(ui.Shift, ui.KeyRight)
+	expectSel(t, d, 5, 1)
+}
+
 func TestAutoClose(t *testing.T) {
 	hs, d := editHarness(t, "a.go", "x\n")
 	hs.place(d, 1, 1)

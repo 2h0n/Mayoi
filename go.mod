@@ -19,4 +19,4 @@ require (
 	golang.org/x/sys v0.48.0 // indirect
 )
 
-replace github.com/egoist/mygo => github.com/sorrycc/mygo v0.4.9-0.20261014065302-a816c1636ddf
+replace github.com/egoist/mygo => github.com/sorrycc/mygo v0.4.9-0.20261014120410-ddb8f549ccc5

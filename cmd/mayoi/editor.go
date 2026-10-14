@@ -188,21 +188,21 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 				a.setSelection(d, area)
 			}
 		}
-		selStart, caret := area.TextSelection()
+		anchor, caret := area.TextAnchorCaret()
 		if d.parked >= 0 {
 			switch {
-			case selStart != d.parked || caret != d.parked:
+			case anchor != d.parked || caret != d.parked:
 				d.parked = -1 // the pointer put the caret
 			case focused:
 				// The keyboard is back: so is the caret.
 				d.parked = -1
 				a.setSelection(d, area)
-				selStart, caret = d.sel[0], d.sel[1]
+				anchor, caret = d.sel[0], d.sel[1]
 			default:
-				selStart, caret = d.sel[0], d.sel[1]
+				anchor, caret = d.sel[0], d.sel[1]
 			}
 		}
-		if sel := [2]int{selStart, caret}; sel != d.sel {
+		if sel := [2]int{anchor, caret}; sel != d.sel {
 			if !edited {
 				d.hist.typing = false // the caret moved: typing after starts a step
 				if n := snap.Len(); snap.LineAt(min(caret, n)) != snap.LineAt(min(d.sel[1], n)) {
@@ -300,7 +300,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		// The editor paints the selection, rounded, and keeps it in sight,
 		// fainter, while the keyboard is elsewhere, as in find's field.
 		shape := a.selection(d, snap, first, last)
-		selecting := selStart != caret
+		selecting := anchor != caret
 		selCol := p.selected
 		if !focused {
 			selCol = p.selectedDim

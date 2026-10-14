@@ -3,6 +3,13 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- A selection made from right to left grows from where it started:
+  ⌘⇧← or Shift-Home takes it to the start of the line, where it used to
+  drop the part already selected, and the caret's line, the blame beside
+  it and the scrolling follow the caret, not the selection's far end.
+
 ## 0.8.2
 
 - Selecting text in a terminal copies it to the clipboard, as in Ghostty
