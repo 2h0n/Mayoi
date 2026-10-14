@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.8.1
 
 - The rail of project tabs is redrawn: a pill along its edge grows from
   the project under the pointer to the one shown, the squares ease
