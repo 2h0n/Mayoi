@@ -20,6 +20,8 @@ All of Mayoi's files are in one data folder:
 | `state.json`        | Mayoi         | Windows, tabs, recent folders and layout                                          |
 | `window-state.json` | Mayoi         | Each window's position and size                                                   |
 | `updater.json`      | Mayoi         | Update choices: automatic checks and downloads, a skipped version, the last check |
+| `crash.log`         | Mayoi         | What ended Mayoi if it crashed, with every goroutine's stack; empty otherwise     |
+| `crashes/`          | Mayoi         | The last 10 crash logs, each named by the time of its crash                       |
 
 To keep the files somewhere else, start Mayoi with `MAYOI_DATA_DIR` set to a folder. Mayoi then reads and writes all
 of these files there instead, which is a way to try a setup without touching your own. Create the folder first, and

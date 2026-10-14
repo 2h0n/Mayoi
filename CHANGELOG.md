@@ -13,6 +13,9 @@ needs a `## <version>` section here, or its build fails.
   and the commit box takes the message Git proposes.
 - The initials of a commit's author sit in the middle of their circle, in
   the history and on the commit's card.
+- When Mayoi crashes, what ended it, with every goroutine's stack, is kept
+  in `crash.log` in its data folder, and the last 10 crashes in its
+  `crashes` folder, also when it was started from the Finder or the Dock.
 
 ## 0.7.0
 

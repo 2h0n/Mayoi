@@ -200,6 +200,11 @@ func main() {
 	if os.Getenv("MAYOI_SNAPSHOT") == "" && !mygo.App.RequestSingleInstanceLock() {
 		return
 	}
+	// After the lock, so that a second Mayoi leaves the first's crash.log
+	// alone.
+	if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
+		keepCrashes(dir)
+	}
 	// Release builds check for updates once a day and offer them in
 	// MyGo's update window; development builds never check.
 	mygo.Use(native.Plugin)
