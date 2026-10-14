@@ -29,11 +29,9 @@ const (
 // view builds the window: a title bar, the explorer beside the editor
 // and the terminal panel below it, and a status bar.
 func (a *app) view(c *ui.Context) {
-	a.mu.Lock()
-	if !a.hasServices {
-		a.services, a.hasServices = c.Services(), true
-	}
-	a.mu.Unlock()
+	// The window's, which may be another than the frame before's as the
+	// project moves to another window.
+	a.setServices(c.Services())
 	if !a.started {
 		// Before what was posted meanwhile, as opening the file the app was
 		// started with: it opens in the columns of the last session.
@@ -93,6 +91,9 @@ func (a *app) view(c *ui.Context) {
 		// The panes keep their places in the tree, by keys, as the sidebar
 		// and the panel come and go, so that the editors keep their state.
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
+			if a.rail != nil {
+				a.rail(c)
+			}
 			s := a.settings
 			sidebar := func() {
 				if !s.SidebarOpen {

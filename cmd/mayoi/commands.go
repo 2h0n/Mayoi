@@ -46,6 +46,7 @@ func (a *app) commands() []command {
 		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
 		{"file.reopenClosed", "Reopen Closed Tab", "Shift+CmdOrCtrl+T", a.reopenClosed},
 		{"file.closeFolder", "Close Folder", "", a.closeFolder},
+		{"file.closeProject", "Close Project", "", func() { a.host.closeProject() }},
 		{"file.installCLI", "Install 'mayoi' Command", "", func() { a.host.installCLI() }},
 		{"file.uninstallCLI", "Uninstall 'mayoi' Command", "", func() { a.host.uninstallCLI() }},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
@@ -85,6 +86,8 @@ func (a *app) commands() []command {
 		{"go.symbol", "Go to Symbol…", "Shift+CmdOrCtrl+O", func() { a.openQuick("@") }},
 		{"go.nextTab", "Next Tab", "Ctrl+Tab", func() { a.cycleTab(1) }},
 		{"go.prevTab", "Previous Tab", "Ctrl+Shift+Tab", func() { a.cycleTab(-1) }},
+		{"go.nextProject", "Next Project", "Shift+CmdOrCtrl+]", func() { a.host.stepProject(1) }},
+		{"go.prevProject", "Previous Project", "Shift+CmdOrCtrl+[", func() { a.host.stepProject(-1) }},
 		{"view.sidebar", "Toggle Sidebar", "CmdOrCtrl+B", a.toggleSidebar},
 		{"view.sidebarRight", "Sidebar on Right", "", a.toggleSidebarRight},
 		{"view.explorer", "Explorer", "Shift+CmdOrCtrl+E", a.showExplorer},
@@ -124,6 +127,7 @@ func (a *app) commands() []command {
 		{"view.moveTabPrev", "Move Tab to Previous Column", "", func() { a.moveTabBy(-1) }},
 		{"view.wordWrap", "Word Wrap", "", a.toggleWordWrap},
 		{"view.vim", "Vim Mode", "", a.toggleVim},
+		{"view.projectTabs", "Project Tabs", "", a.toggleProjectTabs},
 		{"view.wordWrapTab", "Toggle Word Wrap in Tab", "Alt+Z", a.toggleTabWrap},
 		{"view.togglePreview", "Toggle Preview", "Shift+CmdOrCtrl+V", a.togglePreview},
 		// The text, or the picture shown.
@@ -180,11 +184,25 @@ func (a *app) clearRecent() {
 
 // switchFolder opens dir in the window, with the tabs it had when it
 // closed, in place of the window's folder and its tabs, unless another
-// window has it open: then that one comes to the front.
+// window has it open: then that one comes to the front. With project
+// tabs, a window with a folder keeps it, and dir opens in a tab of its
+// own.
 func (a *app) switchFolder(dir string) {
-	if !a.host.showFolder(filepath.Clean(dir)) {
+	switch {
+	case a.host.showFolder(filepath.Clean(dir)):
+	case a.settings.ProjectTabs && a.folder() != "":
+		a.host.newWindow(dir)
+	default:
 		a.switchTo(dir)
 	}
+}
+
+// toggleProjectTabs gathers the windows into one, as project tabs, or
+// parts them into a window each.
+func (a *app) toggleProjectTabs() {
+	a.settings.ProjectTabs = !a.settings.ProjectTabs
+	a.settings.Changed()
+	a.host.projectTabsChanged()
 }
 
 // closeActive closes the tab shown in the column that has the keyboard,
@@ -310,7 +328,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"),
 		{Label: "Open Recent", Submenu: recent}, mygo.Separator(),
 		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), item("file.settings"), item("file.keybindings"), mygo.Separator(),
-		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"),
+		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"), item("file.closeProject"),
 	}
 	if cli {
 		file = append(file, mygo.Separator(), item("file.installCLI"), item("file.uninstallCLI"))
@@ -350,7 +368,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		{Label: "View", Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.search"), item("view.scm"), mygo.Separator(),
 			checkbox("view.wordWrap", a.settings.WordWrap), item("view.wordWrapTab"), item("view.togglePreview"),
-			checkbox("view.vim", a.settings.Vim), mygo.Separator(),
+			checkbox("view.vim", a.settings.Vim), checkbox("view.projectTabs", a.settings.ProjectTabs), mygo.Separator(),
 			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),
 			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),
 			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"), mygo.Separator(),
@@ -364,7 +382,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		}},
 		{Label: "Go", Submenu: []*mygo.MenuItem{
 			item("go.quickOpen"), item("go.commands"), item("go.symbol"), item("go.line"), item("go.bracket"), mygo.Separator(),
-			item("go.nextTab"), item("go.prevTab"),
+			item("go.nextTab"), item("go.prevTab"), mygo.Separator(),
+			item("go.nextProject"), item("go.prevProject"),
 		}},
 		{Label: "Git", Submenu: []*mygo.MenuItem{
 			item("git.commit"), item("git.commitPush"), item("git.amend"), item("git.undoCommit"), mygo.Separator(),
@@ -416,6 +435,15 @@ func (a *app) shortcuts(c *ui.Context) {
 	for k := ui.Key1; k <= ui.Key9; k++ {
 		if !a.keyBound(tabMod(), k) && c.Shortcut(tabMod(), k) {
 			a.showTabKey(k)
+		}
+		// ⌃⌘1…9, Ctrl+Alt+1…9 on Windows and Linux, shows a project of
+		// the rail.
+		if mods := tabMod() | ui.Ctrl; a.settings.ProjectTabs && !a.keyBound(mods, k) && c.Shortcut(mods, k) {
+			if k == ui.Key9 {
+				a.host.showProject(-1)
+			} else {
+				a.host.showProject(int(k - ui.Key1))
+			}
 		}
 	}
 	a.menuKeys(c)

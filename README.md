@@ -28,7 +28,7 @@
   diff, gutter marks that revert or stage a change, branches and blame
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the bottom panel or in a tab
 - **Image viewer:** PNG, JPEG, GIF, WebP and BMP, plus a live SVG preview
-- **Auto save,** light, dark, The Matrix, Claude and Qoder themes, one window per folder, and a `mayoi` shell command
+- **Auto save,** light, dark, The Matrix, Claude and Qoder themes, a window per folder or every folder in one window as project tabs, and a `mayoi` shell command
 - **Settings:** JSON files applied as you save them, with the code's and the terminal's fonts, weight, ligatures and
   line height, and keyboard shortcuts in VS Code's format (see [docs/SETTINGS.md](docs/SETTINGS.md))
 
@@ -61,6 +61,7 @@ To open folders from a shell, choose **File → Install 'mayoi' Command**, then 
 | ⌘S / ⇧⌘S / ⌥⌘S | Save / save as / save all |
 | ⌘O / ⌥⌘O | Open folder / open folder in a new window |
 | ⌘N / ⌘W / ⌘1…9 / ⌃Tab | New file / close tab / go to tab / next tab |
+| ⇧⌘] / ⇧⌘[ / ⌃⌘1…9 | Next / previous / go to project, with project tabs |
 | ⌘\\ / ⌥⌘→ / ⌥⌘← | Split right / next column / previous column |
 | ⌘B / ⌃\` / ⌃⇧\` | Toggle sidebar / toggle terminal panel / new terminal |
 | ⌘Z / ⇧⌘Z | Undo / redo |

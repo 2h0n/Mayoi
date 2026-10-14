@@ -49,6 +49,9 @@ type State struct {
 	Recent       []string `json:"recent"`
 	// Windows are the windows open, the one focused last first.
 	Windows []*Window `json:"windows,omitempty"`
+	// Rail is the order of the windows' IDs on the rail of project tabs,
+	// as they were last.
+	Rail []int `json:"rail,omitempty"`
 	// Sessions are the tabs and the layout of the recent folders no
 	// window has open, by folder, which the next window to open one gets
 	// back.
@@ -119,6 +122,9 @@ type Prefs struct {
 	Theme string `json:"theme,omitempty"`
 	// SidebarRight puts the sidebar right of the editors, rather than left.
 	SidebarRight bool `json:"sidebarRight,omitempty"`
+	// ProjectTabs keeps the folders open in one window, a rail on its left
+	// choosing which shows, rather than a window for each.
+	ProjectTabs bool `json:"projectTabs,omitempty"`
 }
 
 // Window is a window as the settings keep it: its folder, and its
@@ -286,6 +292,32 @@ func (s *Settings) NewWindow() *Window {
 	s.Windows = slices.Insert(s.Windows, 0, w)
 	s.Changed()
 	return w
+}
+
+// InRail returns the windows in the order of the rail of project tabs:
+// those it has in its order, then the others as the windows are.
+func (s *Settings) InRail() []*Window {
+	ws := slices.Clone(s.Windows)
+	at := func(w *Window) int {
+		if i := slices.Index(s.Rail, w.ID); i >= 0 {
+			return i
+		}
+		return len(s.Rail)
+	}
+	slices.SortStableFunc(ws, func(a, b *Window) int { return at(a) - at(b) })
+	return ws
+}
+
+// SetRail keeps the order of the windows on the rail of project tabs.
+func (s *Settings) SetRail(ws []*Window) {
+	ids := make([]int, len(ws))
+	for i, w := range ws {
+		ids[i] = w.ID
+	}
+	if !slices.Equal(ids, s.Rail) {
+		s.Rail = ids
+		s.Changed()
+	}
 }
 
 // Focused puts w first, as the window Focused last.

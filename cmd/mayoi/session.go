@@ -65,6 +65,11 @@ func (a *app) closeKeeping(then func()) {
 // keepSession keeps what the window shows as it closes: what it showed
 // before its documents closed, if they did.
 func (a *app) keepSession() {
+	if !a.started {
+		// A project of the rail not shown since the app started: its
+		// session is as the settings have it.
+		return
+	}
 	if a.kept != nil {
 		a.window.Session = *a.kept
 		a.settings.Changed()

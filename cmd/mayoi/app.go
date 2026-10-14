@@ -57,6 +57,15 @@ type host interface {
 	// path, and take it away, saying how it went.
 	installCLI()
 	uninstallCLI()
+	// With project tabs, stepProject shows the project by steps along the
+	// rail, showProject the one at i, the last for -1, and closeProject
+	// closes the window's, as the window closes when it is its only one.
+	// projectTabsChanged gathers the windows into one, or parts them, as
+	// the settings now have it.
+	stepProject(by int)
+	showProject(i int)
+	closeProject()
+	projectTabsChanged()
 }
 
 // app is the state of a window of Mayoi.
@@ -75,9 +84,8 @@ type app struct {
 
 	// queue holds the functions other goroutines post for the main thread,
 	// which the next frame runs.
-	mu          sync.Mutex
-	queue       []func()
-	hasServices bool
+	mu    sync.Mutex
+	queue []func()
 
 	root    string
 	tree    *workspace.Tree
@@ -181,6 +189,9 @@ type app struct {
 	// kept is the session the window had before its documents closed as it
 	// closes, which it keeps for its next start, nil until then.
 	kept *settings.Session
+	// rail builds the rail of project tabs left of the sidebar, nil for
+	// none.
+	rail func(c *ui.Context)
 }
 
 type pane int
@@ -208,6 +219,32 @@ func (a *app) post(fn func()) {
 	sv := a.services
 	a.mu.Unlock()
 	sv.Invalidate()
+}
+
+// setServices has the app's posts and invalidations draw the frames of
+// the window sv is of, which shows it now.
+func (a *app) setServices(sv ui.Services) {
+	a.mu.Lock()
+	a.services = sv
+	a.mu.Unlock()
+}
+
+// park keeps the place of the editors shown as the project goes out of
+// sight behind another of the window, which it gets back as it shows
+// again, as a tab does: their text areas are built anew then.
+func (a *app) park() {
+	if !a.started {
+		return
+	}
+	for _, col := range a.cols {
+		for _, t := range col.tabs {
+			if t.ed != nil {
+				a.hideEditor(t.ed)
+			}
+		}
+	}
+	a.rememberTabs()
+	a.blurred = true
 }
 
 // invalidate draws a new frame, as when the highlighter has new tokens.

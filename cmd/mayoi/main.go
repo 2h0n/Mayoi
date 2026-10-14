@@ -4,7 +4,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"log"
 	"mayoi/internal/cli"
 	"mayoi/internal/keymap"
@@ -18,21 +17,24 @@ import (
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater/native"
-	"github.com/egoist/mygo/ui"
 )
 
-// desktop is the host of a window of the app: native dialogs, the trash.
+// desktop is a project of the app, a folder and what shows of it, in a
+// window of its own or, with project tabs, one of a window's: the host of
+// its native dialogs, the trash.
 type desktop struct {
-	m   *mayoi
-	a   *app
-	win *mygo.Window
+	m *mayoi
+	a *app
+	f *frame // the window it is in
 }
 
-// mayoi is the app's windows, the focused one last first.
+// mayoi is the app's projects, the focused one last first, and its
+// windows.
 type mayoi struct {
-	s    *settings.Settings
-	keys *keymap.Map // the shortcuts of keybindings.json
-	wins []*desktop
+	s      *settings.Settings
+	keys   *keymap.Map // the shortcuts of keybindings.json
+	wins   []*desktop
+	frames []*frame
 	// pending are the folders and files the app was asked to open before
 	// it was ready.
 	ready   bool
@@ -45,7 +47,7 @@ type mayoi struct {
 func (h *desktop) openFolder(done func(string)) {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent: h.win, Title: "Open Folder", ButtonLabel: "Open", Directory: true, CreateDirectories: true,
+			Parent: h.f.win, Title: "Open Folder", ButtonLabel: "Open", Directory: true, CreateDirectories: true,
 		})
 		if err == nil && len(paths) > 0 {
 			h.a.post(func() { done(paths[0]) })
@@ -57,7 +59,7 @@ func (h *desktop) saveAs(name string, done func(string)) {
 	dir := h.a.root
 	go func() {
 		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
-			Parent: h.win, Title: "Save As", DefaultPath: filepath.Join(dir, name), CreateDirectories: true,
+			Parent: h.f.win, Title: "Save As", DefaultPath: filepath.Join(dir, name), CreateDirectories: true,
 		})
 		if err == nil && path != "" {
 			h.a.post(func() { done(path) })
@@ -68,7 +70,7 @@ func (h *desktop) saveAs(name string, done func(string)) {
 func (h *desktop) confirmClose(name string, done func(int)) {
 	go func() {
 		res, err := mygo.Dialog.Message(mygo.MessageOptions{
-			Parent: h.win, Type: mygo.MessageWarning,
+			Parent: h.f.win, Type: mygo.MessageWarning,
 			Message: "Do you want to save the changes you made to " + name + "?",
 			Detail:  "Your changes will be lost if you don't save them.",
 			Buttons: []string{"Save", "Don't Save", "Cancel"}, DefaultButton: 0, CancelButton: 2,
@@ -90,8 +92,16 @@ func (h *desktop) clipboardFiles() []string {
 	paths, _ := mygo.Clipboard.ReadFiles()
 	return paths
 }
-func (h *desktop) setTitle(title string) { h.win.SetTitle(title) }
-func (h *desktop) closeWindow()          { h.win.Close() }
+
+// setTitle titles the window, while it shows the project.
+func (h *desktop) setTitle(title string) {
+	if h.f.active == h {
+		h.f.win.SetTitle(title)
+	}
+}
+
+// closeWindow closes the project, and the window with its last.
+func (h *desktop) closeWindow() { h.closeProject() }
 func (h *desktop) setTheme(theme, appearance string) {
 	mygo.Theme.SetSource(themeSource(theme, appearance))
 	// From one theme to another the native appearance may stay, so the
@@ -162,21 +172,19 @@ func (h *desktop) uninstallCLI() {
 
 // tell shows a message on the window.
 func (h *desktop) tell(kind mygo.MessageType, message, detail string) {
-	mygo.Dialog.Message(mygo.MessageOptions{Parent: h.win, Type: kind, Message: message, Detail: detail})
+	mygo.Dialog.Message(mygo.MessageOptions{Parent: h.f.win, Type: kind, Message: message, Detail: detail})
 }
 
-// show brings the window to the front.
+// show brings the window to the front, showing the project.
 func (h *desktop) show() {
-	if h.win.IsMinimized() {
-		h.win.Restore()
-	}
-	h.win.Focus()
+	h.f.activate(h)
+	h.f.show()
 }
 
 // do runs fn on the window's app before its next frame.
 func (h *desktop) do(fn func()) {
 	h.a.post(fn)
-	h.win.Invalidate()
+	h.f.win.Invalidate()
 }
 
 // settingsPath is where the settings are kept.
@@ -263,7 +271,7 @@ func main() {
 		if out := os.Getenv("MAYOI_SNAPSHOT"); out != "" {
 			// For checking the real window: capture it once it settles, and
 			// quit.
-			a, win := first.a, first.win
+			a, win := first.a, first.f.win
 			go func() {
 				// MAYOI_SNAPSHOT_RUN names commands to run first.
 				for _, id := range strings.Fields(os.Getenv("MAYOI_SNAPSHOT_RUN")) {
@@ -303,12 +311,29 @@ func argPaths(args []string, wd string) []string {
 // open in them.
 func (m *mayoi) launch(paths []string) {
 	folders, files := splitPaths(paths)
-	if len(folders) == 0 {
+	switch {
+	case m.s.ProjectTabs:
+		// Every project of the last session, in the rail's order, the one
+		// focused last shown, and then the folders it was given.
+		var front *settings.Window
+		if len(m.s.Windows) > 0 {
+			front = m.s.Windows[0]
+		}
+		for _, w := range m.s.InRail() {
+			m.openWindow(w)
+		}
+		if h := m.of(front); h != nil {
+			h.show()
+		}
+		for _, dir := range folders {
+			m.openFolder(dir, true)
+		}
+	case len(folders) == 0:
 		// The one focused last ends up in front.
 		for _, w := range slices.Backward(slices.Clone(m.s.Windows)) {
 			m.openWindow(w)
 		}
-	} else {
+	default:
 		// A folder of the last session opens as it was left. The other
 		// windows of the session are let go, keeping their folders'
 		// sessions.
@@ -446,6 +471,9 @@ func (m *mayoi) reload(p settings.Prefs) {
 	if p.Appearance != old.Appearance || p.Theme != old.Theme {
 		mygo.Theme.SetSource(themeSource(p.Theme, p.Appearance))
 	}
+	if p.ProjectTabs != old.ProjectTabs {
+		m.projectTabsChanged()
+	}
 	for _, w := range m.wins {
 		if p.AutoSave && !old.AutoSave {
 			w.a.autoSaveAll()
@@ -515,9 +543,9 @@ func (m *mayoi) run(id string, win *mygo.Window) {
 		return
 	}
 	h := m.wins[0]
-	for _, w := range m.wins {
-		if w.win == win {
-			h = w
+	for _, f := range m.frames {
+		if f.win == win && f.active != nil {
+			h = f.active
 		}
 	}
 	a := h.a
@@ -537,6 +565,11 @@ func (m *mayoi) settle(wins []*desktop, done func()) {
 		return
 	}
 	w, a := wins[0], wins[0].a
+	if !a.started {
+		// Not shown since the app started, it has nothing open.
+		m.settle(wins[1:], done)
+		return
+	}
 	w.do(func() {
 		if a.autoSaveAll(); !a.anyDirty() {
 			m.settle(wins[1:], done)
@@ -547,94 +580,23 @@ func (m *mayoi) settle(wins []*desktop, done func()) {
 	})
 }
 
-// openWindow opens a window for st, which restores what st has of it.
+// openWindow opens a window for st, which restores what st has of it:
+// with project tabs, a tab of the window in front, which shows it.
 func (m *mayoi) openWindow(st *settings.Window) *desktop {
 	h := &desktop{m: m}
 	a := newApp(h, m.s, st)
 	a.keys = m.keys
 	h.a = a
-	key := "main"
-	if st.ID > 0 {
-		key = fmt.Sprintf("main-%d", st.ID)
+	if m.s.ProjectTabs && len(m.wins) > 0 && m.wins[0].f != nil {
+		f := m.wins[0].f
+		f.add(h)
+		m.wins = append(m.wins, h)
+		f.activate(h)
+		return h
 	}
-	opts := mygo.WindowOptions{
-		Title: "Mayoi", Width: 1280, Height: 820, MinWidth: 640, MinHeight: 420,
-		StateKey:             key,
-		TitleBarStyle:        mygo.TitleBarHidden,
-		TrafficLightPosition: &mygo.Point{X: 14, Y: 13},
-		BackgroundColor:      "#131317",
-		Content:              ui.View(a.view),
-	}
-	if len(m.wins) > 0 {
-		// Below and right of the window in front, unless the frame of
-		// st's window is remembered.
-		opts.X, opts.Y = m.wins[0].win.Position()
-		opts.X, opts.Y = opts.X+28, opts.Y+28
-	}
-	win := mygo.NewWindow(opts)
-	h.win = win
+	m.newFrame(h)
 	m.wins = slices.Insert(m.wins, 0, h)
 	m.s.Focused(st)
-
-	// Closing the window saves the files that save themselves, and with
-	// other unsaved changes asks about each first.
-	closing := false
-	win.OnClose(func(e *mygo.CloseEvent) {
-		if closing || m.quitting || !a.anyDirty() {
-			return
-		}
-		e.PreventDefault()
-		a.post(func() {
-			done := func() {
-				closing = true
-				win.Close()
-			}
-			if a.autoSaveAll(); !a.anyDirty() {
-				done()
-				return
-			}
-			a.closeKeeping(done)
-		})
-		win.Invalidate()
-	})
-	// Back from another app, which may have committed.
-	win.OnFocus(func() {
-		if i := slices.Index(m.wins, h); i > 0 {
-			m.wins = slices.Insert(slices.Delete(m.wins, i, i+1), 0, h)
-		}
-		m.s.Focused(st)
-		a.post(func() { a.blurred = false })
-		a.post(a.gitChanged)
-		// The File menu's recent folders leave out this one's.
-		m.refreshMenu()
-	})
-	win.OnBlur(func() {
-		a.post(func() { a.blurred = true })
-		a.post(a.autoSaveAll)
-	})
-	// Files dropped where nothing takes them, as on the explorer, open in
-	// the column that has the keyboard.
-	win.OnFileDrop(func(e *mygo.FileDropEvent) {
-		paths := e.Paths
-		a.post(func() {
-			col := a.column()
-			a.dropFiles(paths, col, col.active+1)
-		})
-	})
-	// The last window to close quits the app, and stays in the settings
-	// to open again, as do those the quitting closes. The others keep
-	// their folders' sessions.
-	win.OnClosed(func() {
-		a.keepSession()
-		a.closeTerminals()
-		m.wins = slices.DeleteFunc(m.wins, func(w *desktop) bool { return w == h })
-		if !m.quitting && len(m.wins) > 0 {
-			m.s.Forget(st)
-		}
-		if len(m.wins) == 0 {
-			m.s.Flush()
-		}
-	})
 	return h
 }
 

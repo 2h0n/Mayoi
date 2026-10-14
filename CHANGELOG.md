@@ -14,6 +14,14 @@ needs a `## <version>` section here, or its build fails.
 - Inactive editor tabs no longer lay out their text every frame, keeping
   rendering responsive as more files are opened while preserving each tab's
   selection and scroll position.
+- Project tabs: **View → Project Tabs** (or `"projectTabs": true` in
+  `settings.json`) keeps every folder open in one window, with a rail on
+  its left of a square for each, its initials in it. A click shows a
+  project, as do ⇧⌘] and ⇧⌘[ (**Go → Next Project** and **Previous
+  Project**) and ⌃⌘1…9, each with its tabs, terminals and Explorer as it
+  left them. Opening a folder adds it to the rail. **File → Close
+  Project** closes one. Turning it on gathers the windows into the one in
+  front, and off parts them into a window each again.
 - The commits' context menu does what Sourcetree's does: **Merge into**
   the branch, **Rebase** it onto the commit, **Reset** it to the commit
   (Soft, Mixed or Hard), **Revert Commit** and **Cherry-Pick Commit**.

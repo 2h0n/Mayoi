@@ -69,6 +69,10 @@ func (h *fakeHost) recentChanged()            { h.recentChanges++ }
 func (h *fakeHost) fontChanged()              {}
 func (h *fakeHost) installCLI()               {}
 func (h *fakeHost) uninstallCLI()             {}
+func (h *fakeHost) stepProject(int)           {}
+func (h *fakeHost) showProject(int)           {}
+func (h *fakeHost) closeProject()             {}
+func (h *fakeHost) projectTabsChanged()       {}
 
 // workspaceFixture makes a folder of a few files.
 func workspaceFixture(t testing.TB) string {

@@ -49,6 +49,7 @@ takes its default.
 | `theme`              | `""`          | `""` (Mayoi), `"matrix"`, `"claude"`, `"qoder"`             | **View → Theme**                               |
 | `appearance`         | `""`          | `""` (follow the system), `"light"`, `"dark"`               | **View → Theme**                               |
 | `sidebarRight`       | `false`       | `true`, `false`                                             | **View → Sidebar on Right**                    |
+| `projectTabs`        | `false`       | `true`, `false`                                             | **View → Project Tabs**                        |
 | `autoSave`           | `true`        | `true`, `false`                                             | **File → Auto Save**                           |
 | `wordWrap`           | `false`       | `true`, `false`                                             | **View → Word Wrap**                           |
 | `vim`                | `false`       | `true`, `false`                                             | **View → Vim Mode**                            |
@@ -74,6 +75,8 @@ differ in width lines them up only roughly.
 ### The rest
 
 - **`theme`** is Mayoi's own theme, The Matrix, Claude or Qoder. The Matrix is always dark, so it ignores `appearance`.
+- **`projectTabs`** keeps every folder open in one window, as project tabs on a rail on its left, rather than a
+  window for each. Changing it gathers the windows into one, or parts them, at once.
 - **`autoSave`** saves a changed file a moment after you stop typing, and when you leave it.
 - **`wordWrap`** wraps long lines at the edge of the editor. **⌥Z** wraps or unwraps one tab only, until this
   setting changes.

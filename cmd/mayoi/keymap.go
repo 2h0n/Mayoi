@@ -193,6 +193,7 @@ var vscodeCommands = map[string]string{
 	"workbench.action.closeActiveEditor":                  "file.close",
 	"workbench.action.reopenClosedEditor":                 "file.reopenClosed",
 	"workbench.action.closeFolder":                        "file.closeFolder",
+	"workbench.action.closeWindow":                        "file.closeProject",
 	"workbench.action.files.copyPathOfActiveFile":         "file.copyPath",
 	"copyFilePath":                                        "file.copyPath",
 	"workbench.action.files.copyRelativePathOfActiveFile": "file.copyRelativePath",

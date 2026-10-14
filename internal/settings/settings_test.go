@@ -158,6 +158,22 @@ func TestKeepTheWindowsInOrder(t *testing.T) {
 	}
 }
 
+// The rail of project tabs keeps its own order, whichever window was
+// focused last; windows it has not seen go after those it has.
+func TestRailOrder(t *testing.T) {
+	s := Default()
+	a, b, c := s.NewWindow(), s.NewWindow(), s.NewWindow()
+	s.SetRail([]*Window{a, b})
+	s.Focused(b)
+	if got := s.InRail(); !slices.Equal(got, []*Window{a, b, c}) {
+		t.Fatalf("rail %v", got)
+	}
+	s.SetRail([]*Window{c, a, b})
+	if got := s.InRail(); !slices.Equal(got, []*Window{c, a, b}) || !slices.Equal(s.Rail, []int{2, 0, 1}) {
+		t.Fatalf("rail %v, ids %v", got, s.Rail)
+	}
+}
+
 func TestMigrateDiffSplit(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "settings.json")
 	os.WriteFile(path, []byte(`{"diffSplit": true}`), 0o644)

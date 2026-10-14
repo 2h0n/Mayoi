@@ -11,7 +11,14 @@ area, so every column showing a file shares its text and history. This page walk
 them to `open` with the app's identifier, and a second Mayoi started with paths passes them on and exits. Each folder
 goes to the window that already has it, or to a new one. A file goes to the window whose folder contains it.
 
-**`app.go`, `commands.go`.** These hold state and commands. Each window has its own `app`, and the windows share the
+**`projects.go`.** A `frame` is a native window, and a `desktop` a project in it, with its own `app`. A window
+holds one project, or with project tabs every one, which a rail on its left chooses among. Only the project shown is
+built. The others run what is posted to them as the window draws, and as one goes out of sight its editors note where
+they were scrolled, as a hidden tab's do, since their text areas are built anew when it shows again. Each project's
+elements are keyed by its window's ID, so that its tabs, numbered as another's are, never take another's state.
+Turning project tabs on moves the apps into the window in front, and off gives each a window of its own again.
+
+**`app.go`, `commands.go`.** These hold state and commands. Each project has its own `app`, and the windows share the
 settings and the menu bar. A menu item runs the command of the window it was chosen in. Menus, accelerators and tests
 all run the same commands. The menu bar is built anew when a window comes to the front or the recent folders change, so
 that **Open Recent** leaves out the front window's folder.

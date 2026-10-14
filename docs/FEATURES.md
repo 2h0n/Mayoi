@@ -291,12 +291,31 @@ Each folder gets its own window.
   When a terminal has the keyboard, ⌃R goes to the shell instead.
 - Opening a folder that another window already has brings that window to the front instead.
 
+### Project tabs
+
+**View → Project Tabs** keeps every folder open in one window instead, so you don't switch windows to change projects.
+
+- A rail on the far left has a square for each project, with its folder's initials, the one shown marked with a bar,
+  and a dot on any with unsaved changes. Its tooltip is the folder's path. The rail shows once the window has two.
+- Clicking a square shows that project, with its tabs, columns, terminals, Explorer and source control as it left
+  them, each editor with its caret and scroll position. ⇧⌘] and ⇧⌘[ (**Go → Next Project** and **Previous
+  Project**) step along the rail, and ⌃⌘1…9 (Ctrl+Alt+1…9 on Windows and Linux) show one by its place.
+- Opening a folder, with ⌘O, ⌥⌘O, Open Recent, the welcome page or `mayoi <dir>`, adds it to the rail, or shows
+  it if it is there already. The `+` at the rail's foot opens one too.
+- **File → Close Project**, the square's context menu, or ⌘W with no tab left closes a project, asking about its
+  unsaved changes first. Closing the window closes them all, and they open again at the next start, in the rail's
+  order.
+- Leaving a project saves its files that save themselves. Its terminals keep running out of sight.
+- Turning Project Tabs on gathers the open windows into the one in front, and turning it off parts the projects into a
+  window each again.
+
 ## The `mayoi` command
 
 **File → Install 'mayoi' Command** installs the command into `~/.local/bin` when that directory is on your `PATH`, and
 otherwise into `/usr/local/bin`, which asks for your password.
 
-- `mayoi .` opens the current folder, in a new window or the one that already has it.
+- `mayoi .` opens the current folder, in a new window or the one that already has it, or with project tabs in a new
+  tab.
 - `mayoi <file>` opens a file in the window whose folder contains it.
 
 The command returns immediately, and starts Mayoi if it isn't running.
