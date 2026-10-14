@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.8.0
 
 - The title bar and status bar now adapt to narrow windows: the status
   bar leaves out its least needed parts, the encoding first, only once
