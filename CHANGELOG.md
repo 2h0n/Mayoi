@@ -11,6 +11,8 @@ needs a `## <version>` section here, or its build fails.
   When one stops for conflicts, source control says so with **Continue**
   and **Abort** buttons, which the menu and the command palette offer too,
   and the commit box takes the message Git proposes.
+- The initials of a commit's author sit in the middle of their circle, in
+  the history and on the commit's card.
 
 ## 0.7.0
 

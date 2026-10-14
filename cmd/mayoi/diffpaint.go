@@ -699,9 +699,7 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 		ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(1).MinWidth(0).Children(func() {
 			ui.Box(c).Size(18, 18).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
 				pt.Fill(b, col.Alpha(0.22), 9)
-				ini := ui.Span{Text: initials(info.Author), Size: 8.5, Weight: 700, Color: col}
-				iw, ih := pt.MeasureText(0, ini)
-				pt.RichText(b.X+(b.W-iw)/2, b.Y+(b.H-ih)/2, 0, ini)
+				paintInitials(pt, b, info.Author, 8.5, col)
 			})
 			ui.RichText(c, author).SingleLine().Shrink(1).MinWidth(0)
 		})
@@ -854,6 +852,20 @@ func avatarColor(p *palette, who string) ui.Color {
 	}
 	cols := []ui.Color{p.accent, p.added, p.changed, p.modified, p.removed, p.syntax[highlight.Type]}
 	return cols[h%uint32(len(cols))]
+}
+
+// paintInitials paints the initials of who in the middle of b, in a
+// bold font of size. It shapes them in their own font: RichText lays a
+// small span on a line of the theme's font, whose baseline sits too low.
+func paintInitials(pt *ui.Painter, b ui.Rect, who string, size float32, col ui.Color) {
+	f := ui.Font{Size: size, Weight: 700}
+	gs := ui.Shape(initials(who), f)
+	var w float32
+	for _, g := range gs {
+		w += g.Advance
+	}
+	m := f.Metrics()
+	pt.Glyphs(gs, b.X+(b.W-w)/2, b.Y+b.H/2+(m.Ascent-m.Descent)/2, col)
 }
 
 // initials returns the first letters of the first two words of a name.

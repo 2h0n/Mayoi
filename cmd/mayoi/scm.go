@@ -790,9 +790,7 @@ func (a *app) scmCommit(c *ui.Context, i int, r scmRow, action *func()) {
 		author := avatarColor(p, cm.Email+cm.Author)
 		ui.Box(c).Size(15, 15).Shrink(0).Draw(func(pt *ui.Painter, b ui.Rect) {
 			pt.Fill(b, author.Alpha(0.22), b.W/2)
-			ini := ui.Span{Text: initials(cm.Author), Size: 7, Weight: 700, Color: author}
-			iw, ih := pt.MeasureText(0, ini)
-			pt.RichText(b.X+(b.W-iw)/2, b.Y+(b.H-ih)/2, 0, ini)
+			paintInitials(pt, b, cm.Author, 7, author)
 		})
 		lane := p.accent
 		if gr != nil {

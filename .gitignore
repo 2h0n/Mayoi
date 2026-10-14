@@ -5,3 +5,5 @@ mygo_windows_*.syso
 /cmd/mayoi/mayoi
 /.agents/
 /.claude/worktrees/
+/.qoder/worktrees/
+
