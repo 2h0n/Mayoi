@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.8.2
 
 - Selecting text in a terminal copies it to the clipboard, as in Ghostty
   and iTerm2: a drag, a double or triple click, a Shift-drag in a
