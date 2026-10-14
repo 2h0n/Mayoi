@@ -123,7 +123,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 	switch {
 	case d.hidden:
 		// Back in sight, where it was.
-		d.hidden, d.pinFrame = false, 0
+		d.hidden, d.pinFrame, d.resync, d.shownFrame = false, 0, true, a.frame
 		d.vscroll.Y = d.hiddenY
 	case d.pinFrame != 0 && a.frame > d.pinFrame:
 		d.pinFrame = 0
@@ -269,6 +269,10 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			// The area is as wide as its widest line: keep its scroll bar
 			// at the right of the view, wherever it scrolls sideways.
 			ScrollbarInsets(2, max(0, d.hscroll.MaxX-d.hscroll.X)+2, 2, 0)
+		if d.focusNext {
+			d.focusNext = false
+			d.vscroll.Focus(c)
+		}
 
 		if d.hl != nil && d.hl.Lexer() != nil {
 			d.hl.Request(snap, first, last)
@@ -528,6 +532,11 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			}
 		})
 	})
+	if d.shownFrame == a.frame {
+		// Built again, the text area scrolls to the selection it is given:
+		// it is covered for that frame, until the pin puts it back.
+		ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Background(p.editor)
+	}
 }
 
 // linesInView returns the first and last lines that show, a little of

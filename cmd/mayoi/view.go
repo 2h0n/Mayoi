@@ -245,15 +245,15 @@ func (a *app) titleBar(c *ui.Context) {
 				a.toggleSidebar()
 			}
 		}
-		ui.Row(c).Width(120).Gap(2).Children(func() {
+		ui.Row(c).Basis(0).Grow(1).MinWidth(56).Gap(2).Children(func() {
 			if !right {
 				sidebarButton()
 			}
 		})
-		ui.Row(c).Grow(1).MinWidth(0).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+		ui.Row(c).Width(420).MaxWidthPercent(68).Shrink(1).MinWidth(140).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			a.commandCenter(c)
 		})
-		ui.Row(c).Width(120).Justify(ui.End).Gap(2).Children(func() {
+		ui.Row(c).Basis(0).Grow(1).MinWidth(56).Justify(ui.End).Gap(2).Children(func() {
 			if a.iconButton(c, iconPanel, a.withKey("Toggle Terminal", "view.terminal"), a.window.PanelOpen).Clicked() {
 				a.togglePanel()
 			}
@@ -268,13 +268,17 @@ func (a *app) titleBar(c *ui.Context) {
 // document and the folder, and opens quick open.
 func (a *app) commandCenter(c *ui.Context) {
 	p := a.pal
-	b := ui.ButtonBase(c.Key("command-center")).Height(24).Width(420).MaxWidthPercent(100).Shrink(1).Padding(0, 10).Gap(8).
+	b := ui.ButtonBase(c.Key("command-center")).Height(24).FillWidth().Padding(0, 10).Gap(8).
 		Radius(6).Justify(ui.Center).AlignItems(ui.Center).Border(1, p.border).Label("Quick Open").Tooltip(a.withKey("Quick Open", "go.quickOpen"))
-	b.Background(p.hover)
+	b.Background(p.surface)
 	hovered := b.Hovered()
-	if hovered {
-		b.Background(p.hover.Alpha(2)).Border(1, mix(p.border, p.muted, 0.3))
+	switch {
+	case b.Pressed():
+		b.Background(p.surfacePressed)
+	case hovered:
+		b.Background(p.surfaceHover).Border(1, mix(p.border, p.muted, 0.3))
 	}
+	room := b.Bounds().W - 2*10 - 12 - 2*8 // its padding, the icon and the gaps
 	b.Children(func() {
 		col := p.faint
 		if hovered {
@@ -291,10 +295,21 @@ func (a *app) commandCenter(c *ui.Context) {
 		if a.root != "" {
 			folder = filepath.Base(a.root)
 		}
+		if name != "" && folder != "" && room > 0 {
+			// The folder goes before the name is cut short.
+			nameW, _ := c.MeasureText(0, ui.Span{Text: name, Size: 12, Weight: 550})
+			folderW, _ := c.MeasureText(0, ui.Span{Text: folder, Size: 12})
+			if nameW+8+folderW > room {
+				folder = ""
+			}
+		}
 		switch {
-		case name != "" && folder != "":
-			ui.Text(c, name).FontSize(12).FontWeight(500).TextColor(p.text).SingleLine().Shrink(1)
-			ui.Text(c, folder).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
+		case name != "" && a.root != "":
+			ui.Text(c, name).FontSize(12).FontWeight(550).TextColor(p.text).SingleLine().Shrink(1).MinWidth(32)
+			if folder == "" {
+				break
+			}
+			ui.Text(c, folder).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1).MinWidth(24)
 		case name != "" || folder != "":
 			ui.Text(c, name+folder).FontSize(12).FontWeight(500).TextColor(p.muted).SingleLine().Shrink(1)
 		default:
@@ -389,46 +404,32 @@ func (a *app) columnView(c *ui.Context, col *column) {
 	if shown != nil && shown.term == nil {
 		a.breadcrumbs(c, shown)
 	}
-	// Every tab keeps its editor, so that its selection and its place stay
-	// as tabs change: those not shown are built invisible, out of the way.
-	// The key keeps them as the breadcrumbs above come and go.
+	for _, t := range col.tabs {
+		if t != shown && t.ed != nil {
+			a.hideEditor(t.ed)
+		}
+	}
 	body := ui.Box(c.Key("body")).Bind(&col.body).Grow(1)
 	over := a.takeFiles(body, col)
 	body.Children(func() {
-		for _, t := range col.tabs {
-			box := ui.Column(c.Key(t.id)).Absolute().Top(0).Left(0).Right(0).Bottom(0)
-			if t != shown {
-				box.Invisible()
-			}
-			box.Children(func() {
+		if shown != nil {
+			ui.Column(c.Key(shown.id)).Absolute().Top(0).Left(0).Right(0).Bottom(0).Children(func() {
 				switch {
-				case t.term != nil:
-					// A terminal keeps its state itself.
-					if t == shown {
-						a.terminalView(c, t.term)
-					}
-				case t.view != nil:
-					if t == shown {
-						a.viewerView(c, t.view, t.name())
-					}
-				case t.diff != nil:
-					if t == shown {
-						a.diffViewUI(c, t.diff)
-					}
-				case t == shown && t.ed.preview != nil:
-					// The text keeps its place, out of sight, under the preview.
-					ui.Box(c).Absolute().Top(0).Left(0).Right(0).Bottom(0).Invisible().Children(func() {
-						a.hiddenEditor(c, t.ed)
-					})
-					a.viewerView(c, t.ed.preview, t.name())
-				case t == shown:
-					a.editorView(c, t.ed)
-					a.hunkPeekView(c, t.ed)
-					if col == a.column() {
-						a.findView(c, t.ed)
-					}
+				case shown.term != nil:
+					a.terminalView(c, shown.term)
+				case shown.view != nil:
+					a.viewerView(c, shown.view, shown.name())
+				case shown.diff != nil:
+					a.diffViewUI(c, shown.diff)
+				case shown.ed.preview != nil:
+					a.hideEditor(shown.ed)
+					a.viewerView(c, shown.ed.preview, shown.name())
 				default:
-					a.hiddenEditor(c, t.ed)
+					a.editorView(c, shown.ed)
+					a.hunkPeekView(c, shown.ed)
+					if col == a.column() {
+						a.findView(c, shown.ed)
+					}
 				}
 			})
 		}
@@ -436,31 +437,10 @@ func (a *app) columnView(c *ui.Context, col *column) {
 	})
 }
 
-// hiddenEditor keeps the state of an editor's text area while another
-// tab is shown. The area scrolls to its caret when its text changes, as
-// an edit made in another column changes it: it stays where it was.
-func (a *app) hiddenEditor(c *ui.Context, d *editor) {
+func (a *app) hideEditor(d *editor) {
 	if !d.hidden {
 		d.hidden, d.hiddenY = true, d.vscroll.Y
 	}
-	d.vscroll.Y = d.hiddenY
-	ui.ScrollHorizontal(c).TrackScroll(&d.hscroll).Fill().Children(func() {
-		// Laid out as the editor shows it, so that its place stays.
-		area := ui.TextAreaBufferBase(c, d.buf).Font(a.font.family).FontSize(a.font.size).FontWeight(a.font.weight).
-			FontFeatures(a.font.featureList()...).FixedLineHeight(a.font.lineH).
-			Fill().TrackScroll(&d.vscroll)
-		if a.wraps(d) {
-			// The rows the editor measured stay measured only at its width
-			// and in its style.
-			gutterW := a.font.gutterWidth(d.buf.Snapshot().LineCount())
-			area.Padding(editorPadY, textPadR, editorPadY, gutterW+gutterGap).TextColor(a.pal.text).TrackLines(&d.lines)
-			if w := d.hscroll.Bounds(c).W; w > 0 {
-				area.Width(w)
-			}
-		} else {
-			area.NoWrap()
-		}
-	})
 }
 
 // dragItem is what is dragged to a column: one of its tabs, or of
@@ -671,8 +651,112 @@ func (a *app) previewButton(c *ui.Context, t *colTab, d *editor) {
 	}
 }
 
+// statusVisibility is which of the parts of the status bar that can go
+// show.
+type statusVisibility struct {
+	branchLabel bool
+	folder      bool
+	terminal    bool
+	lines       bool
+	indent      bool
+	encoding    bool
+	eol         bool
+	language    bool
+}
+
+// statusFit returns which parts of the status bar show in width: as the
+// window narrows, the least needed go first, each only once the bar
+// would not hold it. The position is measured at its widest, so that the
+// parts stay as the caret moves.
+func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
+	measure := func(s string, icon bool) float32 {
+		w, _ := c.MeasureText(0, ui.Span{Text: s, Size: 11.5})
+		w += 2*6 + 2 // the item's padding, and the gap after it
+		if icon {
+			w += 12 + 5
+		}
+		return w
+	}
+	var v statusVisibility
+	used := float32(2 * 6)
+	type part struct {
+		on *bool
+		w  float32
+	}
+	// In the order they go.
+	var parts []part
+	add := func(on *bool, w float32) { parts = append(parts, part{on, w}) }
+	if m := a.themeMascot(); m != nil {
+		w, _ := m.size(1)
+		used += w + 12 + 2
+	}
+	if busy := a.git.busy; busy != "" {
+		used += measure(busy, true)
+	}
+	if len(a.chord) > 0 {
+		used += measure("("+strings.Join(chordCaps(a.chord), " ")+") was pressed. Waiting for the next key…", true)
+	}
+	folder := func() {
+		if a.root != "" {
+			add(&v.folder, measure(filepath.Base(a.root), true))
+		}
+	}
+	t := a.activeTab()
+	switch d := a.activeEditor(); {
+	case a.activeViewer() != nil, t != nil && t.diff != nil, d == nil:
+		folder()
+	case t != nil && t.term != nil:
+		folder()
+		dir, size := t.term.term.Dir(), ""
+		if cols, rows := t.term.term.Size(); cols > 0 {
+			size = fmt.Sprintf("%d × %d", cols, rows)
+		}
+		if dir != "" || size != "" {
+			add(&v.terminal, measure(shortenHome(dir), true)+measure(size, false))
+		}
+	default:
+		snap := d.buf.Snapshot()
+		n := snap.LineCount()
+		used += measure(fmt.Sprintf("Ln %d, Col 999", n), false)
+		if a.settings.Vim {
+			used += measure(d.vim.label(), false)
+		}
+		if d.diskGone {
+			used += measure("Deleted on disk", true)
+		}
+		eol := "LF"
+		if d.crlf {
+			eol = "CRLF"
+		}
+		add(&v.encoding, measure("UTF-8", false))
+		folder()
+		add(&v.lines, measure(plural(n, "line"), false))
+		add(&v.eol, measure(eol, false))
+		add(&v.indent, measure(d.indent.String(), false))
+		add(&v.language, measure(highlight.DisplayName(d.hl.Lexer()), false))
+	}
+	if a.branch() != "" {
+		used += 2*6 + 12 + 2 // its icon, which stays
+		add(&v.branchLabel, measure(a.branchLabel(), false)-2*6-2+5)
+	}
+	for _, p := range parts {
+		*p.on = true
+		used += p.w
+	}
+	for _, p := range parts {
+		if used <= width {
+			break
+		}
+		*p.on = false
+		used -= p.w
+	}
+	return v
+}
+
 func (a *app) statusBar(c *ui.Context) {
 	p := a.pal
+	width, _ := c.Size()
+	visible := a.statusFit(c, width)
 	ui.Row(c).Height(statusBarH).Padding(0, 6).Gap(2).AlignItems(ui.Center).Background(p.status).
 		BorderWidth(1, 0, 0, 0).BorderColor(p.border).Children(func() {
 		text := func(s string) ui.Element {
@@ -705,7 +789,10 @@ func (a *app) statusBar(c *ui.Context) {
 			}
 		}
 		// menuItem is a part of the bar that opens a menu.
-		menuItem := func(key, label, tip string, build func(m *ui.Menu)) {
+		menuItem := func(show bool, key, label, tip string, build func(m *ui.Menu)) {
+			if !show {
+				return
+			}
 			b := ui.ButtonBase(c.Key("status:"+key)).Height(statusBarH-6).Padding(0, 6).Radius(4).
 				AlignItems(ui.Center).Label(tip).Tooltip(tip)
 			if b.Hovered() {
@@ -725,7 +812,9 @@ func (a *app) statusBar(c *ui.Context) {
 			}
 			bb.Children(func() {
 				ui.Icon(c, iconBranch).FontSize(12).TextColor(p.statusFg)
-				text(a.branchLabel())
+				if visible.branchLabel {
+					text(a.branchLabel())
+				}
 			})
 			bb.Menu(a.branchMenu)
 		}
@@ -741,7 +830,7 @@ func (a *app) statusBar(c *ui.Context) {
 		if len(a.chord) > 0 {
 			item("chord", "("+strings.Join(chordCaps(a.chord), " ")+") was pressed. Waiting for the next key…", "", iconKeyboard, nil)
 		}
-		if a.root != "" {
+		if a.root != "" && visible.folder {
 			item("folder", filepath.Base(a.root), revealFolderLabel(shortenHome(a.root)), iconFolder, func() { a.host.reveal(a.root) })
 		}
 		ui.Spacer(c)
@@ -758,10 +847,10 @@ func (a *app) statusBar(c *ui.Context) {
 		if t := a.activeTab(); t != nil && t.term != nil {
 			// A terminal: where its shell is, and its size in cells.
 			term := t.term.term
-			if dir := term.Dir(); dir != "" {
+			if dir := term.Dir(); dir != "" && visible.terminal {
 				item("cwd", shortenHome(dir), "", iconTerminal, nil)
 			}
-			if cols, rows := term.Size(); cols > 0 {
+			if cols, rows := term.Size(); cols > 0 && visible.terminal {
 				item("size", fmt.Sprintf("%d × %d", cols, rows), "", nil, nil)
 			}
 			return
@@ -791,8 +880,10 @@ func (a *app) statusBar(c *ui.Context) {
 			item("vim", d.vim.label(), "", nil, nil)
 		}
 		item("pos", pos, a.withKey("Go to Line", "go.line"), nil, func() { a.openQuick(":") })
-		item("lines", plural(snap.LineCount(), "line"), "", nil, nil)
-		menuItem("indent", d.indent.String(), "Indentation", func(m *ui.Menu) {
+		if visible.lines {
+			item("lines", plural(snap.LineCount(), "line"), "", nil, nil)
+		}
+		menuItem(visible.indent, "indent", d.indent.String(), "Indentation", func(m *ui.Menu) {
 			if m.Item("Indent Using Tabs").Checked(d.indent.tabs).Chosen() {
 				d.indent.tabs = true
 			}
@@ -813,12 +904,14 @@ func (a *app) statusBar(c *ui.Context) {
 				a.editActive(func(d *editor) { reindent(d, indentStyle{size: size}) })()
 			}
 		})
-		item("enc", "UTF-8", "", nil, nil)
+		if visible.encoding {
+			item("enc", "UTF-8", "", nil, nil)
+		}
 		eol := "LF"
 		if d.crlf {
 			eol = "CRLF"
 		}
-		menuItem("eol", eol, "Line Endings", func(m *ui.Menu) {
+		menuItem(visible.eol, "eol", eol, "Line Endings", func(m *ui.Menu) {
 			for _, crlf := range []bool{false, true} {
 				label := "LF"
 				if crlf {
@@ -829,7 +922,9 @@ func (a *app) statusBar(c *ui.Context) {
 				}
 			}
 		})
-		item("lang", highlight.DisplayName(d.hl.Lexer()), "", nil, nil)
+		if visible.language {
+			item("lang", highlight.DisplayName(d.hl.Lexer()), "", nil, nil)
+		}
 	})
 }
 

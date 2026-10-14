@@ -140,6 +140,68 @@ func (hs *harness) shot(name string) {
 
 func (hs *harness) path(rel string) string { return filepath.Join(hs.root, filepath.FromSlash(rel)) }
 
+// TestStatusBarDropsTheLeastNeededFirst: as the window narrows, the
+// status bar's parts go one by one, the least needed first, each only
+// once the bar would not hold it, and those left fit.
+func TestStatusBarDropsTheLeastNeededFirst(t *testing.T) {
+	hs := newHarness(t, true)
+	git := hs.gitRepo()
+	branch := "feature/responsive-title-bar-polish"
+	git("checkout", "-q", "-b", branch)
+	hs.a.openFile(hs.path("main.go"), true)
+	hs.settleGit()
+	// In the order they go.
+	parts := []string{"UTF-8", revealFolderLabel(shortenHome(hs.root)), "9 lines", "LF", "Tabs", "Go", branch}
+	gone := 0
+	for w := 1200; w >= 300; w -= 20 {
+		hs.tt.SetSize(w, 400)
+		hs.settle()
+		for i, s := range parts {
+			box, shown := hs.tt.Find(s)
+			switch {
+			case !shown:
+				gone = max(gone, i+1)
+			case i < gone:
+				t.Errorf("at %d, %q is back", w, s)
+			case box.X+box.W > float32(w):
+				t.Errorf("at %d, %q does not fit", w, s)
+			}
+		}
+		if box, ok := hs.tt.Find("Ln 1, Col 1"); !ok || box.X+box.W > float32(w) {
+			t.Fatalf("at %d the position does not fit: %v", w, box)
+		}
+		switch {
+		case w == 760 && gone > 0:
+			t.Errorf("at 760, with room for it, the bar leaves out %q", parts[gone-1])
+		case w == 300 && gone < len(parts):
+			t.Errorf("at 300 the bar keeps %q", parts[gone:])
+		}
+	}
+}
+
+// TestCommandCenterFitsNarrowWindow: the command center fits the title
+// bar, and leaves out the folder before it cuts the name short.
+func TestCommandCenterFitsNarrowWindow(t *testing.T) {
+	hs := newHarness(t, true)
+	hs.a.openFile(hs.path("main.go"), true)
+	folder := filepath.Base(hs.root)
+	hs.tt.SetSize(760, 400)
+	hs.settle()
+	if _, ok := hs.tt.Find(folder); !ok {
+		t.Error("the command center leaves out the folder though it has room")
+	}
+	hs.tt.SetSize(360, 400)
+	hs.settle()
+	box, ok := hs.tt.Find("Quick Open")
+	if !ok || box.X < 0 || box.X+box.W > 360 {
+		t.Errorf("the command center does not fit the title bar: %v", box)
+	}
+	name, ok := hs.tt.Find("main.go")
+	if !ok || name.X < box.X || name.X+name.W > box.X+box.W {
+		t.Errorf("the name is not in the command center: %v in %v", name, box)
+	}
+}
+
 func TestOpenFolderShowsTreeAndOpensFiles(t *testing.T) {
 	hs := newHarness(t, true)
 	a, tt := hs.a, hs.tt
