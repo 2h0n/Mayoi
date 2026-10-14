@@ -140,3 +140,26 @@ func TestTreeRows(t *testing.T) {
 		t.Errorf("closed\n%s, want\n%s", got, want)
 	}
 }
+
+func TestInHead(t *testing.T) {
+	a := &app{}
+	g := &a.git
+	// d is a merge of b and c on main; e is on a branch off a.
+	g.history = []git.Commit{
+		{Hash: "e", Parents: []string{"a"}},
+		{Hash: "d", Parents: []string{"b", "c"}},
+		{Hash: "c", Parents: []string{"a"}},
+		{Hash: "b", Parents: []string{"a"}},
+		{Hash: "a"},
+	}
+	g.status = &git.Status{Head: "d"}
+	for h, want := range map[string]bool{"a": true, "b": true, "c": true, "d": true, "e": false} {
+		if got := a.inHead(h); got != want {
+			t.Errorf("inHead(%s) = %v, want %v", h, got, want)
+		}
+	}
+	g.status, g.historyGen = &git.Status{Head: "e"}, 1
+	if !a.inHead("e") || a.inHead("d") {
+		t.Error("not worked out again as HEAD moved")
+	}
+}

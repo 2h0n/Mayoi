@@ -60,11 +60,12 @@ func (e *Error) Error() string {
 func (e *Error) Unwrap() error { return e.Err }
 
 // run runs git in dir, with stdin, and returns what it wrote. It never
-// asks for a password: there is no terminal to ask in.
+// asks for a password, nor opens an editor for a message: there is no
+// terminal to ask in, and the message git proposes is taken.
 func run(dir string, stdin []byte, args ...string) ([]byte, error) {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C")
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true")
 	if os.Getenv("GIT_SSH_COMMAND") == "" {
 		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -oBatchMode=yes")
 	}
@@ -158,6 +159,9 @@ type Status struct {
 	Ahead    int
 	Behind   int
 	Entries  []Entry
+	// Op is the merge, rebase, cherry-pick or revert that stopped for
+	// its conflicts, "" while none did.
+	Op Op
 }
 
 // Equal reports whether two statuses say the same.
@@ -166,7 +170,7 @@ func (s *Status) Equal(o *Status) bool {
 		return s == o
 	}
 	return s.Branch == o.Branch && s.Head == o.Head && s.Upstream == o.Upstream && s.Ahead == o.Ahead &&
-		s.Behind == o.Behind && slices.Equal(s.Entries, o.Entries)
+		s.Behind == o.Behind && s.Op == o.Op && slices.Equal(s.Entries, o.Entries)
 }
 
 // statusFields is how many fields come before the path in a record of
@@ -180,7 +184,9 @@ func (r *Repo) Status() (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	return parseStatus(r, out), nil
+	st := parseStatus(r, out)
+	st.Op = r.InProgress()
+	return st, nil
 }
 
 func parseStatus(r *Repo, out []byte) *Status {
@@ -382,6 +388,132 @@ func (r *Repo) UndoCommit() error {
 	}
 	_, err = r.run(nil, "update-ref", "-d", "HEAD")
 	return err
+}
+
+// Op is a command that changes HEAD by commits and can stop part way, for
+// conflicts to be resolved: it goes on with Continue, or Abort undoes it.
+type Op string
+
+const (
+	OpMerge      Op = "merge"
+	OpRebase     Op = "rebase"
+	OpCherryPick Op = "cherry-pick"
+	OpRevert     Op = "revert"
+)
+
+// Title is how an Op is named in a menu, as "Cherry-Pick".
+func (o Op) Title() string {
+	switch o {
+	case OpCherryPick:
+		return "Cherry-Pick"
+	case "":
+		return ""
+	}
+	return strings.ToUpper(string(o[:1])) + string(o[1:])
+}
+
+// InProgress returns the command that stopped part way in the work tree,
+// "" when none did, by the files it leaves in the work tree's Git folder.
+// A rebase picks commits as a cherry-pick does, so it is looked for
+// first.
+func (r *Repo) InProgress() Op {
+	exists := func(name string) bool {
+		_, err := os.Stat(filepath.Join(r.Dir, name))
+		return err == nil
+	}
+	switch {
+	case exists("rebase-merge"), exists("rebase-apply"):
+		return OpRebase
+	case exists("CHERRY_PICK_HEAD"):
+		return OpCherryPick
+	case exists("REVERT_HEAD"):
+		return OpRevert
+	case exists("MERGE_HEAD"):
+		return OpMerge
+	}
+	return ""
+}
+
+// Merge merges rev into the branch checked out, with the message git
+// proposes.
+func (r *Repo) Merge(rev string) error {
+	_, err := r.run(nil, "merge", "--no-edit", rev)
+	return err
+}
+
+// Rebase moves the commits of the branch checked out that onto lacks on
+// top of onto.
+func (r *Repo) Rebase(onto string) error {
+	_, err := r.run(nil, "rebase", onto)
+	return err
+}
+
+// CherryPick makes a commit of the changes hash made, on HEAD; those of
+// a merge against its first parent.
+func (r *Repo) CherryPick(hash string, merge bool) error {
+	args := []string{"cherry-pick"}
+	if merge {
+		args = append(args, "-m", "1")
+	}
+	_, err := r.run(nil, append(args, hash)...)
+	return err
+}
+
+// Revert makes a commit that takes back the changes hash made; those of
+// a merge against its first parent.
+func (r *Repo) Revert(hash string, merge bool) error {
+	args := []string{"revert", "--no-edit"}
+	if merge {
+		args = append(args, "-m", "1")
+	}
+	_, err := r.run(nil, append(args, hash)...)
+	return err
+}
+
+// ResetMode is what a reset does to the index and the work tree: soft
+// keeps both, mixed keeps the work tree, hard keeps neither.
+type ResetMode string
+
+const (
+	ResetSoft  ResetMode = "soft"
+	ResetMixed ResetMode = "mixed"
+	ResetHard  ResetMode = "hard"
+)
+
+// Reset moves the branch checked out, or HEAD when detached, to hash.
+func (r *Repo) Reset(hash string, mode ResetMode) error {
+	_, err := r.run(nil, "reset", "--"+string(mode), hash)
+	return err
+}
+
+// Continue goes on with op once its conflicts are resolved and staged,
+// with the message it proposes.
+func (r *Repo) Continue(op Op) error {
+	_, err := r.run(nil, string(op), "--continue")
+	return err
+}
+
+// Abort undoes op, bringing back HEAD, the index and the work tree as
+// they were before it.
+func (r *Repo) Abort(op Op) error {
+	_, err := r.run(nil, string(op), "--abort")
+	return err
+}
+
+// MergeMessage returns the message git proposes for the commit that ends
+// a merge, cherry-pick or revert stopped part way, without its comments.
+func (r *Repo) MergeMessage() string {
+	b, err := os.ReadFile(filepath.Join(r.Dir, "MERGE_MSG"))
+	if err != nil {
+		return ""
+	}
+	var lines []string
+	for _, l := range strings.Split(string(b), "\n") {
+		if !strings.HasPrefix(l, "#") {
+			lines = append(lines, l)
+		}
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
 }
 
 // Head returns the hash of the commit checked out, "" before the first.

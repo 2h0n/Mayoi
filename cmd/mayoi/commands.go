@@ -104,6 +104,8 @@ func (a *app) commands() []command {
 		{"git.unstageFile", "Unstage File", "", func() { a.unstage(a.activePaths()...) }},
 		{"git.stageAll", "Stage All Changes", "", a.stageAll},
 		{"git.undoCommit", "Undo Last Commit", "", a.undoCommit},
+		{"git.continue", "Continue Merge, Rebase or Cherry-Pick", "", a.continueOp},
+		{"git.abort", "Abort Merge, Rebase or Cherry-Pick…", "", a.abortOp},
 		{"git.switchBranch", "Switch Branch…", "", a.openBranchPicker},
 		{"git.createBranch", "Create Branch…", "", a.askNewBranch},
 		{"git.blame", "Inline Blame", "", a.toggleBlame},

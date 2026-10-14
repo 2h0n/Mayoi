@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -73,6 +74,10 @@ type gitState struct {
 	graphOf int
 	// tags are the names of the tags, read with the history.
 	tags []string
+	// reach is the commits of history that HEAD has, worked out for the
+	// HEAD and the read reachOf names.
+	reach   map[string]bool
+	reachOf string
 }
 
 // historyPage is how many commits the history reads at first, and more
@@ -434,14 +439,8 @@ func (a *app) docsSaved(doing string) bool {
 // has one local branch, or else the commit itself, once asked, as that
 // detaches HEAD.
 func (a *app) checkOutCommit(cm git.Commit) {
-	var branches []string
-	for _, r := range cm.Refs {
-		if r.Kind == git.RefBranch {
-			branches = append(branches, r.Name)
-		}
-	}
-	if len(branches) == 1 {
-		a.switchBranch(branches[0], false)
+	if b := localBranch(cm); b != "" {
+		a.switchBranch(b, false)
 		return
 	}
 	a.confirm = &confirm{title: "Check out " + cm.Short() + "?", ok: "Check Out",
@@ -452,6 +451,221 @@ func (a *app) checkOutCommit(cm git.Commit) {
 			}
 			hash := cm.Hash
 			a.gitDo("Checking out "+cm.Short()+"…", func(r *git.Repo) error { return r.Checkout(hash) }, nil)
+		}}
+}
+
+// localBranch is the one local branch at a commit, "" when it has none
+// or more.
+func localBranch(cm git.Commit) string {
+	name := ""
+	for _, r := range cm.Refs {
+		if r.Kind == git.RefBranch {
+			if name != "" {
+				return ""
+			}
+			name = r.Name
+		}
+	}
+	return name
+}
+
+// revOf names a commit for a command: by its one local branch, so that
+// a merge's message names the branch, or else by its hash.
+func revOf(cm git.Commit) string { return cmp.Or(localBranch(cm), cm.Hash) }
+
+// inHead reports whether HEAD has commit hash, by the commits of the
+// history read: one read before them counts as not.
+func (a *app) inHead(hash string) bool {
+	g := &a.git
+	if g.status == nil || g.status.Head == "" {
+		return false
+	}
+	key := fmt.Sprintf("%s|%d", g.status.Head, g.historyGen)
+	if g.reachOf != key {
+		parents := make(map[string][]string, len(g.history))
+		for _, c := range g.history {
+			parents[c.Hash] = c.Parents
+		}
+		g.reach, g.reachOf = map[string]bool{}, key
+		todo := []string{g.status.Head}
+		for len(todo) > 0 {
+			h := todo[len(todo)-1]
+			todo = todo[:len(todo)-1]
+			if g.reach[h] {
+				continue
+			}
+			g.reach[h] = true
+			todo = append(todo, parents[h]...)
+		}
+	}
+	return g.reach[hash]
+}
+
+// runOp runs a command that moves HEAD by commits, once the documents
+// are saved, then says done. When it stops for conflicts it says how to
+// go on, and the message it proposes goes in the box.
+func (a *app) runOp(op git.Op, busy, done string, fn func(r *git.Repo) error) {
+	if !a.docsSaved("a " + strings.ToLower(op.Title())) {
+		return
+	}
+	stopped, msg := false, ""
+	a.gitDo(busy, func(r *git.Repo) error {
+		err := fn(r)
+		if err != nil && r.InProgress() == op {
+			stopped, msg = true, r.MergeMessage()
+			return nil
+		}
+		return err
+	}, func() {
+		g := &a.git
+		g.refsGen++
+		if !stopped {
+			a.tell(note{message: done})
+			return
+		}
+		if op != git.OpRebase && strings.TrimSpace(g.message) == "" {
+			g.message, g.amend = msg, false
+		}
+		a.showSourceControl()
+		a.tell(note{message: op.Title() + " stopped for conflicts: resolve and stage them, then continue",
+			label: "Abort", action: func() { a.abortOpOf(op) }})
+	})
+}
+
+// mergeCommit merges a commit of the history into the branch checked
+// out, once asked.
+func (a *app) mergeCommit(cm git.Commit) {
+	rev, into := revOf(cm), a.branch()
+	a.confirm = &confirm{title: fmt.Sprintf("Merge %s into %s?", cmp.Or(localBranch(cm), cm.Short()), into), ok: "Merge",
+		message: ellipsize(cm.Subject, 80),
+		run: func() {
+			a.runOp(git.OpMerge, "Merging…", "Merged "+cmp.Or(localBranch(cm), cm.Short())+" into "+into,
+				func(r *git.Repo) error { return r.Merge(rev) })
+		}}
+}
+
+// rebaseOnto moves the commits of the branch checked out that a commit
+// of the history lacks on top of it, once asked.
+func (a *app) rebaseOnto(cm git.Commit) {
+	rev, branch, onto := revOf(cm), a.branch(), cmp.Or(localBranch(cm), cm.Short())
+	a.confirm = &confirm{title: fmt.Sprintf("Rebase %s onto %s?", branch, onto), ok: "Rebase",
+		message: "The commits of " + branch + " that " + onto + " lacks are made again on top of it. " +
+			"Rebasing commits already pushed rewrites history others may have.",
+		run: func() {
+			a.runOp(git.OpRebase, "Rebasing…", "Rebased "+branch+" onto "+onto,
+				func(r *git.Repo) error { return r.Rebase(rev) })
+		}}
+}
+
+// cherryPick makes a commit of a commit's changes on the branch checked
+// out.
+func (a *app) cherryPick(cm git.Commit) {
+	hash, merge := cm.Hash, len(cm.Parents) > 1
+	a.runOp(git.OpCherryPick, "Cherry-picking…", "Cherry-picked “"+ellipsize(cm.Subject, 48)+"”",
+		func(r *git.Repo) error { return r.CherryPick(hash, merge) })
+}
+
+// revertCommit makes a commit that takes back a commit's changes, once
+// asked.
+func (a *app) revertCommit(cm git.Commit) {
+	hash, merge := cm.Hash, len(cm.Parents) > 1
+	msg := "A new commit takes back the changes of “" + ellipsize(cm.Subject, 60) + "”."
+	if merge {
+		msg += " Those of a merge are taken back against its first parent."
+	}
+	a.confirm = &confirm{title: "Revert " + cm.Short() + "?", ok: "Revert", message: msg, run: func() {
+		a.runOp(git.OpRevert, "Reverting…", "Reverted “"+ellipsize(cm.Subject, 48)+"”",
+			func(r *git.Repo) error { return r.Revert(hash, merge) })
+	}}
+}
+
+// resetModes are the ways a reset may go, as the dialog offers them.
+var resetModes = []confirmChoice{
+	{label: "Soft", message: "Keep the changes of the commits after it staged, and the work tree as it is."},
+	{label: "Mixed", message: "Keep the changes of the commits after it, and the work tree's, unstaged."},
+	{label: "Hard", message: "Discard the commits after it and every change of the work tree.", danger: true},
+}
+
+// resetTo moves the branch checked out to a commit of the history, in
+// the mode chosen in the dialog.
+func (a *app) resetTo(cm git.Commit) {
+	branch, hash := a.branch(), cm.Hash
+	cf := &confirm{title: fmt.Sprintf("Reset %s to %s?", branch, cm.Short()), ok: "Reset",
+		choices: resetModes, choice: 1}
+	cf.run = func() {
+		mode := git.ResetMode(strings.ToLower(resetModes[cf.choice].label))
+		if mode == git.ResetHard && !a.docsSaved("a hard reset") {
+			return
+		}
+		a.gitDo("Resetting…", func(r *git.Repo) error { return r.Reset(hash, mode) }, func() {
+			a.git.refsGen++
+			a.tell(note{message: fmt.Sprintf("Reset %s to %s (%s)", branch, git.ShortHash(hash), mode)})
+		})
+	}
+	a.confirm = cf
+}
+
+// continueOp goes on with the command stopped for conflicts, once they
+// are resolved and staged: a merge, cherry-pick or revert with the
+// message written, when one is.
+func (a *app) continueOp() {
+	g := &a.git
+	if g.status == nil || g.status.Op == "" || g.busy != "" {
+		return
+	}
+	op := g.status.Op
+	if len(a.groupEntries()[groupMerge]) > 0 {
+		a.fail("Resolve the conflicts and stage the files first.")
+		return
+	}
+	if op != git.OpRebase && strings.TrimSpace(g.message) != "" {
+		a.commit(false)
+		return
+	}
+	if !a.docsSaved("continuing") {
+		return
+	}
+	stopped := false
+	a.gitDo("Continuing the "+strings.ToLower(op.Title())+"…", func(r *git.Repo) error {
+		err := r.Continue(op)
+		if err != nil && r.InProgress() == op {
+			// A rebase stops again at the next commit that conflicts.
+			if st, serr := r.Status(); serr == nil && slices.ContainsFunc(st.Entries, git.Entry.Conflicted) {
+				stopped = true
+				return nil
+			}
+		}
+		return err
+	}, func() {
+		g.refsGen++
+		if stopped {
+			a.tell(note{message: op.Title() + " stopped again for conflicts: resolve and stage them, then continue",
+				label: "Abort", action: func() { a.abortOpOf(op) }})
+			return
+		}
+		a.tell(note{message: op.Title() + " done"})
+	})
+}
+
+// abortOp undoes the command stopped for conflicts, once asked.
+func (a *app) abortOp() {
+	if st := a.git.status; st != nil && st.Op != "" {
+		a.abortOpOf(st.Op)
+	}
+}
+
+// abortOpOf undoes op, stopped for conflicts, once asked.
+func (a *app) abortOpOf(op git.Op) {
+	g := &a.git
+	a.confirm = &confirm{title: "Abort the " + strings.ToLower(op.Title()) + "?", ok: "Abort", danger: true,
+		message: "HEAD, the staged changes and the files go back to how they were before it.",
+		run: func() {
+			a.gitDo("Aborting…", func(r *git.Repo) error { return r.Abort(op) }, func() {
+				g.refsGen++
+				if op != git.OpRebase {
+					g.message = ""
+				}
+			})
 		}}
 }
 

@@ -446,3 +446,148 @@ func TestParseRefs(t *testing.T) {
 		t.Errorf("no refs %+v", got)
 	}
 }
+
+// branchOff makes branch side with a commit of c.txt, and one of a.txt
+// on main, which side lacks.
+func branchOff(t *testing.T, r *Repo, git func(args ...string), a string) (side string) {
+	t.Helper()
+	git("switch", "-q", "-c", "side")
+	write(t, r.Root, "c.txt", "sea\n")
+	git("add", ".")
+	git("commit", "-q", "-m", "side")
+	side = r.Head()
+	git("switch", "-q", "main")
+	write(t, r.Root, "a.txt", a)
+	git("commit", "-q", "-am", "main")
+	return side
+}
+
+func TestMergeRebaseCherryPick(t *testing.T) {
+	r, git := repo(t)
+	side := branchOff(t, r, git, "one\nTWO\nthree\n")
+	if err := r.CherryPick(side, false); err != nil {
+		t.Fatal(err)
+	}
+	if r.LastMessage() != "side" {
+		t.Errorf("picked %q", r.LastMessage())
+	}
+	git("reset", "-q", "--hard", "HEAD^")
+	if err := r.Merge("side"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(r.LastMessage(), "Merge branch 'side'") {
+		t.Errorf("merged %q", r.LastMessage())
+	}
+	git("reset", "-q", "--hard", "HEAD^")
+	main := r.Head()
+	git("switch", "-q", "side")
+	if err := r.Rebase("main"); err != nil {
+		t.Fatal(err)
+	}
+	if r.Count("main", "HEAD") != 1 || r.Count("HEAD", "main") != 0 || r.Head() == side {
+		t.Errorf("side not on top of main %s", main)
+	}
+}
+
+func TestConflictContinueAbort(t *testing.T) {
+	r, git := repo(t)
+	git("switch", "-q", "-c", "side")
+	write(t, r.Root, "a.txt", "one\nSIDE\nthree\n")
+	git("commit", "-q", "-am", "side change")
+	side := r.Head()
+	git("switch", "-q", "main")
+	write(t, r.Root, "a.txt", "one\nMAIN\nthree\n")
+	git("commit", "-q", "-am", "main change")
+	head := r.Head()
+
+	if r.InProgress() != "" {
+		t.Fatal("in progress before")
+	}
+	if err := r.CherryPick(side, false); err == nil {
+		t.Fatal("no conflict")
+	}
+	st, _ := r.Status()
+	if st.Op != OpCherryPick {
+		t.Fatalf("op %q", st.Op)
+	}
+	if msg := r.MergeMessage(); !strings.HasPrefix(msg, "side change") || strings.Contains(msg, "#") {
+		t.Errorf("message %q", msg)
+	}
+	if err := r.Abort(OpCherryPick); err != nil {
+		t.Fatal(err)
+	}
+	if r.InProgress() != "" || r.Head() != head {
+		t.Fatalf("not aborted: %q", r.InProgress())
+	}
+
+	if err := r.Merge("side"); err == nil {
+		t.Fatal("no conflict")
+	}
+	if r.InProgress() != OpMerge {
+		t.Fatalf("op %q", r.InProgress())
+	}
+	write(t, r.Root, "a.txt", "one\nBOTH\nthree\n")
+	git("add", "a.txt")
+	if err := r.Continue(OpMerge); err != nil {
+		t.Fatal(err)
+	}
+	if r.InProgress() != "" || r.Count(head, "HEAD") != 2 {
+		t.Fatalf("not merged: %q", r.InProgress())
+	}
+}
+
+func TestRebaseConflict(t *testing.T) {
+	r, git := repo(t)
+	git("switch", "-q", "-c", "side")
+	write(t, r.Root, "a.txt", "one\nSIDE\nthree\n")
+	git("commit", "-q", "-am", "side change")
+	side := r.Head()
+	git("switch", "-q", "main")
+	write(t, r.Root, "a.txt", "one\nMAIN\nthree\n")
+	git("commit", "-q", "-am", "main change")
+	git("switch", "-q", "side")
+	if err := r.Rebase("main"); err == nil {
+		t.Fatal("no conflict")
+	}
+	if r.InProgress() != OpRebase {
+		t.Fatalf("op %q", r.InProgress())
+	}
+	if err := r.Abort(OpRebase); err != nil {
+		t.Fatal(err)
+	}
+	if r.InProgress() != "" || r.Head() != side {
+		t.Fatal("not aborted")
+	}
+}
+
+func TestRevertReset(t *testing.T) {
+	r, git := repo(t)
+	first := r.Head()
+	write(t, r.Root, "a.txt", "one\n2\nthree\n")
+	git("commit", "-q", "-am", "second")
+	second := r.Head()
+	if err := r.Revert(second, false); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(r.Root, "a.txt")); string(b) != "one\ntwo\nthree\n" {
+		t.Errorf("reverted to %q", b)
+	}
+	if err := r.Reset(second, ResetHard); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Reset(first, ResetMixed); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := r.Status()
+	if r.Head() != first || len(st.Entries) != 1 || st.Entries[0].Y != 'M' || st.Entries[0].X != '.' {
+		t.Errorf("mixed: %v", st.Entries)
+	}
+	git("add", ".")
+	if err := r.Reset(second, ResetSoft); err != nil {
+		t.Fatal(err)
+	}
+	st, _ = r.Status()
+	if r.Head() != second || len(st.Entries) != 0 {
+		t.Errorf("soft: %v", st.Entries)
+	}
+}

@@ -3,6 +3,15 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- The commits' context menu does what Sourcetree's does: **Merge into**
+  the branch, **Rebase** it onto the commit, **Reset** it to the commit
+  (Soft, Mixed or Hard), **Revert Commit** and **Cherry-Pick Commit**.
+  When one stops for conflicts, source control says so with **Continue**
+  and **Abort** buttons, which the menu and the command palette offer too,
+  and the commit box takes the message Git proposes.
+
 ## 0.7.0
 
 - MyGo 0.4.8: shortcuts work on keyboard layouts that type no Latin

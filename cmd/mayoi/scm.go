@@ -278,6 +278,9 @@ func (a *app) scmView(c *ui.Context) {
 				}
 			})
 		}
+		if st := g.status; st != nil && st.Op != "" {
+			a.scmOpBanner(c, st.Op)
+		}
 		branch := a.branch()
 		enter := keyText("CmdOrCtrl+Enter")
 		hint := "Message (" + enter + " to commit)"
@@ -366,6 +369,40 @@ func (a *app) scmView(c *ui.Context) {
 	if r, ok := chosen(); ok && out.Shortcut(0, ui.KeySpace) {
 		a.toggleStaged(r)
 	}
+}
+
+// scmOpBanner says which command stopped for conflicts, and how many
+// are left, with the buttons that go on with it and undo it.
+func (a *app) scmOpBanner(c *ui.Context, op git.Op) {
+	p := a.pal
+	g := &a.git
+	conflicts := len(a.groupEntries()[groupMerge])
+	label := op.Title() + " in progress"
+	if conflicts > 0 {
+		label += " · " + plural(conflicts, "conflict")
+	}
+	tint := p.accent
+	if conflicts > 0 {
+		tint = p.danger
+	}
+	ui.Row(c).Gap(6).AlignItems(ui.Center).Padding(4, 4, 4, 8).Radius(5).Background(tint.Alpha(0.12)).Children(func() {
+		ui.Icon(c, iconBranch).FontSize(12).TextColor(tint)
+		ui.Text(c, label).FontSize(11.5).TextColor(p.text).Grow(1).SingleLine().Shrink(1)
+		button := func(key, text, tip string) bool {
+			b := ui.ButtonBase(c.Key(key)).Padding(1, 6).Radius(4).Label(tip).Disabled(g.busy != "")
+			if b.Hovered() {
+				b.Background(p.hover)
+			}
+			b.Children(func() { ui.Text(c, text).FontSize(11.5).FontWeight(500).TextColor(p.accent) })
+			return b.Clicked()
+		}
+		if button("op-abort", "Abort", "Abort "+op.Title()+"…") {
+			a.post(a.abortOp)
+		}
+		if button("op-continue", "Continue", "Continue "+op.Title()) {
+			a.post(a.continueOp)
+		}
+	})
 }
 
 // scmActivity is a thin bar under the view's title, which moves while a
@@ -958,22 +995,59 @@ func (a *app) refBadge(c *ui.Context, b refBadge, lane ui.Color) {
 	})
 }
 
-// scmCommitMenu is the menu of a commit of the history.
+// scmCommitMenu is the menu of a commit of the history, in the order of
+// Sourcetree's: checking it out and bringing it into the branch, refs at
+// it, moving the branch by it, going on with a command stopped for
+// conflicts, then copying.
 func (a *app) scmCommitMenu(m *ui.Menu, cm *git.Commit, head bool, action *func()) {
 	g := &a.git
 	busy := g.busy != ""
+	var op git.Op
+	if g.status != nil {
+		op = g.status.Op
+	}
+	// The commands that move HEAD by commits wait for one stopped.
+	moving := busy || op != ""
+	branch := a.branch()
+	in := a.inHead(cm.Hash)
 	if m.Item("Open Changes").Chosen() {
 		*action = func() { a.showCommit(*cm, true) }
 	}
 	m.Separator()
-	if m.Item("Check Out…").Disabled(busy || head).Chosen() {
+	if m.Item("Check Out…").Disabled(moving || head).Chosen() {
 		*action = func() { a.checkOutCommit(*cm) }
+	}
+	if m.Item("Merge into " + branch + "…").Disabled(moving || in).Chosen() {
+		*action = func() { a.mergeCommit(*cm) }
+	}
+	if m.Item("Rebase " + branch + " onto This Commit…").Disabled(moving || in).Chosen() {
+		*action = func() { a.rebaseOnto(*cm) }
+	}
+	m.Separator()
+	if m.Item("Create Tag Here…").Disabled(busy).Chosen() {
+		*action = func() { a.askRefAt(*cm, true) }
 	}
 	if m.Item("Create Branch Here…").Disabled(busy).Chosen() {
 		*action = func() { a.askRefAt(*cm, false) }
 	}
-	if m.Item("Create Tag Here…").Disabled(busy).Chosen() {
-		*action = func() { a.askRefAt(*cm, true) }
+	m.Separator()
+	if m.Item("Reset " + branch + " to This Commit…").Disabled(moving || head).Chosen() {
+		*action = func() { a.resetTo(*cm) }
+	}
+	if m.Item("Revert Commit…").Disabled(moving).Chosen() {
+		*action = func() { a.revertCommit(*cm) }
+	}
+	if m.Item("Cherry-Pick Commit").Disabled(moving || in).Chosen() {
+		*action = func() { a.cherryPick(*cm) }
+	}
+	if op != "" {
+		m.Separator()
+		if m.Item("Continue " + op.Title()).Disabled(busy).Chosen() {
+			*action = a.continueOp
+		}
+		if m.Item("Abort " + op.Title() + "…").Disabled(busy).Chosen() {
+			*action = a.abortOp
+		}
 	}
 	m.Separator()
 	if m.Item("Copy Commit Hash").Chosen() {
@@ -997,7 +1071,7 @@ func (a *app) scmCommitMenu(m *ui.Menu, cm *git.Commit, head bool, action *func(
 	}
 	if head {
 		m.Separator()
-		if m.Item("Undo Last Commit").Disabled(busy).Chosen() {
+		if m.Item("Undo Last Commit").Disabled(moving).Chosen() {
 			*action = a.undoCommit
 		}
 	}
@@ -1461,6 +1535,9 @@ func (a *app) commit(push bool) {
 		run(false)
 	case len(groups[groupMerge]) > 0:
 		a.fail("Resolve the merge conflicts and stage the files first.")
+	case g.status != nil && (g.status.Op == git.OpMerge || g.status.Op == git.OpRevert || g.status.Op == git.OpCherryPick) &&
+		len(groups[groupChanges])+len(groups[groupUntracked]) == 0:
+		run(false) // ends the merge, though its changes are all HEAD's
 	case len(groups[groupChanges])+len(groups[groupUntracked]) > 0:
 		a.confirm = &confirm{title: "Stage all changes and commit them?", ok: "Stage All & Commit",
 			message: "There are no staged changes to commit.", run: func() { run(true) }}

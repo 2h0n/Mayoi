@@ -89,6 +89,17 @@ type confirm struct {
 	runAlternate       func()
 	okShort            string
 	alternateShort     string
+	// choices are the ways to go on that the dialog offers, choice the
+	// one chosen, whose message it shows: a danger one makes the button
+	// red.
+	choices []confirmChoice
+	choice  int
+}
+
+// confirmChoice is a way to go on that a confirm offers.
+type confirmChoice struct {
+	label, message string
+	danger         bool
 }
 
 func (a *app) confirmView(c *ui.Context) {
@@ -118,6 +129,19 @@ func (a *app) confirmView(c *ui.Context) {
 					// Clipped, so that a path too long to break cannot widen the box.
 					ui.Text(c, cf.message).FontSize(12.5).TextColor(p.muted).ClipX()
 				}
+				if len(cf.choices) > 0 {
+					labels := make([]string, len(cf.choices))
+					for i, ch := range cf.choices {
+						labels[i] = ch.label
+					}
+					ui.Segmented(c.Key("confirm-choice"), &cf.choice, labels...)
+					ch := cf.choices[min(max(cf.choice, 0), len(cf.choices)-1)]
+					col := p.muted
+					if ch.danger {
+						col = p.danger
+					}
+					ui.Text(c, ch.message).FontSize(12.5).TextColor(col).ClipX()
+				}
 				buttons := ui.Row(c).Gap(8).Justify(ui.End)
 				buttons.Children(func() {
 					cancel := ui.Button(c, "Cancel")
@@ -141,7 +165,7 @@ func (a *app) confirmView(c *ui.Context) {
 					if compact {
 						ok.FontSize(12).Padding(6, 8)
 					}
-					if cf.danger {
+					if cf.danger || len(cf.choices) > 0 && cf.choices[min(max(cf.choice, 0), len(cf.choices)-1)].danger {
 						bg := p.dangerFill
 						switch {
 						case ok.Pressed():
