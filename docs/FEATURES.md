@@ -295,17 +295,21 @@ Each folder gets its own window.
 
 **View → Project Tabs** keeps every folder open in one window instead, so you don't switch windows to change projects.
 
-- A rail on the far left has a square for each project, with its folder's initials, the one shown marked with a bar,
-  and a dot on any with unsaved changes. Its tooltip is the folder's path. The rail shows once the window has two.
+- A rail on the far left has a square for each project, with its folder's initials, the one shown marked with a pill
+  along the rail's edge, and a dot on any with unsaved changes. Its tip gives the project's name, its folder and the
+  keys that show it. The rail shows once the window has two.
+- Drag a square along the rail to reorder the projects, and drop a folder from the Finder on the rail to add it.
 - Clicking a square shows that project, with its tabs, columns, terminals, Explorer and source control as it left
   them, each editor with its caret and scroll position. ⇧⌘] and ⇧⌘[ (**Go → Next Project** and **Previous
   Project**) step along the rail, and ⌃⌘1…9 (Ctrl+Alt+1…9 on Windows and Linux) show one by its place.
 - Opening a folder, with ⌘O, ⌥⌘O, Open Recent, the welcome page or `mayoi <dir>`, adds it to the rail, or shows
-  it if it is there already. The `+` at the rail's foot opens one too.
+  it if it is there already. The `+` after the squares opens one too.
+- A square's context menu reveals the folder in the Finder, copies its path, and closes the project or the others.
 - **File → Close Project**, the square's context menu, or ⌘W with no tab left closes a project, asking about its
   unsaved changes first. Closing the window closes them all, and they open again at the next start, in the rail's
   order.
-- Leaving a project saves its files that save themselves. Its terminals keep running out of sight.
+- Leaving a project saves its files that save themselves. Its terminals keep running out of sight, and one that rings
+  its bell or sends a notification (OSC 9 or 777) marks the project's square in the accent until it shows again.
 - Turning Project Tabs on gathers the open windows into the one in front, and turning it off parts the projects into a
   window each again.
 

@@ -101,6 +101,19 @@ func (a *app) startTerminal(dir string) *session {
 		OnExit: func(int) {
 			a.post(func() { a.removeTerminal(s) })
 		},
+		// A program done in a project out of sight, as a build or an
+		// agent, has the rail mark the project's square.
+		OnBell: func() {
+			a.post(func() { a.alert = "Bell from " + s.title })
+		},
+		OnNotify: func(title, body string) {
+			a.post(func() {
+				a.alert = strings.TrimSpace(title + " " + body)
+				if a.alert == "" {
+					a.alert = "Notification from " + s.title
+				}
+			})
+		},
 	})
 	if err != nil {
 		a.fail("Could not start a terminal: %v", err)

@@ -2,9 +2,11 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -253,23 +255,33 @@ func (h *desktop) showProject(i int) {
 
 // closeProject closes the project, once its changes are settled, or the
 // window when it is the window's only one.
-func (h *desktop) closeProject() {
+func (h *desktop) closeProject() { h.closeProjectThen(nil) }
+
+// closeProjectThen closes the project as closeProject does, then runs
+// done, unless its changes were kept open.
+func (h *desktop) closeProjectThen(done func()) {
 	m, f, a := h.m, h.f, h.a
 	if len(f.tabs) < 2 {
 		f.win.Close()
 		return
 	}
-	if !a.started {
+	drop := func() {
 		m.dropProject(h)
+		if done != nil {
+			done()
+		}
+	}
+	if !a.started {
+		drop()
 		return
 	}
 	h.do(func() {
 		if a.autoSaveAll(); !a.anyDirty() {
-			m.dropProject(h)
+			drop()
 			return
 		}
 		h.show()
-		a.closeKeeping(func() { m.dropProject(h) })
+		a.closeKeeping(drop)
 	})
 }
 
@@ -348,81 +360,270 @@ func (m *mayoi) projectTabsChanged() {
 }
 
 // railView is the rail of project tabs, left of the sidebar: a square of
-// each project's initials, the one shown marked, and a button that opens
-// another folder. A window of one project has none. a is the project it
-// is built in, which the frame goes on building as a click shows another.
+// each project's initials, the one shown marked, and after them a button
+// that opens another folder. A window of one project has none. a is the
+// project it is built in, which the frame goes on building as a click
+// shows another. A square is dragged along the rail to reorder it, and a
+// folder dropped on the rail opens as a project.
 func (f *frame) railView(c *ui.Context, a *app) {
 	if !f.m.s.ProjectTabs || len(f.tabs) < 2 {
 		return
 	}
 	p := a.pal
-	ui.Column(c.Key("rail")).Width(railW).Shrink(0).BorderWidth(0, 1, 0, 0).BorderColor(p.border).Children(func() {
+	rail := ui.Column(c.Key("rail")).Width(railW).Shrink(0).Background(railGround(p)).BorderWidth(0, 1, 0, 0).BorderColor(p.border)
+	// Past the last square: at the end.
+	f.railDrop(rail, a, nil)
+	_, atEnd := ui.DragOver[railDrag](rail)
+	folders := rail.FileDragOver()
+	rail.Children(func() {
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			ui.Column(c).FillWidth().Padding(8, 0).Gap(6).Children(func() {
+			ui.Column(c).FillWidth().Padding(8, 0, 10, 0).Gap(6).AlignItems(ui.Center).Children(func() {
 				for i, h := range slices.Clone(f.tabs) {
 					f.railTab(c, a, h, i)
 				}
+				if atEnd {
+					ui.Box(c).Size(24, 2).Radius(1).Background(p.accent)
+				}
+				ui.Box(c).Size(20, 1).Margin(4, 0, 2, 0).Background(p.border)
+				f.railAdd(c, a, folders)
 			})
-		})
-		ui.Row(c).FillWidth().Justify(ui.Center).Padding(6, 0, 8, 0).Children(func() {
-			if a.iconButton(c, iconPlus, a.withKey("Open Folder…", "file.openFolder"), false).Clicked() {
-				a.chooseFolder()
-			}
 		})
 	})
 }
 
-// railTab is a project's square on the rail, which shows it.
+// railGround is the rail's background: a shade off the sidebar's, as an
+// activity bar is.
+func railGround(p *palette) ui.Color {
+	if p.dark {
+		return mix(p.chrome, ui.RGBA(0, 0, 0, 1), 0.18)
+	}
+	return mix(p.chrome, p.border, 0.22)
+}
+
+// railDrag is a project's square dragged along the rail.
+type railDrag struct{ h *desktop }
+
+// railDrop moves the square dropped on e before the project before, at
+// the end for nil, and opens the folders dropped there from another app.
+func (f *frame) railDrop(e ui.Element, a *app, before *desktop) {
+	if it, ok := ui.Drop[railDrag](e); ok {
+		a.post(func() { f.move(it.h, before) })
+	}
+	if paths := e.DroppedFiles(); paths != nil {
+		var dirs []string
+		for _, path := range paths {
+			if info, err := os.Stat(path); err == nil && info.IsDir() {
+				dirs = append(dirs, path)
+			}
+		}
+		if len(dirs) > 0 {
+			a.post(func() { a.host.openFolders(dirs) })
+		}
+	}
+}
+
+// move puts h before the project before on the rail, at its end for nil.
+func (f *frame) move(h, before *desktop) {
+	if h == before || !slices.Contains(f.tabs, h) {
+		return
+	}
+	f.tabs = slices.DeleteFunc(f.tabs, func(d *desktop) bool { return d == h })
+	at := len(f.tabs)
+	if i := slices.Index(f.tabs, before); i >= 0 {
+		at = i
+	}
+	f.tabs = slices.Insert(f.tabs, at, h)
+	f.keepRail()
+	if f.win != nil {
+		f.win.Invalidate()
+	}
+}
+
+// railSquare is the side of a project's square, and railRadius its corners.
+const (
+	railSquare = 32
+	railRadius = 9
+)
+
+// railTab is a project's square on the rail, which shows it, with a pill
+// along the rail's edge that grows from under the pointer to the project
+// shown, a dot of unsaved changes, and one of a terminal's bell or
+// notification while the project was out of sight.
 func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 	p := a.pal
 	dir := h.a.folder()
-	name, tip := "Untitled", "No folder"
+	name, where := "Untitled", "No folder"
 	if dir != "" {
-		name, tip = filepath.Base(dir), shortenHome(dir)
+		name, where = filepath.Base(dir), shortenHome(dir)
 	}
+	var keys []string
 	if i < 9 {
 		mods := "Ctrl+Alt+"
 		if macKeys() {
 			mods = "Ctrl+CmdOrCtrl+"
 		}
-		tip += " (" + keyText(fmt.Sprintf("%s%d", mods, i+1)) + ")"
+		keys = accelCaps(platformAccel("", fmt.Sprintf("%s%d", mods, i+1)), macKeys())
 	}
 	on := h == f.active
 	dirty := h.a.anyDirty()
+	if on {
+		h.a.alert = ""
+	}
+	alert := h.a.alert
 	col := avatarColor(p, dir)
-	b := ui.ButtonBase(c.Key(fmt.Sprintf("project-%d", h.a.window.ID))).FillWidth().Height(34).Shrink(0).Label(name).Tooltip(tip)
-	hovered := b.Hovered()
+	b := ui.ButtonBase(c.Key(fmt.Sprintf("project-%d", h.a.window.ID))).Width(railW).Height(railSquare + 4).Shrink(0).
+		Label(name).Description(where).Drag(railDrag{h})
+	f.railTip(c, a, b, name, where, keys, dirty, alert)
+	f.railDrop(b, a, h)
+	_, over := ui.DragOver[railDrag](b)
+	hovered, pressed, dragged := b.Hovered(), b.Pressed(), b.Dragging()
+	pill, fill := float32(0), float32(0.14)
+	switch {
+	case on:
+		pill, fill = 20, 0.30
+	case hovered:
+		pill, fill = 8, 0.22
+	}
+	pill = b.Animate("pill", pill, 160*time.Millisecond)
+	fill = b.Animate("fill", fill, 120*time.Millisecond)
+	ring := b.Animate("ring", unit(on), 160*time.Millisecond)
+	sink := b.Animate("sink", unit(pressed && !dragged), 80*time.Millisecond)
+	ground := railGround(p)
 	b.Draw(func(pt *ui.Painter, r ui.Rect) {
-		sq := ui.Rect{X: r.X + (r.W-32)/2, Y: r.Y + (r.H-32)/2, W: 32, H: 32}
-		if on {
-			// A bar along the rail's edge, as the activity bar marks the
-			// view shown.
-			pt.Fill(ui.Rect{X: r.X, Y: sq.Y + 6, W: 3, H: sq.H - 12}, p.accent, 1.5)
+		if over {
+			// Where the square dragged goes: before this one.
+			pt.Fill(ui.Rect{X: r.X + (r.W-24)/2, Y: r.Y - 4, W: 24, H: 2}, p.accent, 1)
 		}
-		alpha := float32(0.16)
-		switch {
-		case on:
-			alpha = 0.32
-		case hovered:
-			alpha = 0.24
+		if pill > 0.5 {
+			// Along the rail's edge, as the activity bar marks the view
+			// shown.
+			pc := p.muted
+			if on {
+				pc = p.accent
+			}
+			pt.Fill(ui.Rect{X: r.X - 2, Y: r.Y + (r.H-pill)/2, W: 5, H: pill}, pc, 2.5)
 		}
-		pt.Fill(sq, col.Alpha(alpha), 8)
-		if on {
-			pt.Stroke(sq, col.Alpha(0.7), 8, 1)
+		s := float32(railSquare) - 2*sink
+		sq := ui.Rect{X: r.X + (r.W-s)/2, Y: r.Y + (r.H-s)/2, W: s, H: s}
+		alpha := float32(1)
+		if dragged {
+			alpha = 0.4
 		}
-		paintInitials(pt, sq, projectWords(name), 12, col)
+		pt.Fill(sq, col.Alpha(fill*alpha), railRadius)
+		if ring > 0.01 {
+			pt.Stroke(sq, col.Alpha(0.75*ring*alpha), railRadius, 1.25)
+		}
+		ink := col
+		if !on && !hovered {
+			ink = col.Mix(p.muted, 0.25)
+		}
+		paintInitials(pt, sq, projectWords(name), 12, ink.Alpha(alpha))
+		if alert != "" {
+			// Below the dot of unsaved changes, in the accent.
+			d := ui.Rect{X: sq.X + sq.W - 7, Y: sq.Y + sq.H - 7, W: 10, H: 10}
+			pt.Fill(ui.Rect{X: d.X - 2, Y: d.Y - 2, W: d.W + 4, H: d.H + 4}, ground, 7)
+			pt.Fill(d, p.accent, 5)
+		}
 		if dirty {
-			pt.Fill(ui.Rect{X: sq.X + sq.W - 7, Y: sq.Y - 1, W: 8, H: 8}, p.text, 4)
+			// Cut out of the square by a ring of the rail's ground.
+			d := ui.Rect{X: sq.X + sq.W - 7, Y: sq.Y - 3, W: 10, H: 10}
+			pt.Fill(ui.Rect{X: d.X - 2, Y: d.Y - 2, W: d.W + 4, H: d.H + 4}, ground, 7)
+			pt.Fill(d, p.text.Alpha(0.85), 5)
 		}
 	})
 	b.ContextMenu(func(mn *ui.Menu) {
+		if mn.Item(revealLabel()).Disabled(dir == "").Chosen() {
+			a.host.reveal(dir)
+		}
+		if mn.Item("Copy Path").Disabled(dir == "").Chosen() {
+			a.services.WriteClipboard(dir)
+		}
+		mn.Separator()
 		if mn.Item("Close Project").Chosen() {
 			h.closeProject()
+		}
+		if mn.Item("Close Other Projects").Chosen() {
+			a.post(func() { f.closeOthers(h) })
 		}
 	})
 	if b.Clicked() {
 		f.activate(h)
 	}
+}
+
+// railTip is the tip of a project's square, to its right, where the
+// window's buttons above it leave it room: the project's name, its folder,
+// the keys that show it and whether it has unsaved changes.
+func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string, keys []string, dirty bool, alert string) {
+	p := a.pal
+	ui.TooltipBase(c, b, func(tip ui.Element) {
+		tip.AttachTo(b, ui.AnchorRight, ui.AnchorLeft).Margin(0, 0, 0, 4)
+		a.floating(c, tip, false).Padding(8, 10).Radius(8).Gap(3).MaxWidth(360)
+		tip.Children(func() {
+			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(p.text).SingleLine().Grow(1).MinWidth(0)
+				if keys != nil {
+					a.caps(c, keys)
+				}
+			})
+			ui.Text(c, where).FontSize(11.5).TextColor(p.muted)
+			note := func(dot ui.Color, s string) {
+				ui.Row(c).Gap(6).AlignItems(ui.Center).Margin(2, 0, 0, 0).Children(func() {
+					ui.Box(c).Size(6, 6).Radius(3).Background(dot).Shrink(0)
+					ui.Text(c, s).FontSize(11.5).TextColor(p.muted)
+				})
+			}
+			if alert != "" {
+				note(p.accent, alert)
+			}
+			if dirty {
+				note(p.text.Alpha(0.85), "Unsaved changes")
+			}
+		})
+	})
+}
+
+// railAdd is the button after the squares that opens another folder: a
+// square drawn dashed, which fills under the pointer, or as folders are
+// dragged over the rail.
+func (f *frame) railAdd(c *ui.Context, a *app, folders bool) {
+	p := a.pal
+	b := ui.ButtonBase(c.Key("rail-add")).Size(railW, railSquare+4).Shrink(0).Label("Open Folder…").
+		Tooltip(a.withKey("Open Folder…", "file.openFolder"))
+	hot := b.Hovered() || folders
+	k := b.Animate("hot", unit(hot), 120*time.Millisecond)
+	b.Draw(func(pt *ui.Painter, r ui.Rect) {
+		sq := ui.Rect{X: r.X + (r.W-railSquare)/2, Y: r.Y + (r.H-railSquare)/2, W: railSquare, H: railSquare}
+		if k > 0.01 {
+			pt.Fill(sq, p.accent.Alpha(0.14*k), railRadius)
+		}
+		pt.StrokeDashed(sq, p.faint.Mix(p.accent, k), railRadius, 1)
+	})
+	b.Children(func() {
+		ui.Box(c).Absolute().Fill().Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconPlus).FontSize(16).TextColor(p.muted.Mix(p.accent, k))
+		})
+	})
+	if b.Clicked() {
+		a.chooseFolder()
+	}
+}
+
+// closeOthers closes the projects of the window but h, one after the
+// other, each once its changes are settled, and shows h. Canceling one's
+// changes stops there.
+func (f *frame) closeOthers(h *desktop) {
+	others := slices.DeleteFunc(slices.Clone(f.tabs), func(o *desktop) bool { return o == h })
+	var next func()
+	next = func() {
+		others = slices.DeleteFunc(others, func(o *desktop) bool { return !slices.Contains(f.tabs, o) })
+		if len(others) == 0 {
+			f.activate(h)
+			return
+		}
+		others[0].closeProjectThen(next)
+	}
+	next()
 }
 
 // projectWords spells a folder's name as words, for its initials: "my-app"
@@ -441,4 +642,12 @@ func projectWords(name string) string {
 		prev = r
 	}
 	return b.String()
+}
+
+// unit is 1 for true and 0 for false, as an animation's target.
+func unit(b bool) float32 {
+	if b {
+		return 1
+	}
+	return 0
 }

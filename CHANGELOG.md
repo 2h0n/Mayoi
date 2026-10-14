@@ -3,6 +3,23 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- The rail of project tabs is redrawn: a pill along its edge grows from
+  the project under the pointer to the one shown, the squares ease
+  between their states, and a dot cut out of a square's corner marks
+  unsaved changes. A square's tip, to its right, gives the project's
+  name, its folder and its keys. Drag a square along the rail to reorder
+  it, or drop a folder from the Finder on the rail to open it. The button
+  after the squares opens another folder, and a square's menu adds
+  **Reveal in Finder**, **Copy Path** and **Close Other Projects**.
+- With project tabs, a terminal that rings its bell or sends a
+  notification in a project out of sight, as a build or an agent does
+  as it finishes, marks the project's square in the accent until the
+  project shows, and its tip says why.
+- The explorer of an empty folder says so, with **New File…** and **New
+  Folder…** buttons.
+
 ## 0.8.0
 
 - The title bar and status bar now adapt to narrow windows: the status

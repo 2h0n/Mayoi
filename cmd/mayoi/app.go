@@ -192,6 +192,10 @@ type app struct {
 	// rail builds the rail of project tabs left of the sidebar, nil for
 	// none.
 	rail func(c *ui.Context)
+	// alert is what a terminal of the project last asked attention for,
+	// by its bell or a notification, until the project shows: the rail
+	// marks its square.
+	alert string
 }
 
 type pane int

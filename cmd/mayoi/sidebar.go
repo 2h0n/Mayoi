@@ -93,7 +93,31 @@ func (a *app) sidebar(c *ui.Context) {
 				a.files.Open.Clear()
 			}
 		})
+		if t := a.tree; t.Loaded(a.root) && len(t.Children(a.root)) == 0 {
+			a.emptyFolder(c)
+		}
 		a.fileTree(c)
+	})
+}
+
+// emptyFolder is what the explorer shows of a folder with no files yet,
+// with buttons that make the first, as noFolder is for no folder.
+func (a *app) emptyFolder(c *ui.Context) {
+	p := a.pal
+	ui.Column(c.Key("empty-folder")).Padding(28, 20, 8, 20).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
+		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, iconFolderOpen).FontSize(20).TextColor(p.muted)
+		})
+		ui.Text(c, "This Folder Is Empty").FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, "Add a file or a folder to start.").
+			FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
+		ui.Box(c).Height(4)
+		if ui.PrimaryButton(c, "New File…").FillWidth().Clicked() {
+			a.askNewEntry(a.root, false)
+		}
+		if ui.Button(c, "New Folder…").FillWidth().Clicked() {
+			a.askNewEntry(a.root, true)
+		}
 	})
 }
 

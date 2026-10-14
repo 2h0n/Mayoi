@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -15,7 +16,7 @@ import (
 
 // railFixture is a window of project tabs with a project for each folder,
 // the first shown, built by a tester as the window builds it.
-func railFixture(t *testing.T, dirs ...string) (*frame, []*desktop, *ui.Tester) {
+func railFixture(t testing.TB, dirs ...string) (*frame, []*desktop, *ui.Tester) {
 	t.Helper()
 	s := settings.Default()
 	s.ProjectTabs = true
@@ -169,5 +170,169 @@ func TestProjectWords(t *testing.T) {
 		if got := initials(projectWords(name)); got != want {
 			t.Errorf("%q: %q, want %q", name, got, want)
 		}
+	}
+}
+
+// The rail of a window of project tabs, in both themes, at twice the
+// scale: the project shown with unsaved changes, and another under the
+// pointer.
+func TestShotRail(t *testing.T) {
+	if os.Getenv("SHOTS") == "" {
+		t.Skip()
+	}
+	for _, dark := range []bool{true, false} {
+		var dirs []string
+		for _, name := range []string{"mayoi", "my-app", "webServer", "docs", "go"} {
+			dir := filepath.Join(t.TempDir(), name)
+			os.MkdirAll(dir, 0o755)
+			os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644)
+			dirs = append(dirs, dir)
+		}
+		_, hs, tt := railFixture(t, dirs...)
+		tt.SetDark(dark)
+		tt.SetScale(2)
+		a := hs[0].a
+		a.openFile(filepath.Join(dirs[0], "main.go"), true)
+		for range 10 {
+			tt.Frame()
+		}
+		a.focusColumn()
+		tt.Frame()
+		tt.Type("// ")
+		hs[3].a.alert = "Bell from zsh"
+		r, _ := tt.Find("webServer")
+		tt.Move(r.X+r.W/2, r.Y+r.H/2)
+		for range 30 {
+			tt.Frame()
+			time.Sleep(10 * time.Millisecond)
+		}
+		name := "rail-light"
+		if dark {
+			name = "rail-dark"
+		}
+		(&harness{t: t, a: a, tt: tt}).shot(name)
+	}
+}
+
+// A square dragged along the rail goes before the one it is dropped on,
+// or at the end, and the rail's order is kept.
+func TestRailReorders(t *testing.T) {
+	a, b, c := workspaceFixture(t), workspaceFixture(t), workspaceFixture(t)
+	f, hs, _ := railFixture(t, a, b, c)
+	ids := func() []int {
+		var out []int
+		for _, h := range f.tabs {
+			out = append(out, h.a.window.ID)
+		}
+		return out
+	}
+	id := func(i int) int { return hs[i].a.window.ID }
+	f.move(hs[2], hs[0])
+	if got := ids(); !slices.Equal(got, []int{id(2), id(0), id(1)}) {
+		t.Fatalf("after moving the last first: %v", got)
+	}
+	f.move(hs[2], nil)
+	if got := ids(); !slices.Equal(got, []int{id(0), id(1), id(2)}) {
+		t.Fatalf("after moving it to the end: %v", got)
+	}
+	if !slices.Equal(f.m.s.Rail, ids()) {
+		t.Errorf("rail kept as %v, shown as %v", f.m.s.Rail, ids())
+	}
+}
+
+// The square's menu reveals the folder, copies its path and closes the
+// project or the others.
+func TestRailMenu(t *testing.T) {
+	root, other := workspaceFixture(t), workspaceFixture(t)
+	_, _, tt := railFixture(t, root, other)
+	if err := tt.RightClick(filepath.Base(other)); err != nil {
+		t.Fatal(err)
+	}
+	menu := tt.Menu()
+	for _, want := range []string{revealLabel(), "Copy Path", "Close Project", "Close Other Projects"} {
+		if !slices.Contains(menu, want) {
+			t.Errorf("no %q in the square's menu: %v", want, menu)
+		}
+	}
+	if err := tt.ChooseMenuItem("Copy Path"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got := tt.Clipboard(); got != other {
+		t.Errorf("copied %q, want %q", got, other)
+	}
+}
+
+// BenchmarkRailFrame is a frame of a window of twelve projects, drawn
+// with nothing changing, as the rail is built every frame.
+func BenchmarkRailFrame(b *testing.B) {
+	var dirs []string
+	for range 12 {
+		dirs = append(dirs, workspaceFixture(b))
+	}
+	_, _, tt := railFixture(b, dirs...)
+	for range 30 {
+		tt.Frame()
+	}
+	b.ResetTimer()
+	for range b.N {
+		tt.Frame()
+	}
+}
+
+// BenchmarkProjectSwitch is the frame that shows another project, each
+// with a long Go file open, as a click on the rail does.
+func BenchmarkProjectSwitch(b *testing.B) {
+	src, _ := os.ReadFile("editor.go")
+	var dirs []string
+	for range 2 {
+		dir := workspaceFixture(b)
+		os.WriteFile(filepath.Join(dir, "editor.go"), src, 0o644)
+		dirs = append(dirs, dir)
+	}
+	f, hs, tt := railFixture(b, dirs...)
+	for i, h := range hs {
+		f.active = h
+		h.a.openFile(filepath.Join(dirs[i], "editor.go"), true)
+		for range 30 {
+			tt.Frame()
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	b.ResetTimer()
+	for i := range b.N {
+		f.active = hs[i%2]
+		tt.Frame()
+	}
+}
+
+// A terminal's bell in a project out of sight marks its square, in its
+// tip too, until the project shows.
+func TestRailMarksAttention(t *testing.T) {
+	root, other := workspaceFixture(t), workspaceFixture(t)
+	f, hs, tt := railFixture(t, root, other)
+	// Shown once, as a project with a terminal was.
+	f.active = hs[1]
+	tt.Frame()
+	f.active = hs[0]
+	tt.Frame()
+	hs[1].a.post(func() { hs[1].a.alert = "Bell from zsh" })
+	tt.Frame()
+	if hs[1].a.alert == "" {
+		t.Fatal("the mark of a project out of sight went")
+	}
+	r, _ := tt.Find(filepath.Base(other))
+	tt.Move(r.X+r.W/2, r.Y+r.H/2)
+	for range 5 {
+		tt.Frame()
+		time.Sleep(150 * time.Millisecond)
+	}
+	if !tt.HasText("Bell from zsh") {
+		t.Errorf("the tip does not say why: %v", tt.Texts())
+	}
+	f.active = hs[1]
+	tt.Frame()
+	if hs[1].a.alert != "" {
+		t.Error("the mark stays as the project shows")
 	}
 }
