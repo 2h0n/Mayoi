@@ -11,6 +11,11 @@ needs a `## <version>` section here, or its build fails.
   or windows, no longer carries one project's layout to the others. A
   project opened anew starts with the layout of the one in front, and a
   folder opened again gets back the layout it had.
+- ⌘V pastes a screenshot into Claude Code in the terminal, as in VS Code:
+  with only an image on the clipboard, the terminal sends an empty
+  bracketed paste, which Claude Code takes as its cue to read the image
+  itself. Mayoi builds on a fork of MyGo with this fix until it is
+  released upstream.
 
 ## 0.8.1
 
