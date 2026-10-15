@@ -31,6 +31,8 @@ needs a `## <version>` section here, or its build fails.
   on the clipboard, as copies uploaded to the host, and types their paths
   there, so Claude Code on the host takes a pasted screenshot. A remote
   file dragged to a terminal types its path on the host, not Mayoi's.
+- A folder opened again just after `git init` shows its Source Control:
+  the look for its repository made before no longer has the last word.
 - With Git 2.55 or later, the diff of a submodule shows the commits it
   went from and to again, not the log of the submodule's commit.
 - Remote SSH: a connection that drops, as the network goes or the laptop

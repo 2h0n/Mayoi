@@ -23,6 +23,7 @@ type gitState struct {
 	repo *git.Repo // nil outside a work tree
 	// looked is set once the folder was looked up, looking while it is.
 	looked, looking bool
+	lookup          *int // the lookup running, which a reset drops
 
 	status   *git.Status
 	branches []string // the local branches, read with the status
@@ -99,10 +100,14 @@ func (a *app) lookUpRepo() {
 	}
 	g.looking = true
 	root := a.root
+	// The lookup, which a folder opened anew, the same one or not, drops:
+	// it found what was there before.
+	tok := new(int)
+	g.lookup = tok
 	go func() {
 		r, err := git.Open(root)
 		a.post(func() {
-			if a.root != root {
+			if a.root != root || g.lookup != tok {
 				return
 			}
 			g.looking, g.looked = false, true
