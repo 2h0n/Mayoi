@@ -117,6 +117,9 @@ type textEdit struct {
 // edit makes edits of the app's as one step of undo, then selects sel.
 // The edits must not overlap; they are made from the last.
 func (d *editor) edit(sel [2]int, edits ...textEdit) {
+	if d.locked() {
+		return
+	}
 	d.observe()
 	h := &d.hist
 	h.grouped(histStep{h.snap, d.sel})
@@ -229,6 +232,9 @@ func changedRunes(old, now ui.TextSnapshot, hint int) (start, end int, ok bool) 
 
 // undo takes back the last step, reporting whether there was one.
 func (d *editor) undo() bool {
+	if d.locked() {
+		return false
+	}
 	d.observe()
 	h := &d.hist
 	if len(h.undo) == 0 {
@@ -246,6 +252,9 @@ func (d *editor) undo() bool {
 
 // redo makes the step undone last again.
 func (d *editor) redo() bool {
+	if d.locked() {
+		return false
+	}
 	d.observe()
 	h := &d.hist
 	if len(h.redo) == 0 {

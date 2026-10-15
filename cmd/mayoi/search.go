@@ -19,6 +19,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/remote"
+	"mayoi/internal/vfs"
 	"mayoi/internal/workspace"
 )
 
@@ -218,6 +220,15 @@ func (a *app) relOf(path string) (string, bool) {
 // file it looked in, matches or not, which replace those of the results.
 func (a *app) runSearch(gen int, re *regexp.Regexp, fold foldQuery, rels []string, texts map[string]string, cancel *atomic.Bool, partial bool) {
 	root := a.root
+	if remote.Is(root) {
+		var pre *grepQuery
+		if !partial {
+			s := &a.inFiles
+			pre = &grepQuery{s.query, s.matchCase, s.regex}
+		}
+		go a.searchRemote(gen, root, re, fold, rels, texts, cancel, partial, pre)
+		return
+	}
 	go func() {
 		var (
 			mu    sync.Mutex
@@ -284,7 +295,7 @@ func searchFileText(root, rel string, texts map[string]string, re *regexp.Regexp
 	path := filepath.Join(root, filepath.FromSlash(rel))
 	f := &searchFile{path: path, rel: rel}
 	text, ok := texts[rel]
-	if !ok {
+	if !ok && !remote.Is(path) {
 		text, ok = readSearchText(path)
 	}
 	if ok {
@@ -636,11 +647,7 @@ func replaceText(text string, rs []replacement) string {
 // keeping its line endings and its mode, and returns how many it made.
 // It may run on any goroutine.
 func replaceInFile(path string, re *regexp.Regexp, tmpl string, only *searchMatch) (int, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	data, err := os.ReadFile(path)
+	data, err := vfs.ReadFile(path)
 	if err != nil || isBinary(data) {
 		return 0, err
 	}
@@ -657,7 +664,8 @@ func replaceInFile(path string, re *regexp.Regexp, tmpl string, only *searchMatc
 	if crlf {
 		text = strings.ReplaceAll(text, "\n", "\r\n")
 	}
-	return len(rs), os.WriteFile(path, []byte(text), info.Mode().Perm())
+	_, err = vfs.WriteFile(path, []byte(text), 0o644)
+	return len(rs), err
 }
 
 // replaceInDoc makes the replacements of re in an open document, as one

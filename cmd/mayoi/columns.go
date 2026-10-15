@@ -12,6 +12,7 @@ import (
 
 	"mayoi/internal/git"
 	"mayoi/internal/highlight"
+	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 )
 
@@ -207,6 +208,15 @@ func (a *app) openFileIn(col *column, at int, path string, focus bool) {
 			a.activate(col, at, focus)
 			return
 		}
+	} else if remote.Is(path) {
+		// Read in the background, the tab showing that it is.
+		a.nextID++
+		doc = newDocument(a.nextID, path, "", highlight.New(highlight.Lexer(path), a.invalidate))
+		a.docs = append(a.docs, doc)
+		a.loadRemote(doc)
+		if a.tree != nil {
+			a.tree.Watch(path)
+		}
 	} else {
 		a.nextID++
 		d, err := readDocument(a.nextID, path, a.invalidate)
@@ -310,7 +320,8 @@ func (a *app) openImage(col *column, at int, path string, focus bool) {
 		a.activate(col, at, focus)
 		return
 	}
-	if _, err := os.Stat(path); err != nil {
+	// A remote image says itself why it could not be read.
+	if _, err := os.Stat(path); err != nil && !remote.Is(path) {
 		a.fail("Could not open %s: %v", filepath.Base(path), err)
 		return
 	}
@@ -521,6 +532,9 @@ func (a *app) dropTab(t *colTab) {
 		if len(doc.views) == 0 {
 			doc.hl.Close()
 			a.docs = slices.DeleteFunc(a.docs, func(d *document) bool { return d == doc })
+			if a.tree != nil && doc.path != "" {
+				a.tree.Unwatch(doc.path)
+			}
 		}
 	}
 	if len(col.tabs) == 0 {
@@ -736,7 +750,11 @@ func (a *app) restoreExpanded(rels []string) {
 	}
 	for _, rel := range rels {
 		dir := filepath.Join(a.root, filepath.FromSlash(rel))
-		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+		// A remote folder is looked at as it is read.
+		if remote.Is(dir) {
+			a.files.Open.Add(dir)
+			a.tree.Load(dir)
+		} else if info, err := os.Stat(dir); err == nil && info.IsDir() {
 			a.files.Open.Add(dir)
 			a.tree.Load(dir)
 		}
@@ -754,18 +772,30 @@ func (a *app) restoreTab(t *colTab, ts settings.Tab) {
 		}
 	}
 	if ed := t.ed; ed != nil {
-		// The file may be shorter than it was.
-		n := ed.buf.Len()
-		ed.sel = [2]int{min(max(ts.Sel[0], 0), n), min(max(ts.Sel[1], 0), n)}
-		ed.caret = ed.sel[1]
-		ed.vscroll.Y, ed.hscroll.X = ts.ScrollY, ts.ScrollX
-		if ed.hidden {
-			ed.hiddenY = ts.ScrollY
+		if ed.loading || ed.loadErr != nil {
+			// Once it is read.
+			ed.restored = true
+			ed.restoreTab = &ts
+			return
 		}
-		if ts.Wrap != nil {
-			w := *ts.Wrap
-			ed.wrap, ed.wrapGen = &w, a.settings.WrapGen
-		}
+		a.restoreEditor(ed, ts)
+	}
+}
+
+// restoreEditor puts back where an editor of a tab restored was scrolled,
+// its caret and its own choice to wrap.
+func (a *app) restoreEditor(ed *editor, ts settings.Tab) {
+	// The file may be shorter than it was.
+	n := ed.buf.Len()
+	ed.sel = [2]int{min(max(ts.Sel[0], 0), n), min(max(ts.Sel[1], 0), n)}
+	ed.caret = ed.sel[1]
+	ed.vscroll.Y, ed.hscroll.X = ts.ScrollY, ts.ScrollX
+	if ed.hidden {
+		ed.hiddenY = ts.ScrollY
+	}
+	if ts.Wrap != nil {
+		w := *ts.Wrap
+		ed.wrap, ed.wrapGen = &w, a.settings.WrapGen
 	}
 }
 
@@ -814,7 +844,8 @@ func (a *app) restoreTabs() {
 					a.activate(col, len(col.tabs)-1, false)
 				}
 			case ts.File != "":
-				if _, err := os.Stat(ts.File); err == nil {
+				// A remote file that is gone closes its tab once read.
+				if _, err := os.Stat(ts.File); err == nil || remote.Is(ts.File) {
 					a.opening = ts.Transient
 					a.openFile(ts.File, false)
 					a.opening = false

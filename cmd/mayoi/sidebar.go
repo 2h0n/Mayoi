@@ -1,12 +1,17 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
+
+	"mayoi/internal/remote"
+	"mayoi/internal/vfs"
 )
 
 // sidebar is the explorer, the workspace's files in a tree, or the
@@ -264,7 +269,7 @@ func (a *app) fileTree(c *ui.Context) {
 				action = func() { a.askNewEntry(dir, true) }
 			}
 			m.Separator()
-			if m.Item(revealLabel()).Chosen() {
+			if a.conn == nil && m.Item(revealLabel()).Chosen() {
 				action = func() { a.host.reveal(path) }
 			}
 			if !isDir && m.Item("Open in Terminal").Chosen() {
@@ -280,15 +285,18 @@ func (a *app) fileTree(c *ui.Context) {
 				}
 				m.Separator()
 			}
-			if m.Item("Copy").Chosen() {
-				action = func() { a.copyFiles(path) }
+			// The Finder's clipboard has files of this machine.
+			if a.conn == nil {
+				if m.Item("Copy").Chosen() {
+					action = func() { a.copyFiles(path) }
+				}
+				if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
+					action = func() { a.pasteFiles(dir) }
+				}
+				m.Separator()
 			}
-			if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
-				action = func() { a.pasteFiles(dir) }
-			}
-			m.Separator()
 			if m.Item("Copy Path").Chosen() {
-				action = func() { a.services.WriteClipboard(path) }
+				action = func() { a.services.WriteClipboard(hostPath(path)) }
 			}
 			if m.Item("Copy Relative Path").Chosen() {
 				action = func() { a.services.WriteClipboard(t.Rel(path)) }
@@ -297,7 +305,7 @@ func (a *app) fileTree(c *ui.Context) {
 			if m.Item("Rename…").Chosen() {
 				action = func() { a.askRename(path) }
 			}
-			if m.Item(trashLabel()).Chosen() {
+			if m.Item(a.trashLabel()).Chosen() {
 				action = func() { a.trash(path) }
 			}
 		})
@@ -371,15 +379,17 @@ func (a *app) fileTree(c *ui.Context) {
 			action = func() { a.askNewEntry(a.root, true) }
 		}
 		m.Separator()
-		if m.Item(revealLabel()).Chosen() {
+		if a.conn == nil && m.Item(revealLabel()).Chosen() {
 			action = func() { a.host.reveal(a.root) }
 		}
 		if m.Item("Open in Terminal").Chosen() {
 			action = func() { a.newTerminalIn(a.root) }
 		}
-		m.Separator()
-		if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
-			action = func() { a.pasteFiles(a.root) }
+		if a.conn == nil {
+			m.Separator()
+			if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
+				action = func() { a.pasteFiles(a.root) }
+			}
 		}
 	})
 	if a.files.List.Shortcut(c, 0, ui.KeyEscape) {
@@ -454,6 +464,10 @@ func (a *app) askNewEntry(dir string, folder bool) {
 			return "Enter a name."
 		}
 		path := filepath.Join(dir, filepath.FromSlash(name))
+		if remote.Is(path) {
+			a.newRemoteEntry(dir, path, folder)
+			return ""
+		}
 		if _, err := os.Lstat(path); err == nil {
 			return "A file or folder with that name exists."
 		}
@@ -489,27 +503,106 @@ func (a *app) askRename(path string) {
 		if to == path {
 			return ""
 		}
+		if remote.Is(path) {
+			go func() {
+				err := vfs.Rename(path, to)
+				a.post(func() {
+					if err != nil {
+						a.fail("Could not rename %s: %v", filepath.Base(path), err)
+						return
+					}
+					a.renamed(path, to)
+				})
+			}()
+			return ""
+		}
 		if _, err := os.Lstat(to); err == nil {
 			return "A file or folder with that name exists."
 		}
 		if err := os.Rename(path, to); err != nil {
 			return err.Error()
 		}
-		// Open documents follow the files renamed.
-		for _, d := range a.docs {
-			if d.path == path || strings.HasPrefix(d.path, path+string(filepath.Separator)) {
-				d.path = to + d.path[len(path):]
-				d.diskGone = false
-			}
-		}
-		a.tree.Refresh()
-		a.indexStale = true
-		a.rememberTabs()
+		a.renamed(path, to)
 		return ""
 	}}
 }
 
+// renamed has the open documents follow the files renamed.
+func (a *app) renamed(path, to string) {
+	for _, d := range a.docs {
+		if d.path == path || strings.HasPrefix(d.path, path+string(filepath.Separator)) {
+			if a.tree != nil {
+				a.tree.Unwatch(d.path)
+			}
+			d.path = to + d.path[len(path):]
+			d.diskGone = false
+			if a.tree != nil {
+				a.tree.Watch(d.path)
+			}
+		}
+	}
+	a.tree.Refresh()
+	a.indexStale, a.indexed = true, time.Time{}
+	a.rememberTabs()
+}
+
+// newRemoteEntry makes a file or a folder on a remote folder's host, in
+// the background, and opens the file.
+func (a *app) newRemoteEntry(dir, path string, folder bool) {
+	go func() {
+		var err error
+		if folder {
+			if _, serr := vfs.Lstat(path); serr == nil {
+				err = errors.New("a file or folder with that name exists")
+			} else {
+				err = vfs.MkdirAll(path)
+			}
+		} else {
+			err = vfs.Create(path)
+		}
+		a.post(func() {
+			if err != nil {
+				a.fail("Could not make %s: %v", filepath.Base(path), err)
+				return
+			}
+			a.files.Open.Add(dir)
+			a.tree.Refresh()
+			a.indexStale, a.indexed = true, time.Time{}
+			if !folder {
+				a.openFile(path, true)
+			}
+		})
+	}()
+}
+
+// trashLabel is what moving a file to the trash is called, or deleting a
+// remote one, which has no trash.
+func (a *app) trashLabel() string {
+	if a.conn != nil {
+		return "Delete Permanently…"
+	}
+	return trashLabel()
+}
+
 func (a *app) trash(path string) {
+	if remote.Is(path) {
+		a.confirm = &confirm{title: "Delete " + filepath.Base(path) + "?",
+			message: "It is deleted from " + remote.HostOf(path) + " for good: a remote folder has no trash.",
+			ok:      "Delete", danger: true, run: func() {
+				go func() {
+					err := vfs.RemoveAll(path)
+					a.post(func() {
+						if err != nil {
+							a.fail("Could not delete %s: %v", filepath.Base(path), err)
+							return
+						}
+						a.tree.Refresh()
+						a.indexStale, a.indexed = true, time.Time{}
+					})
+				}()
+			}}
+		return
+	}
 	if err := a.host.trash(path); err != nil {
 		a.fail("Could not move %s to %s: %v", filepath.Base(path), trashName(), err)
 		return

@@ -16,6 +16,7 @@ import (
 
 	"mayoi/internal/git"
 	"mayoi/internal/highlight"
+	"mayoi/internal/remote"
 )
 
 const (
@@ -130,6 +131,7 @@ func (a *app) view(c *ui.Context) {
 	a.quickOpenView(c)
 	a.branchPickerView(c)
 	a.recentPickerView(c)
+	a.remotePickerView(c)
 	a.promptView(c)
 	a.confirmView(c)
 	if !a.dialogBuilt {
@@ -156,6 +158,7 @@ func (a *app) view(c *ui.Context) {
 func (a *app) main(c *ui.Context) {
 	p, w := a.pal, a.window
 	panel := a.window.PanelOpen
+	a.remoteBanner(c)
 	editor := ui.Column(c.Key("editor")).Grow(1).MinHeight(0).Background(p.editor).Clip()
 	if panel && a.panelMax {
 		// Out of sight, but built, so that the editors keep their state.
@@ -423,6 +426,9 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					a.viewerView(c, shown.view, shown.name())
 				case shown.diff != nil:
 					a.diffViewUI(c, shown.diff)
+				case shown.ed.loading || shown.ed.loadErr != nil:
+					a.hideEditor(shown.ed)
+					a.loadingView(c, shown.ed)
 				case shown.ed.preview != nil:
 					a.hideEditor(shown.ed)
 					a.viewerView(c, shown.ed.preview, shown.name())
@@ -806,6 +812,7 @@ func (a *app) statusBar(c *ui.Context) {
 		if m := a.themeMascot(); m != nil {
 			a.statusMascot(c, m)
 		}
+		a.remoteStatus(c, text)
 		if b := a.branch(); b != "" {
 			bb := ui.ButtonBase(c.Key("status:branch")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
 				AlignItems(ui.Center).Label("Branch " + b).Tooltip("Branch " + b + ": switch, fetch, pull or push")
@@ -833,7 +840,11 @@ func (a *app) statusBar(c *ui.Context) {
 			item("chord", "("+strings.Join(chordCaps(a.chord), " ")+") was pressed. Waiting for the next key…", "", iconKeyboard, nil)
 		}
 		if a.root != "" && visible.folder {
-			item("folder", filepath.Base(a.root), revealFolderLabel(shortenHome(a.root)), iconFolder, func() { a.host.reveal(a.root) })
+			if a.conn != nil {
+				item("folder", filepath.Base(hostPath(a.root)), "", iconFolder, nil)
+			} else {
+				item("folder", filepath.Base(a.root), revealFolderLabel(shortenHome(a.root)), iconFolder, func() { a.host.reveal(a.root) })
+			}
 		}
 		ui.Spacer(c)
 		if v := a.activeViewer(); v != nil {
@@ -1003,6 +1014,9 @@ func (a *app) welcome(c *ui.Context) {
 				a.welcomeSection(c, "Start", func() {
 					if a.root == "" {
 						a.welcomeAction(c, iconFolderOpen, "Open Folder…", a.keyHint("file.openFolder"), a.chooseFolder)
+						if remoteSupported {
+							a.welcomeAction(c, iconServer, "Connect to Host…", a.keyHint("remote.connect"), a.openRemotePicker)
+						}
 					} else {
 						a.welcomeAction(c, iconSearch, "Quick Open…", a.keyHint("go.quickOpen"), func() { a.openQuick("") })
 						a.welcomeAction(c, iconSearch, "Find in Files", a.keyHint("edit.findInFiles"), func() { a.showSearch(false) })
@@ -1025,7 +1039,11 @@ func (a *app) welcome(c *ui.Context) {
 								r.Background(p.hover)
 							}
 							r.Children(func() {
-								ui.Icon(c, iconFolder).FontSize(15).TextColor(p.accent)
+								icon := iconFolder
+								if remote.Is(dir) {
+									icon = iconServer
+								}
+								ui.Icon(c, icon).FontSize(15).TextColor(p.accent)
 								ui.Text(c, filepath.Base(dir)).FontSize(13).TextColor(p.text).SingleLine().Shrink(0)
 								ui.Text(c, shortenHome(filepath.Dir(dir))).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
 							})
@@ -1140,6 +1158,9 @@ func (a *app) togglePanel() {
 }
 
 func shortenHome(p string) string {
+	if remote.Is(p) {
+		return remote.Display(p)
+	}
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home) {
 		return "~" + p[len(home):]
 	}

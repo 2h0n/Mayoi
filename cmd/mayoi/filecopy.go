@@ -36,6 +36,10 @@ func (a *app) explorerInput(ev ui.InputEvent) bool {
 }
 
 func (a *app) copyFiles(paths ...string) {
+	// The Finder's clipboard has the files of this machine only.
+	if a.conn != nil {
+		return
+	}
 	if err := a.host.copyFiles(paths); err != nil {
 		a.fail("Could not copy: %v", err)
 	}
@@ -44,6 +48,9 @@ func (a *app) copyFiles(paths ...string) {
 // pasteFiles copies the files of the clipboard into dir, and chooses the
 // first of them in the tree.
 func (a *app) pasteFiles(dir string) {
+	if a.conn != nil {
+		return
+	}
 	var first string
 	for _, p := range a.host.clipboardFiles() {
 		to, err := copyInto(p, dir)

@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/git"
+	"mayoi/internal/remote"
 )
 
 // gitState is what the window knows of the Git work tree its folder is
@@ -42,8 +43,10 @@ type gitState struct {
 	read           time.Time
 
 	// meta is when the files Git changes as HEAD moves last changed, and
-	// checked when the app last looked.
+	// checked when the app last looked; metaRunning is set while a remote
+	// work tree is looked at.
 	meta, checked time.Time
+	metaRunning   bool
 	// refsMeta is when the refs last changed, and refsGen counts the
 	// changes, for the history to be read again.
 	refsMeta time.Time
@@ -91,7 +94,7 @@ const statusEvery = 5 * time.Second
 // lookUpRepo finds the work tree of the folder in the background.
 func (a *app) lookUpRepo() {
 	g := &a.git
-	if a.root == "" || g.looked || g.looking {
+	if a.root == "" || g.looked || g.looking || !a.online() {
 		return
 	}
 	g.looking = true
@@ -115,24 +118,28 @@ func (a *app) lookUpRepo() {
 func (a *app) refreshGit() {
 	a.lookUpRepo()
 	g := &a.git
-	if g.repo == nil {
+	if g.repo == nil || !a.online() {
 		return
 	}
-	if time.Since(g.checked) >= 1500*time.Millisecond {
+	switch {
+	case a.conn != nil:
+		// On the host, at one round trip, in the background.
+		if !g.metaRunning && time.Since(g.checked) >= remoteMetaEvery {
+			g.checked, g.metaRunning = time.Now(), true
+			r := g.repo
+			go func() {
+				t, refs, err := remoteGitMeta(r)
+				a.post(func() {
+					g.metaRunning = false
+					if g.repo == r && err == nil {
+						a.tookGitMeta(t, refs)
+					}
+				})
+			}()
+		}
+	case time.Since(g.checked) >= 1500*time.Millisecond:
 		g.checked = time.Now()
-		t, refs := gitMeta(g.repo)
-		if !t.Equal(g.meta) {
-			if !g.meta.IsZero() {
-				a.gitChanged()
-			}
-			g.meta = t
-		}
-		if !refs.Equal(g.refsMeta) {
-			if !g.refsMeta.IsZero() {
-				g.refsGen++
-			}
-			g.refsMeta = refs
-		}
+		a.tookGitMeta(gitMeta(g.repo))
 	}
 	a.refreshHistory()
 	if g.running || !g.stale && time.Since(g.read) < statusEvery {
@@ -217,6 +224,55 @@ func (a *app) refreshHistory() {
 			g.historyGen++
 		})
 	}()
+}
+
+// tookGitMeta takes when the files HEAD moving changes last changed, and
+// the refs: as they change, the documents compare their lines again, and
+// the history is read again.
+func (a *app) tookGitMeta(t, refs time.Time) {
+	g := &a.git
+	if !t.Equal(g.meta) {
+		if !g.meta.IsZero() {
+			a.gitChanged()
+		}
+		g.meta = t
+	}
+	if !refs.Equal(g.refsMeta) {
+		if !g.refsMeta.IsZero() {
+			g.refsGen++
+		}
+		g.refsMeta = refs
+	}
+}
+
+// remoteMetaEvery is how often a remote work tree is looked at for HEAD
+// moving.
+const remoteMetaEvery = 3 * time.Second
+
+// remoteGitMeta is gitMeta of a remote work tree, which stats the files
+// and the folders of the refs on its host, at one round trip.
+func remoteGitMeta(r *git.Repo) (head, refs time.Time, err error) {
+	c, dir, ok := remote.Lookup(r.Dir)
+	_, common, _ := remote.Split(r.Common)
+	if !ok {
+		return head, refs, errors.New("not remote")
+	}
+	heads := []string{dir + "/index", dir + "/HEAD", dir + "/logs/HEAD", common + "/FETCH_HEAD"}
+	infos, err := c.StatUnder(append(slices.Clone(heads), common+"/packed-refs"), common+"/refs")
+	if err != nil {
+		return head, refs, err
+	}
+	for p, info := range infos {
+		t := info.ModTime()
+		if slices.Contains(heads, p) {
+			if t.After(head) {
+				head = t
+			}
+		} else if t.After(refs) {
+			refs = t
+		}
+	}
+	return head, refs, nil
 }
 
 // gitMeta returns when the files that HEAD moving changes last changed:
@@ -322,6 +378,10 @@ func (a *app) gitDo(busy string, fn func(r *git.Repo) error, then func()) {
 	g := &a.git
 	r := g.repo
 	if r == nil {
+		return
+	}
+	if !a.online() {
+		a.fail("Not connected to %s", a.conn.Host)
 		return
 	}
 	if busy != "" {

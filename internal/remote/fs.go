@@ -1,0 +1,420 @@
+package remote
+
+import (
+	"archive/tar"
+	"bytes"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// FileInfo is what stat says of a file on a host.
+type FileInfo struct {
+	name    string
+	size    int64
+	mode    fs.FileMode
+	modTime time.Time
+}
+
+func (f *FileInfo) Name() string       { return f.name }
+func (f *FileInfo) Size() int64        { return f.size }
+func (f *FileInfo) Mode() fs.FileMode  { return f.mode }
+func (f *FileInfo) ModTime() time.Time { return f.modTime }
+func (f *FileInfo) IsDir() bool        { return f.mode.IsDir() }
+func (f *FileInfo) Sys() any           { return nil }
+
+// NewFileInfo makes the FileInfo of a file, as for tests.
+func NewFileInfo(name string, size int64, mode fs.FileMode, modTime time.Time) *FileInfo {
+	return &FileInfo{name: name, size: size, mode: mode, modTime: modTime}
+}
+
+// statCmd is the stat of the host that prints, for each file, a line of
+// its size, the time it changed, its mode in hex and its name:
+// "12 1700000000.123 81a4|name". follow follows links.
+func (i Info) statCmd(follow bool) string {
+	l := ""
+	if follow {
+		l = "-L "
+	}
+	switch {
+	case i.gnu && i.nanos:
+		return "stat " + l + `-c '%s %.9Y %f|%n'`
+	case i.gnu:
+		return "stat " + l + `-c '%s %Y %f|%n'`
+	}
+	return "stat " + l + `-f '%z %Fm %Xp|%N'`
+}
+
+// parseStat reads the lines of statCmd, by name.
+func parseStat(out []byte) map[string]*FileInfo {
+	infos := map[string]*FileInfo{}
+	for line := range strings.SplitSeq(string(out), "\n") {
+		head, name, ok := strings.Cut(line, "|")
+		if !ok {
+			continue
+		}
+		f := strings.Fields(head)
+		if len(f) != 3 {
+			continue
+		}
+		size, err1 := strconv.ParseInt(f[0], 10, 64)
+		mode, err2 := strconv.ParseUint(f[2], 16, 32)
+		if err1 != nil || err2 != nil {
+			continue
+		}
+		infos[name] = &FileInfo{name: path.Base(name), size: size, mode: fileMode(uint32(mode)), modTime: parseTime(f[1])}
+	}
+	return infos
+}
+
+// fileMode turns a mode of stat into Go's.
+func fileMode(m uint32) fs.FileMode {
+	mode := fs.FileMode(m & 0o777)
+	switch m & 0o170000 {
+	case 0o040000:
+		mode |= fs.ModeDir
+	case 0o120000:
+		mode |= fs.ModeSymlink
+	case 0o010000:
+		mode |= fs.ModeNamedPipe
+	case 0o140000:
+		mode |= fs.ModeSocket
+	case 0o020000:
+		mode |= fs.ModeDevice | fs.ModeCharDevice
+	case 0o060000:
+		mode |= fs.ModeDevice
+	}
+	return mode
+}
+
+// parseTime reads seconds since 1970, with a fraction or not.
+func parseTime(s string) time.Time {
+	secs, frac, _ := strings.Cut(s, ".")
+	sec, err := strconv.ParseInt(secs, 10, 64)
+	if err != nil {
+		return time.Time{}
+	}
+	var nsec int64
+	if frac != "" {
+		frac = (frac + "000000000")[:9]
+		nsec, _ = strconv.ParseInt(frac, 10, 64)
+	}
+	return time.Unix(sec, nsec)
+}
+
+func notExist(op, p string) error {
+	return &fs.PathError{Op: op, Path: p, Err: fs.ErrNotExist}
+}
+
+// StatMany stats files on the host, following links, in one command: the
+// map leaves out those that are not there.
+func (c *Conn) StatMany(paths []string) (map[string]*FileInfo, error) {
+	if len(paths) == 0 {
+		return map[string]*FileInfo{}, nil
+	}
+	out, err := c.Run(nil, c.Info().statCmd(true)+` -- "$@" 2>/dev/null; exit 0`, paths...)
+	if err != nil {
+		return nil, err
+	}
+	return parseStat(out), nil
+}
+
+// Stat stats a file on the host, following a link.
+func (c *Conn) Stat(p string) (*FileInfo, error) { return c.stat(p, true) }
+
+// Lstat stats a file on the host, not following a link.
+func (c *Conn) Lstat(p string) (*FileInfo, error) { return c.stat(p, false) }
+
+func (c *Conn) stat(p string, follow bool) (*FileInfo, error) {
+	out, err := c.Run(nil, c.Info().statCmd(follow)+` -- "$1" 2>/dev/null; exit 0`, p)
+	if err != nil {
+		return nil, err
+	}
+	if f, ok := parseStat(out)[p]; ok {
+		return f, nil
+	}
+	return nil, notExist("stat", p)
+}
+
+// DirEntry is a file in a folder of a host: its name, and whether it is a
+// folder, or a link to one.
+type DirEntry struct {
+	Name string
+	Dir  bool
+}
+
+// readDirScript lists the folders named after the first argument, each
+// as its path, then a NUL, then its entries, each "d name" or "f name"
+// followed by a NUL, and a blank entry to end it; a folder that cannot
+// be read is "!" then its error.
+const readDirScript = "for dir; do\n" + readDirBody + "done\n"
+
+// readDirBody lists the folder $dir, as readDirScript says.
+const readDirBody = `  printf '%s\0' "$dir"
+  if ! cd -- "$dir" 2>/dev/null; then
+    if [ -e "$dir" ]; then printf '!permission denied\0'; else printf '!no such file or directory\0'; fi
+    continue
+  fi
+  for f in * .*; do
+    case $f in .|..) continue;; esac
+    if [ -d "$f" ]; then printf 'd %s\0' "$f"
+    elif [ -e "$f" ] || [ -L "$f" ]; then printf 'f %s\0' "$f"
+    fi
+  done
+  printf '\0'
+`
+
+// ReadDir lists a folder of the host.
+func (c *Conn) ReadDir(dir string) ([]DirEntry, error) {
+	dirs, err := c.ReadDirs([]string{dir})
+	if err != nil {
+		return nil, err
+	}
+	r := dirs[dir]
+	return r.Entries, r.Err
+}
+
+// DirList is a folder listed by ReadDirs, or why it could not be.
+type DirList struct {
+	Entries []DirEntry
+	Err     error
+}
+
+// ReadDirs lists folders of the host in one command.
+func (c *Conn) ReadDirs(dirs []string) (map[string]DirList, error) {
+	if len(dirs) == 0 {
+		return map[string]DirList{}, nil
+	}
+	out, err := c.Run(nil, readDirScript, dirs...)
+	if err != nil {
+		return nil, err
+	}
+	return parseDirs(out), nil
+}
+
+func parseDirs(out []byte) map[string]DirList {
+	lists := map[string]DirList{}
+	fields := strings.Split(string(out), "\x00")
+	for i := 0; i < len(fields); {
+		dir := fields[i]
+		i++
+		if dir == "" {
+			continue
+		}
+		if i < len(fields) && strings.HasPrefix(fields[i], "!") {
+			msg := fields[i][1:]
+			var err error = errors.New(msg)
+			if strings.HasPrefix(msg, "no such") {
+				err = notExist("open", dir)
+			}
+			lists[dir] = DirList{Err: err}
+			i++
+			continue
+		}
+		entries := []DirEntry{}
+		for ; i < len(fields) && fields[i] != ""; i++ {
+			kind, name, ok := strings.Cut(fields[i], " ")
+			if ok {
+				entries = append(entries, DirEntry{Name: name, Dir: kind == "d"})
+			}
+		}
+		i++ // the blank entry that ends the folder
+		lists[dir] = DirList{Entries: entries}
+	}
+	return lists
+}
+
+// ErrTooLarge is the error of a file larger than a read takes.
+var ErrTooLarge = errors.New("file is too large to open")
+
+// ReadFile reads a file of the host, at most limit bytes when limit is
+// above 0: a larger file is ErrTooLarge.
+func (c *Conn) ReadFile(p string, limit int64) ([]byte, error) {
+	script := `if [ -d "$1" ]; then echo "$1: is a directory" >&2; exit 1; fi
+exec cat -- "$1"`
+	if limit > 0 {
+		script = `if [ -d "$1" ]; then echo "$1: is a directory" >&2; exit 1; fi
+exec head -c ` + strconv.FormatInt(limit+1, 10) + ` -- "$1"`
+	}
+	out, err := c.Run(nil, script, p)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, notExist("open", p)
+		}
+		return nil, err
+	}
+	if limit > 0 && int64(len(out)) > limit {
+		return nil, ErrTooLarge
+	}
+	return out, nil
+}
+
+// WriteFile writes data to a file of the host, and returns what stat says
+// of it then. data goes whole to a file beside the host's temporary ones
+// first, and is copied into the file only once it is all there, so that
+// a connection lost on the way leaves the file as it was. Copied rather
+// than renamed in place, the file keeps its owner, mode, links and
+// attributes, as the editors of a terminal keep them.
+func (c *Conn) WriteFile(p string, data []byte) (*FileInfo, error) {
+	script := `t=$(mktemp "${TMPDIR:-/tmp}/mayoi.XXXXXX") || exit 1
+trap 'rm -f "$t"' EXIT
+cat > "$t" || exit 1
+n=$(wc -c < "$t")
+if [ $n -ne $2 ]; then echo "the file did not arrive whole" >&2; exit 1; fi
+cat "$t" > "$1" || exit 1
+` + c.Info().statCmd(true) + ` -- "$1"
+`
+	out, err := c.Run(bytes.NewReader(data), script, p, strconv.Itoa(len(data)))
+	if err != nil {
+		return nil, err
+	}
+	if f, ok := parseStat(out)[p]; ok {
+		return f, nil
+	}
+	return nil, fmt.Errorf("could not stat %s once written", p)
+}
+
+// Rename moves a file of the host, unless the target is there.
+func (c *Conn) Rename(from, to string) error {
+	_, err := c.Run(nil, `if [ "$1" != "$2" ] && { [ -e "$2" ] || [ -L "$2" ]; }; then echo "$2: file exists" >&2; exit 1; fi
+exec mv -- "$1" "$2"`, from, to)
+	return err
+}
+
+// Remove deletes a file of the host, or a folder and all in it.
+func (c *Conn) Remove(p string) error {
+	_, err := c.Run(nil, `exec rm -rf -- "$1"`, p)
+	return err
+}
+
+// MkdirAll makes a folder of the host, and those above it.
+func (c *Conn) MkdirAll(p string) error {
+	_, err := c.Run(nil, `exec mkdir -p -- "$1"`, p)
+	return err
+}
+
+// Create makes an empty file of the host, unless one is there.
+func (c *Conn) Create(p string) error {
+	_, err := c.Run(nil, `if [ -e "$1" ] || [ -L "$1" ]; then echo "$1: file exists" >&2; exit 1; fi
+mkdir -p -- "$(dirname -- "$1")" && : > "$1"`, p)
+	return err
+}
+
+// ReadFiles reads the files rels of the folder dir of the host, relative
+// to it with slashes, those smaller than max bytes, in one tar stream:
+// fn gets each as it arrives. Files that are not there, or not regular,
+// are left out.
+func (c *Conn) ReadFiles(dir string, rels []string, max int64, fn func(rel string, data []byte)) error {
+	if len(rels) == 0 {
+		return nil
+	}
+	args := make([]string, 0, len(rels)+2)
+	args = append(args, dir, strconv.FormatInt(max, 10))
+	for _, r := range rels {
+		args = append(args, "./"+r)
+	}
+	cmd, err := c.Command(nil, `cd -- "$1" || exit 1; max=$2; shift 2
+find "$@" -prune -type f -size -"$max"c 2>/dev/null | {
+  set --
+  while IFS= read -r f; do set -- "$@" "$f"; done
+  # The tar of macOS adds a file of attributes for each file, unless told.
+  if [ $# -gt 0 ]; then COPYFILE_DISABLE=1 exec tar -cf - "$@" 2>/dev/null; fi
+}
+`, args...)
+	if err != nil {
+		return err
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	var errb bytes.Buffer
+	cmd.Stderr = &errb
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	asked := make(map[string]bool, len(rels))
+	for _, r := range rels {
+		asked[r] = true
+	}
+	tr := tar.NewReader(out)
+	var readErr error
+	for {
+		h, err := tr.Next()
+		if err != nil {
+			if err != io.EOF {
+				readErr = err
+			}
+			break
+		}
+		rel := strings.TrimPrefix(h.Name, "./")
+		if h.Typeflag != tar.TypeReg || !asked[rel] {
+			continue
+		}
+		data, err := io.ReadAll(tr)
+		if err != nil {
+			readErr = err
+			break
+		}
+		fn(rel, data)
+	}
+	io.Copy(io.Discard, out)
+	if err := cmd.Wait(); err != nil {
+		return c.failure(err, errb.String())
+	}
+	return readErr
+}
+
+// lookMark parts what Look's command lists of the folders from what it
+// says of the files.
+const lookMark = "\x01mayoi-stat\x01\n"
+
+// Look lists folders and stats files of the host, following links, in one
+// command: the files that are not there are left out of the map.
+func (c *Conn) Look(dirs, files []string) (map[string]DirList, map[string]*FileInfo, error) {
+	if len(dirs) == 0 && len(files) == 0 {
+		return map[string]DirList{}, map[string]*FileInfo{}, nil
+	}
+	args := append([]string{strconv.Itoa(len(dirs))}, dirs...)
+	args = append(args, files...)
+	script := `n=$1; shift
+k=0
+for dir; do
+  k=$((k+1))
+  [ $k -le $n ] || break
+` + readDirBody + `done
+printf '\001mayoi-stat\001\n'
+shift $n
+if [ $# -gt 0 ]; then ` + c.Info().statCmd(true) + ` -- "$@" 2>/dev/null; fi
+exit 0
+`
+	out, err := c.Run(nil, script, args...)
+	if err != nil {
+		return nil, nil, err
+	}
+	listed, statted, ok := strings.Cut(string(out), lookMark)
+	if !ok {
+		return nil, nil, errors.New("the host did not answer as a POSIX shell does")
+	}
+	return parseDirs([]byte(listed)), parseStat([]byte(statted)), nil
+}
+
+// StatUnder stats files, and every folder under the folder dir, following
+// links, in one command, as for the refs of Git.
+func (c *Conn) StatUnder(files []string, dir string) (map[string]*FileInfo, error) {
+	st := c.Info().statCmd(true)
+	out, err := c.Run(nil, `d=$1; shift
+if [ $# -gt 0 ]; then `+st+` -- "$@" 2>/dev/null; fi
+find "$d" -type d -exec `+st+` {} + 2>/dev/null
+exit 0
+`, append([]string{dir}, files...)...)
+	if err != nil {
+		return nil, err
+	}
+	return parseStat(out), nil
+}

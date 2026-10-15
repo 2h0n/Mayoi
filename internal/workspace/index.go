@@ -3,7 +3,6 @@ package workspace
 import (
 	"bytes"
 	"io/fs"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -11,6 +10,8 @@ import (
 	"sync"
 	"unicode"
 	"unicode/utf8"
+
+	"mayoi/internal/vfs"
 )
 
 // MaxIndexed is the most files the index holds.
@@ -33,8 +34,7 @@ func Index(root string) []string {
 // Git is missing.
 func gitFiles(root string) ([]string, bool) {
 	list := func(args ...string) ([]byte, bool) {
-		cmd := exec.Command("git", append([]string{"-C", root, "ls-files", "-z"}, args...)...)
-		out, err := cmd.Output()
+		out, err := vfs.Output(root, "git", append([]string{"ls-files", "-z"}, args...)...)
 		return out, err == nil
 	}
 	out, ok := list("--cached", "--others", "--exclude-standard", "--deduplicate")
@@ -66,6 +66,9 @@ func gitFiles(root string) ([]string, bool) {
 
 // walk lists the files under root by reading its directories.
 func walk(root string) []string {
+	if vfs.IsRemote(root) {
+		return remoteWalk(root)
+	}
 	var files []string
 	filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -92,6 +95,38 @@ func walk(root string) []string {
 		}
 		return nil
 	})
+	return files
+}
+
+// remoteWalk lists the files under a remote root with find, on its host,
+// leaving out the directories Skipped names.
+func remoteWalk(root string) []string {
+	args := []string{"."}
+	first := true
+	args = append(args, "(")
+	for _, name := range skippedNames {
+		if !first {
+			args = append(args, "-o")
+		}
+		first = false
+		args = append(args, "-name", name)
+	}
+	args = append(args, ")", "-prune", "-o", "-type", "f", "-print")
+	out, err := vfs.Output(root, "find", args...)
+	if err != nil && len(out) == 0 {
+		return nil
+	}
+	var files []string
+	for line := range strings.SplitSeq(string(out), "\n") {
+		f, ok := strings.CutPrefix(line, "./")
+		if !ok || f == "" || Hidden(f[strings.LastIndexByte(f, '/')+1:]) {
+			continue
+		}
+		files = append(files, f)
+		if len(files) >= MaxIndexed {
+			break
+		}
+	}
 	return files
 }
 
@@ -279,8 +314,7 @@ func isBoundary(s string, i int) bool {
 // outside a work tree. It runs in the caller's goroutine; call it from
 // another.
 func Ignored(root string) map[string]bool {
-	cmd := exec.Command("git", "-C", root, "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--no-empty-directory")
-	out, err := cmd.Output()
+	out, err := vfs.Output(root, "git", "ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--no-empty-directory")
 	if err != nil {
 		return nil
 	}

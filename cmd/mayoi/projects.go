@@ -11,6 +11,7 @@ import (
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 )
 
@@ -125,6 +126,7 @@ func (m *mayoi) newFrame(h *desktop) *frame {
 		for _, h := range f.tabs {
 			h.a.keepSession()
 			h.a.closeTerminals()
+			h.a.shutdown()
 			m.wins = slices.DeleteFunc(m.wins, func(w *desktop) bool { return w == h })
 		}
 		if !m.quitting && len(m.wins) > 0 {
@@ -297,9 +299,7 @@ func (m *mayoi) dropProject(h *desktop) {
 	}
 	a.keepSession()
 	a.closeTerminals()
-	if a.tree != nil {
-		a.tree.Close()
-	}
+	a.shutdown()
 	a.resetSearch()
 	m.wins = slices.DeleteFunc(m.wins, func(w *desktop) bool { return w == h })
 	m.s.Forget(a.window)
@@ -532,11 +532,11 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 		}
 	})
 	b.ContextMenu(func(mn *ui.Menu) {
-		if mn.Item(revealLabel()).Disabled(dir == "").Chosen() {
+		if mn.Item(revealLabel()).Disabled(dir == "" || remote.Is(dir)).Chosen() {
 			a.host.reveal(dir)
 		}
 		if mn.Item("Copy Path").Disabled(dir == "").Chosen() {
-			a.services.WriteClipboard(dir)
+			a.services.WriteClipboard(hostPath(dir))
 		}
 		mn.Separator()
 		if mn.Item("Close Project").Chosen() {

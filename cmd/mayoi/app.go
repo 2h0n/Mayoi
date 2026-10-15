@@ -15,9 +15,14 @@ import (
 
 	"mayoi/internal/highlight"
 	"mayoi/internal/keymap"
+	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"mayoi/internal/workspace"
 )
+
+// remoteIndexEvery is the least time between two listings of the files of
+// a remote folder.
+const remoteIndexEvery = 30 * time.Second
 
 // host is what the app asks of the desktop: native dialogs and the trash.
 // Its functions return at once and call back on the main thread.
@@ -87,8 +92,18 @@ type app struct {
 	mu    sync.Mutex
 	queue []func()
 
-	root    string
-	tree    *workspace.Tree
+	root string
+	tree *workspace.Tree
+	// conn is the connection to the host of a remote folder, nil for one
+	// of this machine, connState and connErr how it was last seen, and
+	// connUnsub stops following it.
+	conn      *remote.Conn
+	connState remote.State
+	connErr   error
+	connUnsub func()
+	// indexed is when the files of a remote folder were last listed,
+	// which is done again at most every remoteIndexEvery.
+	indexed time.Time
 	files   ui.OutlineState[string]
 	fileRow int
 	// treeSynced is the document the tree last followed, selectInTree the
@@ -152,15 +167,16 @@ type app struct {
 	// dragging is set while a tab is dragged, as the frame before found.
 	dragging, dragNow bool
 
-	quick    quickOpen
-	palette  []paletteEntry    // the commands of the command palette, made as it first opens
-	hints    map[string]string // the keys of the commands, as tooltips show them
-	branches branchPicker      // the box that switches branches
-	recents  recentPicker      // the box of the recent folders
-	find     findState
-	inFiles  searchState // search in the files, of the sidebar
-	prompt   *prompt
-	confirm  *confirm
+	quick      quickOpen
+	palette    []paletteEntry    // the commands of the command palette, made as it first opens
+	hints      map[string]string // the keys of the commands, as tooltips show them
+	branches   branchPicker      // the box that switches branches
+	recents    recentPicker      // the box of the recent folders
+	remotePick remotePicker      // the box that connects to a host
+	find       findState
+	inFiles    searchState // search in the files, of the sidebar
+	prompt     *prompt
+	confirm    *confirm
 	// dialog is the dialog shown, which came in as it showed, and
 	// dialogBuilt says a build of the view built one.
 	dialog      string
@@ -299,7 +315,10 @@ func (a *app) tell(n note) { a.notes = append(a.notes, n) }
 func (a *app) start() {
 	w := a.window
 	if w.Folder != "" {
-		if info, err := os.Stat(w.Folder); err == nil && info.IsDir() {
+		// A remote folder opens at once, as its host connects.
+		if remote.Is(w.Folder) {
+			a.openFolder(w.Folder)
+		} else if info, err := os.Stat(w.Folder); err == nil && info.IsDir() {
 			a.openFolder(w.Folder)
 		}
 	}
@@ -319,8 +338,10 @@ func (a *app) openFolder(dir string) {
 		a.closed = nil
 	}
 	a.root = dir
+	a.attachRemote(dir)
 	a.tree = workspace.NewTree(dir, a.post)
 	a.tree.OnChange = a.diskChanged
+	a.tree.IsOpen = a.files.Open.Has
 	a.tree.Load(dir)
 	a.files = ui.OutlineState[string]{}
 	a.fileRow = -1
@@ -374,6 +395,7 @@ func (a *app) closeFolder() {
 		if a.tree != nil {
 			a.tree.Close()
 		}
+		a.detachRemote()
 		a.root, a.tree, a.index, a.git = "", nil, nil, gitState{}
 		a.resetSearch()
 		a.closed = nil
@@ -385,7 +407,7 @@ func (a *app) closeFolder() {
 // saveDoc saves a document, asking where an untitled one goes.
 func (a *app) saveDoc(d *document, then func()) {
 	if d.path == "" {
-		a.host.saveAs(d.name(), func(path string) {
+		a.askSavePath(d.name(), func(path string) {
 			if path == "" {
 				return
 			}
@@ -399,16 +421,23 @@ func (a *app) saveDoc(d *document, then func()) {
 		})
 		return
 	}
+	saved := func() {
+		d.diskGone, d.autoSave.failed = false, false
+		a.git.stale = true
+		a.rememberTabs()
+		if then != nil {
+			then()
+		}
+	}
+	if remote.Is(d.path) {
+		a.saveRemote(d, saved, func(err error) { a.fail("Could not save %s: %v", d.name(), err) })
+		return
+	}
 	if err := d.save(); err != nil {
 		a.fail("Could not save %s: %v", d.name(), err)
 		return
 	}
-	d.diskGone, d.autoSave.failed = false, false
-	a.git.stale = true
-	a.rememberTabs()
-	if then != nil {
-		then()
-	}
+	saved()
 }
 
 func (a *app) saveActive() {
@@ -423,7 +452,7 @@ func (a *app) saveActiveAs() {
 		return
 	}
 	d := ed.document
-	a.host.saveAs(d.name(), func(path string) {
+	a.askSavePath(d.name(), func(path string) {
 		if path == "" {
 			return
 		}
@@ -455,7 +484,8 @@ func (a *app) diskChanged(changed, removed []string) {
 			v.diskGone = false
 			a.loadImage(v)
 		case slices.Contains(removed, v.path):
-			if _, err := os.Stat(v.path); err != nil {
+			// A remote tree reports only what it found gone.
+			if _, err := os.Stat(v.path); err != nil || remote.Is(v.path) {
 				v.diskGone = true
 			}
 		}
@@ -474,7 +504,7 @@ func (a *app) diskChanged(changed, removed []string) {
 	}
 	for _, p := range removed {
 		if i := a.docIndex(p); i >= 0 {
-			if _, err := os.Stat(p); err != nil {
+			if _, err := os.Stat(p); err != nil || remote.Is(p) {
 				a.docs[i].diskGone = true
 			}
 		}
@@ -485,10 +515,20 @@ func (a *app) diskChanged(changed, removed []string) {
 // reloadDoc makes a document's text the file's on disk, as a step of
 // undo, as in other editors.
 func (a *app) reloadDoc(d *document) {
+	if remote.Is(d.path) {
+		a.reloadRemote(d)
+		return
+	}
 	data, err := os.ReadFile(d.path)
 	if err != nil || isBinary(data) {
 		return
 	}
+	d.takeText(data)
+}
+
+// takeText makes a document's text data, read from its file, as a step of
+// undo, and clean.
+func (d *document) takeText(data []byte) {
 	data = bytes.ReplaceAll(data, []byte("\r\n"), []byte("\n"))
 	if string(data) != d.buf.String() {
 		if ed := d.main(); ed != nil {
@@ -515,9 +555,15 @@ func (a *app) imageViewers() []*viewer {
 // refreshIndex lists the workspace's files again in the background, for
 // quick open, when they may have changed.
 func (a *app) refreshIndex() {
-	if a.root == "" || a.indexing || !a.indexStale {
+	if a.root == "" || a.indexing || !a.indexStale || !a.online() {
 		return
 	}
+	// A remote folder's files are listed on its host, which a busy folder
+	// would keep doing.
+	if a.conn != nil && a.index != nil && time.Since(a.indexed) < remoteIndexEvery {
+		return
+	}
+	a.indexed = time.Now()
 	a.indexing, a.indexStale = true, false
 	root := a.root
 	go func() {
@@ -535,7 +581,10 @@ func (a *app) refreshIndex() {
 // refreshIgnored asks Git again in the background what it ignores, when
 // the files may have changed.
 func (a *app) refreshIgnored() {
-	if a.root == "" || a.ignoring || !a.ignoredStale {
+	if a.root == "" || a.ignoring || !a.ignoredStale || !a.online() {
+		return
+	}
+	if a.conn != nil && a.ignored != nil && time.Since(a.indexed) < remoteIndexEvery {
 		return
 	}
 	a.ignoring, a.ignoredStale = true, false
@@ -576,6 +625,9 @@ func (a *app) windowTitle() string {
 	}
 	if a.root != "" {
 		parts = append(parts, filepath.Base(a.root))
+		if host := remote.HostOf(a.root); host != "" {
+			parts[len(parts)-1] = filepath.Base(hostPath(a.root)) + " [SSH: " + host + "]"
+		}
 	}
 	if len(parts) == 0 {
 		return "Mayoi"
@@ -585,6 +637,7 @@ func (a *app) windowTitle() string {
 
 // tick runs once a frame, after the posted functions.
 func (a *app) tick() {
+	a.markOffline()
 	a.refreshIgnored()
 	a.refreshGit()
 	a.searchTick()

@@ -3,6 +3,8 @@ package git
 import (
 	"fmt"
 	"strings"
+
+	"mayoi/internal/remote"
 )
 
 // WorktreeInUse reports a branch checked out in another worktree.
@@ -19,7 +21,7 @@ func (r *Repo) WorktreeForBranch(branch string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return worktreeForBranch(r.Root, string(out), branch), nil
+	return remote.On(r.Root, worktreeForBranch(r.Root, string(out), branch)), nil
 }
 
 func worktreeForBranch(root, out, branch string) string {

@@ -4,6 +4,8 @@ import (
 	"slices"
 
 	"github.com/egoist/mygo/ui"
+
+	"mayoi/internal/remote"
 )
 
 // tabStrip shows a tab for each tab of a column: a click shows it, the
@@ -219,10 +221,10 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 	if m.Item("Reveal in Explorer").Disabled(path == "" || a.root == "").Chosen() {
 		a.post(func() { a.showExplorer(); a.revealInTree(path) })
 	}
-	if m.Item(revealLabel()).Disabled(path == "").Chosen() {
+	if m.Item(revealLabel()).Disabled(path == "" || remote.Is(path)).Chosen() {
 		a.host.reveal(path)
 	}
 	if m.Item("Copy Path").Disabled(path == "").Chosen() {
-		a.services.WriteClipboard(path)
+		a.services.WriteClipboard(hostPath(path))
 	}
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,6 +10,7 @@ import (
 
 	"mayoi/internal/git"
 	"mayoi/internal/linediff"
+	"mayoi/internal/vfs"
 )
 
 // hunkAction is what a button of a run of changes in a diff does to them.
@@ -242,11 +242,8 @@ func (a *app) discardHunks(f *diffFile, hs []linediff.Hunk) {
 				if len(picked) == 0 {
 					return nil
 				}
-				info, err := os.Stat(path)
-				if err != nil {
-					return err
-				}
-				return os.WriteFile(path, []byte(joinLines(linediff.Apply(lines, index, inverted(picked)), crlf)), info.Mode().Perm())
+				_, err = vfs.WriteFile(path, []byte(joinLines(linediff.Apply(lines, index, inverted(picked)), crlf)), 0o644)
+				return err
 			}, nil)
 		}}
 }
@@ -285,7 +282,7 @@ func (a *app) workText(f *diffFile) (text string, crlf, ok bool) {
 // readWork reads a file of the work tree, with its line endings as \n,
 // and reports whether they were \r\n.
 func readWork(path string) (string, bool, error) {
-	data, err := os.ReadFile(path)
+	data, err := vfs.ReadFile(path)
 	if err != nil {
 		return "", false, err
 	}

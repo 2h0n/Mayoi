@@ -3,7 +3,6 @@
 package gitmarks
 
 import (
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/linediff"
+	"mayoi/internal/vfs"
 )
 
 // Marks are the lines of a document changed since Git's last commit. The
@@ -53,7 +53,7 @@ func (g *Marks) Refresh(path string, snap ui.TextSnapshot, post func(func())) {
 		g.loading, g.stale = true, false
 		dir, name := filepath.Dir(path), filepath.Base(path)
 		go func() {
-			out, err := exec.Command("git", "-C", dir, "show", "HEAD:./"+name).Output()
+			out, err := vfs.Output(dir, "git", "show", "HEAD:./"+name)
 			post(func() {
 				g.loading, g.loaded, g.diffed = false, true, false
 				// The marks of the old base show until those of the new.

@@ -5,6 +5,7 @@ import (
 	"slices"
 
 	"mayoi/internal/git"
+	"mayoi/internal/remote"
 )
 
 // maxClosed is how many closed tabs the window remembers.
@@ -106,7 +107,7 @@ func (a *app) reopenClosed() {
 			a.dropColumn(col, made)
 			continue
 		}
-		if _, err := os.Stat(c.path); err != nil {
+		if _, err := os.Stat(c.path); err != nil && !remote.Is(c.path) {
 			a.dropColumn(col, made)
 			continue
 		}

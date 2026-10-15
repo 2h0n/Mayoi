@@ -27,6 +27,8 @@
   around the changes, inline or side by side, a graph of the commits with their branches and tags, each with its own
   diff, gutter marks that revert or stage a change, branches and blame
 - **Terminal:** Ghostty's emulator (libghostty-vt), in the bottom panel or in a tab
+- **Remote SSH:** open a folder on another machine with the system's `ssh`, nothing installed there: the Explorer,
+  search, Git and terminals run on the host
 - **Image viewer:** PNG, JPEG, GIF, WebP and BMP, plus a live SVG preview
 - **Auto save,** light, dark, The Matrix, Claude and Qoder themes, a window per folder or every folder in one window as project tabs, and a `mayoi` shell command
 - **Settings:** JSON files applied as you save them, with the code's and the terminal's fonts, weight, ligatures and

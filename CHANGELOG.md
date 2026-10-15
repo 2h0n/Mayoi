@@ -5,6 +5,14 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Remote SSH: **File → Remote SSH → Connect to Host…** opens a folder on
+  another machine with the system's `ssh`, with nothing to install there.
+  It lists the hosts of `~/.ssh/config` and those connected to before,
+  then the folders of the host. Files open and save in the background,
+  and the Explorer, quick open, search, Source Control and terminals run
+  on the host, which `inotifywait` or a poll every 3 seconds watches for
+  changes. Disconnecting keeps the window, read-only, until it connects
+  again. Keys and the SSH agent sign in; Windows does not have it yet.
 - A selection made from right to left grows from where it started:
   ⌘⇧← or Shift-Home takes it to the start of the line, where it used to
   drop the part already selected, and the caret's line, the blame beside

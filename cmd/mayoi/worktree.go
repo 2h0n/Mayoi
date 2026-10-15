@@ -4,13 +4,15 @@ import (
 	"errors"
 	"fmt"
 	"mayoi/internal/git"
+	"mayoi/internal/remote"
+	"mayoi/internal/vfs"
 	"os"
 )
 
 // Opening an existing checkout never changes the branch in either worktree.
 func (a *app) askOpenWorktree(branch, path string) {
 	r := a.git.repo
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) && !remote.Is(path) {
 		a.askPruneWorktree(branch, path)
 		return
 	}
@@ -19,7 +21,7 @@ func (a *app) askOpenWorktree(branch, path string) {
 			return
 		}
 		a.gitDo("Opening worktree…", func(_ *git.Repo) error {
-			info, err := os.Stat(path)
+			info, err := vfs.Stat(path)
 			if err != nil {
 				return err
 			}

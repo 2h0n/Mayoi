@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -34,6 +35,10 @@ func (a *app) commands() []command {
 		// ⌃R, which the view takes itself, so that a terminal keeps it.
 		{"file.openRecent", "Open Recent…", "", a.openRecentPicker},
 		{"file.clearRecent", "Clear Recently Opened", "", a.clearRecent},
+		{"remote.connect", "Connect to Host…", "", a.openRemotePicker},
+		{"remote.openFolder", "Open Remote Folder…", "", a.openRemoteFolder},
+		{"remote.reconnect", "Reconnect to Host", "", a.reconnect},
+		{"remote.disconnect", "Disconnect from Host", "", a.disconnect},
 		{"file.save", "Save", "CmdOrCtrl+S", a.saveActive},
 		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
@@ -144,6 +149,9 @@ func (a *app) commands() []command {
 	}
 	for i := range cmds {
 		cmds[i].accel = platformAccel(cmds[i].id, cmds[i].accel)
+	}
+	if !remoteSupported {
+		cmds = slices.DeleteFunc(cmds, func(c command) bool { return strings.HasPrefix(c.id, "remote.") })
 	}
 	return cmds
 }
@@ -326,10 +334,20 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	recent = append(recent, more, mygo.Separator(), forget)
 	file := []*mygo.MenuItem{
 		item("file.new"), item("file.openFolder"), item("file.openFolderWindow"),
-		{Label: "Open Recent", Submenu: recent}, mygo.Separator(),
+		{Label: "Open Recent", Submenu: recent},
+	}
+	if remoteSupported {
+		// Reconnecting and disconnecting are of a remote folder's window.
+		reconnect, disconnect := item("remote.reconnect"), item("remote.disconnect")
+		reconnect.Disabled, disconnect.Disabled = a.conn == nil, a.conn == nil
+		file = append(file, &mygo.MenuItem{Label: "Remote SSH", Submenu: []*mygo.MenuItem{
+			item("remote.connect"), item("remote.openFolder"), mygo.Separator(), reconnect, disconnect,
+		}})
+	}
+	file = append(file, mygo.Separator(),
 		item("file.save"), item("file.saveAs"), item("file.saveAll"), checkbox("file.autoSave", a.settings.AutoSave), item("file.settings"), item("file.keybindings"), mygo.Separator(),
 		item("file.close"), item("file.reopenClosed"), item("file.closeFolder"), item("file.closeProject"),
-	}
+	)
 	if cli {
 		file = append(file, mygo.Separator(), item("file.installCLI"), item("file.uninstallCLI"))
 	}

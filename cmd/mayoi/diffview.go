@@ -17,6 +17,7 @@ import (
 	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
+	"mayoi/internal/remote"
 )
 
 // diffBase is what a diff compares: which version of a file with which.
@@ -1296,6 +1297,14 @@ func (a *app) pageDiff(v *diffView, dy float32) {
 // openPath shows a file, or opens a folder, as a submodule is, as
 // `mayoi <dir>` opens it.
 func (a *app) openPath(path string, focus bool) {
+	if remote.Is(path) {
+		if a.tree != nil && a.tree.IsDir(path) {
+			a.host.openFolders([]string{path})
+		} else {
+			a.openFile(path, focus)
+		}
+		return
+	}
 	if info, err := os.Stat(path); err == nil && info.IsDir() {
 		a.host.openFolders([]string{path})
 		return

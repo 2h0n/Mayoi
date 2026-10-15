@@ -178,7 +178,32 @@ a window around the view beyond that. A file just opened has the lines around th
   deletion. A line changed otherwise shows plain, so stale colors never land on the wrong text.
 
 **`internal/workspace`.** Directories are read as they are expanded and watched with fsnotify, with bursts of changes
-batched together. This package also holds the file index and the fuzzy matcher for quick open.
+batched together. This package also holds the file index and the fuzzy matcher for quick open. A remote tree has no
+fsnotify: it runs `inotifywait` on its host when there is one, and otherwise reads the folders the Explorer shows, and
+stats the files open, every 3 seconds, at one round trip, reporting only what differs from what it saw last.
+
+## Remote folders
+
+**`internal/remote`.** A remote file has a path of its own, `/ssh:host/path`, which `filepath` takes as any other, so
+documents, the tree, Git and the settings keep it as they keep a local one. The connection to a host is an ssh master
+(`ControlMaster`) that every command goes through, with `BatchMode` so that it never asks for a password. A command is a
+small POSIX shell script: `sh` on the host reads its length and then the script from what ssh sends, so that nothing of
+it goes through the login shell, which may be fish, and the rest of the input is the script's, as a file's text. It
+reads a folder with a loop of `[ -d ]`, stats with GNU's or BSD's `stat`, as the host has, reads files with `head -c`
+and several at once as a tar stream, and writes a file whole to a temporary one first, then copies it in. `config.go`
+lists the hosts of `~/.ssh/config`.
+
+**`internal/vfs`.** The file system the editor uses: each function takes a local path or a remote one and does what
+the `os` function of its name does. `Command` runs a program in a folder, on the machine of the folder, which is how
+`internal/git`, `gitmarks` and the index run `git` and `find` on a host. A remote path takes a round trip, so the app
+calls these off the main thread for one.
+
+**`remote.go`, `remotesearch.go`.** Each project follows the connection of its folder's host. A remote document opens
+at once, empty and read-only, and is read in the background; it saves in the background too, and records what stat
+said of the file written, so that the change the watcher then reports costs a stat rather than the file again. While
+the host is not connected, the documents are read-only and a banner offers to reconnect; reconnecting reads the tree,
+the open files and the status again. Search in files asks `rg`, or else `grep`, on the host for the files that may
+match, then reads those and matches them here, as it does local files, so that both find the same.
 
 ## Theme
 

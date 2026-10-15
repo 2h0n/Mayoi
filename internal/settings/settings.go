@@ -523,7 +523,10 @@ func (s *Settings) RecentExcept(dir string) []string {
 		if d == dir {
 			continue
 		}
-		if info, err := os.Stat(d); err == nil && info.IsDir() {
+		// A remote folder is looked at as it opens.
+		if strings.HasPrefix(d, "/ssh:") {
+			out = append(out, d)
+		} else if info, err := os.Stat(d); err == nil && info.IsDir() {
 			out = append(out, d)
 		}
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"mayoi/internal/keymap"
+	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
@@ -69,7 +70,15 @@ func (a *app) startTerminal(dir string) *session {
 	a.nextTerm++
 	s := &session{id: a.nextTerm, dir: dir, title: shellName()}
 	light, dark := a.termThemes()
+	// In a remote folder, a shell of its host, over the connection.
+	var command []string
+	if c, rdir, ok := remote.Lookup(dir); ok {
+		command = c.TerminalCommand(rdir)
+		s.title = c.Host
+		dir, _ = os.UserHomeDir()
+	}
 	term, err := terminal.New(terminal.Options{
+		Command:   command,
 		Dir:       dir,
 		Font:      termFont(a.settings),
 		Theme:     light,

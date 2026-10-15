@@ -12,6 +12,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/git"
+	"mayoi/internal/vfs"
 )
 
 // scmGroup is a group of the changes the source control view lists.
@@ -1405,8 +1406,27 @@ func (a *app) discard(es ...git.Entry) {
 	msg := "The changes cannot be undone."
 	if len(untracked) > 0 {
 		msg = "The changes cannot be undone. Files Git does not track go to " + trashName() + "."
+		if a.conn != nil {
+			msg = "The changes cannot be undone. Files Git does not track are deleted: a remote folder has no trash."
+		}
 	}
 	a.confirm = &confirm{title: title, message: msg, ok: "Discard", danger: true, run: func() {
+		if a.conn != nil && len(untracked) > 0 {
+			// On the host, in the background.
+			gone := slices.Clone(untracked)
+			a.gitDo("", func(*git.Repo) error {
+				for _, p := range gone {
+					if err := vfs.RemoveAll(p); err != nil {
+						return err
+					}
+				}
+				return nil
+			}, func() {
+				a.tree.Refresh()
+				a.indexStale = true
+			})
+			untracked = nil
+		}
 		for _, p := range untracked {
 			if err := a.host.trash(p); err != nil {
 				a.fail("Could not move %s to %s: %v", filepath.Base(p), trashName(), err)

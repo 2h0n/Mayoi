@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"mayoi/internal/highlight"
+	"mayoi/internal/remote"
+	"mayoi/internal/vfs"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -113,6 +115,14 @@ func markdownPath(root, path, dest string) string {
 // markdownRoot is the Git repository holding path, or else the workspace
 // when it holds path, or "".
 func markdownRoot(path, workspace string) string {
+	// Of a remote file, the workspace, rather than a round trip to its
+	// host for each folder above it.
+	if remote.Is(path) {
+		if rel, err := filepath.Rel(workspace, path); workspace != "" && err == nil && filepath.IsLocal(rel) {
+			return workspace
+		}
+		return ""
+	}
 	for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
 		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
 			return dir
@@ -270,7 +280,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				s.text = string(x.Text(source))
 				s.image = string(x.Destination)
 				if local := markdownPath(root, path, s.image); local != "" && (current == nil || current()) {
-					if info, err := os.Stat(local); err == nil && info.Mode().IsRegular() {
+					if info, err := vfs.Stat(local); err == nil && info.Mode().IsRegular() {
 						key := markdownImageKey{local, info.ModTime(), info.Size()}
 						used[key] = true
 						image, ok := cache[key]

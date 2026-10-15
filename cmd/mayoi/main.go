@@ -7,6 +7,7 @@ import (
 	"log"
 	"mayoi/internal/cli"
 	"mayoi/internal/keymap"
+	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
@@ -84,7 +85,11 @@ func (h *desktop) confirmClose(name string, done func(int)) {
 }
 
 func (h *desktop) trash(path string) error { return mygo.Shell.TrashItem(path) }
-func (h *desktop) reveal(path string)      { mygo.Shell.ShowItemInFolder(path) }
+func (h *desktop) reveal(path string) {
+	if !remote.Is(path) {
+		mygo.Shell.ShowItemInFolder(path)
+	}
+}
 func (h *desktop) copyFiles(paths []string) error {
 	return mygo.Clipboard.WriteFiles(paths...)
 }
@@ -245,7 +250,11 @@ func main() {
 			mygo.App.Quit()
 		})
 	})
-	mygo.App.OnQuit(func() { m.s.Flush() })
+	mygo.App.OnQuit(func() {
+		m.s.Flush()
+		// The ssh masters, which would outlive the app.
+		remote.Shutdown()
+	})
 	mygo.App.WhenReady(func() {
 		m.s = settings.Load(settingsPath())
 		mygo.Theme.SetSource(themeSource(m.s.Theme, m.s.Appearance))

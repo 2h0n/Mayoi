@@ -3,6 +3,8 @@ package main
 import (
 	"slices"
 	"time"
+
+	"mayoi/internal/remote"
 )
 
 // autoSaveDelay is how long after the last edit a changed file saves.
@@ -21,7 +23,7 @@ type autoSave struct {
 // autoSaves reports whether a document saves itself: a file still on
 // disk, while the setting is on.
 func (a *app) autoSaves(d *document) bool {
-	return a.settings.AutoSave && d.path != "" && !d.diskGone
+	return a.settings.AutoSave && d.path != "" && !d.diskGone && !d.locked()
 }
 
 // autoSaveTick follows the documents each frame: a changed one saves a
@@ -69,11 +71,18 @@ func (a *app) autoSaveDoc(d *document) {
 	if !a.autoSaves(d) || !d.dirty() || !slices.Contains(a.docs, d) {
 		return
 	}
-	if err := d.save(); err != nil {
+	failed := func(err error) {
 		if !d.autoSave.failed {
 			d.autoSave.failed = true
 			a.fail("Could not save %s: %v", d.name(), err)
 		}
+	}
+	if remote.Is(d.path) {
+		a.saveRemote(d, func() { d.autoSave.failed = false }, failed)
+		return
+	}
+	if err := d.save(); err != nil {
+		failed(err)
 		return
 	}
 	d.autoSave.failed = false

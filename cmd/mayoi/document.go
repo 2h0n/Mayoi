@@ -12,6 +12,8 @@ import (
 
 	"mayoi/internal/gitmarks"
 	"mayoi/internal/highlight"
+	"mayoi/internal/settings"
+	"mayoi/internal/vfs"
 )
 
 // maxOpenBytes is the largest file the editor opens.
@@ -44,6 +46,21 @@ type document struct {
 	widestVersion uint64
 	diskGone      bool // the file was removed from the disk
 	autoSave      autoSave
+
+	// A remote file is read in the background: loading is set until it
+	// is, and loadErr says why it could not be, which reading it again may
+	// mend. offline is set while its host is not connected. Until then the
+	// document is read-only. stamp is what stat said of the file as it was
+	// last read or written, and restored is set for a tab of the last
+	// session.
+	loading, offline, restored bool
+	loadErr                    error
+	stamp                      *fileStamp
+	// saving is set while a remote file is written; resave saves it again
+	// then, calling resaveDone or resaveFailed.
+	saving, resave bool
+	resaveDone     func()
+	resaveFailed   func(error)
 
 	// views are the editors that show the document, and typist the one
 	// that has the keyboard, or had it last, whose typing its is.
@@ -133,6 +150,9 @@ type editor struct {
 	peek    int
 	blame   blameState
 	vim     vimState
+	// restoreTab is where a tab of the last session was, which a remote file
+	// takes once it is read.
+	restoreTab *settings.Tab
 }
 
 // newEditor makes an editor of doc, its caret at the start.
@@ -174,6 +194,10 @@ func (d *document) name() string {
 }
 
 func (d *document) dirty() bool { return d.buf.Version() != d.saved || d.crlf != d.diskCRLF }
+
+// locked reports whether the document cannot be edited: its remote file
+// is not read, or its host not connected.
+func (d *document) locked() bool { return d.loading || d.loadErr != nil || d.offline }
 
 // readDocument reads a file into a document.
 func readDocument(id int, path string, notify func()) (*document, error) {
@@ -230,44 +254,35 @@ func isBinary(data []byte) bool {
 	return !utf8.Valid(head)
 }
 
-// save writes the document to its path.
+// save writes the document to its path, beside it first and renamed, so
+// that a failure keeps the old file.
 func (d *document) save() error {
+	snap, data := d.encode()
+	if _, err := vfs.WriteFile(d.path, data, 0o644); err != nil {
+		return err
+	}
+	d.wrote(snap, d.crlf)
+	return nil
+}
+
+// encode returns the text to save and the bytes of it, with the line
+// endings of the document.
+func (d *document) encode() (ui.TextSnapshot, []byte) {
 	snap := d.buf.Snapshot()
 	var b bytes.Buffer
 	b.Grow(snap.ByteLen())
-	if _, err := snap.WriteTo(&b); err != nil {
-		return err
-	}
+	snap.WriteTo(&b)
 	data := b.Bytes()
 	if d.crlf {
 		data = bytes.ReplaceAll(data, []byte("\n"), []byte("\r\n"))
 	}
-	mode := os.FileMode(0o644)
-	if info, err := os.Stat(d.path); err == nil {
-		mode = info.Mode().Perm()
-	}
-	// Write beside the file and rename, so that a failure keeps the old one.
-	tmp, err := os.CreateTemp(filepath.Dir(d.path), "."+filepath.Base(d.path)+".mayoi-*")
-	if err != nil {
-		return os.WriteFile(d.path, data, mode)
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmp.Name())
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
-	os.Chmod(tmp.Name(), mode)
-	if err := os.Rename(tmp.Name(), d.path); err != nil {
-		os.Remove(tmp.Name())
-		return err
-	}
+	return snap, data
+}
+
+// wrote marks the text snap, with line endings crlf, the file's.
+func (d *document) wrote(snap ui.TextSnapshot, crlf bool) {
 	d.savedSnap, d.saved = snap, snap.Version()
-	d.diskCRLF = d.crlf
-	return nil
+	d.diskCRLF = crlf
 }
 
 // measureWidest measures the longest line of the whole document.

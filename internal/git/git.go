@@ -7,13 +7,16 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"mayoi/internal/remote"
+	"mayoi/internal/vfs"
 )
 
 // Repo is a Git work tree. Root is spelled as the folder it was found
@@ -36,9 +39,12 @@ func Open(dir string) (*Repo, error) {
 	if len(lines) < 3 {
 		return nil, errors.New("not a work tree")
 	}
-	r := &Repo{Root: filepath.Clean(filepath.Join(dir, lines[0])), Dir: lines[1], Common: lines[2]}
-	if !filepath.IsAbs(r.Common) {
+	// The folders of a remote work tree are as its host spells them.
+	r := &Repo{Root: filepath.Clean(filepath.Join(dir, lines[0])), Dir: remote.On(dir, lines[1]), Common: lines[2]}
+	if !strings.HasPrefix(r.Common, "/") && !filepath.IsAbs(r.Common) {
 		r.Common = filepath.Join(dir, r.Common)
+	} else {
+		r.Common = remote.On(dir, r.Common)
 	}
 	return r, nil
 }
@@ -61,20 +67,27 @@ func (e *Error) Unwrap() error { return e.Err }
 
 // run runs git in dir, with stdin, and returns what it wrote. It never
 // asks for a password, nor opens an editor for a message: there is no
-// terminal to ask in, and the message git proposes is taken.
+// terminal to ask in, and the message git proposes is taken. In a folder
+// of another machine, it runs git there.
 func run(dir string, stdin []byte, args ...string) ([]byte, error) {
-	cmd := exec.Command("git", args...)
-	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true")
-	if os.Getenv("GIT_SSH_COMMAND") == "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND=ssh -oBatchMode=yes")
+	env := []string{"GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "LC_ALL=C", "GIT_EDITOR=true"}
+	if vfs.IsRemote(dir) || os.Getenv("GIT_SSH_COMMAND") == "" {
+		env = append(env, "GIT_SSH_COMMAND=ssh -oBatchMode=yes")
 	}
+	var in io.Reader
 	if stdin != nil {
-		cmd.Stdin = bytes.NewReader(stdin)
+		in = bytes.NewReader(stdin)
+	}
+	cmd, err := vfs.Command(dir, env, in, "git", args...)
+	if err != nil {
+		return nil, &Error{Args: args, Err: err}
 	}
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	if err := cmd.Run(); err != nil {
+		if vfs.IsRemote(dir) && !remote.IsConnected(dir) {
+			err = remote.ErrOffline
+		}
 		return out.Bytes(), &Error{Args: args, Stderr: strings.TrimSpace(errb.String()), Err: err}
 	}
 	return out.Bytes(), nil
@@ -305,7 +318,7 @@ func subproject(hash string, dirty bool) string {
 // it. ok is false when it is not checked out.
 func (r *Repo) WorkSubproject(path string, dirty bool) (text string, ok bool, err error) {
 	// Without its own .git, git in the folder would find this repository.
-	if _, err := os.Lstat(filepath.Join(path, ".git")); err != nil {
+	if _, err := vfs.Lstat(filepath.Join(path, ".git")); err != nil {
 		return "", false, nil
 	}
 	out, err := run(path, nil, "rev-parse", "--verify", "-q", "HEAD")
@@ -424,9 +437,16 @@ func (o Op) Title() string {
 // A rebase picks commits as a cherry-pick does, so it is looked for
 // first.
 func (r *Repo) InProgress() Op {
+	names := []string{"rebase-merge", "rebase-apply", "CHERRY_PICK_HEAD", "REVERT_HEAD", "MERGE_HEAD"}
+	paths := make([]string, len(names))
+	for i, n := range names {
+		paths[i] = filepath.Join(r.Dir, n)
+	}
+	// At one round trip to a remote host.
+	there, _ := vfs.StatMany(paths)
 	exists := func(name string) bool {
-		_, err := os.Stat(filepath.Join(r.Dir, name))
-		return err == nil
+		_, ok := there[filepath.Join(r.Dir, name)]
+		return ok
 	}
 	switch {
 	case exists("rebase-merge"), exists("rebase-apply"):
@@ -510,7 +530,7 @@ func (r *Repo) Abort(op Op) error {
 // MergeMessage returns the message git proposes for the commit that ends
 // a merge, cherry-pick or revert stopped part way, without its comments.
 func (r *Repo) MergeMessage() string {
-	b, err := os.ReadFile(filepath.Join(r.Dir, "MERGE_MSG"))
+	b, err := vfs.ReadFile(filepath.Join(r.Dir, "MERGE_MSG"))
 	if err != nil {
 		return ""
 	}

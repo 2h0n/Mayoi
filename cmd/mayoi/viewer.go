@@ -18,6 +18,9 @@ import (
 
 	"github.com/egoist/mygo/ui"
 	xdraw "golang.org/x/image/draw"
+
+	"mayoi/internal/remote"
+	"mayoi/internal/vfs"
 )
 
 // imageExts are the files a viewer shows: those MyGo decodes.
@@ -153,6 +156,13 @@ func decodeImage(path string) (bm *ui.Bitmap, w, h int, size int64, err error) {
 // or a device: it opens without blocking, takes only a regular file, as
 // the file opened says, and reads at most maxOpenBytes of it.
 func readImage(path string) ([]byte, error) {
+	if remote.Is(path) {
+		data, err := vfs.ReadFileLimit(path, maxOpenBytes)
+		if errors.Is(err, remote.ErrTooLarge) {
+			err = errors.New("the image is too large to show")
+		}
+		return data, err
+	}
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err

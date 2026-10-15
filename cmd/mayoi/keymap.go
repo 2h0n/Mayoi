@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/keymap"
+	"mayoi/internal/remote"
 )
 
 // keyPlace is where the keyboard is as the shortcuts of keybindings.json
@@ -489,12 +490,12 @@ func (a *app) copyActivePath(rel bool) {
 	if rel && a.tree != nil {
 		path = a.tree.Rel(path)
 	}
-	a.services.WriteClipboard(path)
+	a.services.WriteClipboard(hostPath(path))
 }
 
 // revealActive shows the file of the tab shown in the file manager.
 func (a *app) revealActive() {
-	if path := a.activeFile(); path != "" {
+	if path := a.activeFile(); path != "" && !remote.Is(path) {
 		a.host.reveal(path)
 	}
 }
