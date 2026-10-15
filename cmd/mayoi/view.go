@@ -299,6 +299,9 @@ func (a *app) commandCenter(c *ui.Context) {
 		}
 		if a.root != "" {
 			folder = filepath.Base(a.root)
+			if host := remote.HostOf(a.root); host != "" {
+				folder = filepath.Base(hostPath(a.root)) + " [SSH: " + host + "]"
+			}
 		}
 		if name != "" && folder != "" && room > 0 {
 			// The folder goes before the name is cut short.

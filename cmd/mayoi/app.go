@@ -101,6 +101,12 @@ type app struct {
 	connState remote.State
 	connErr   error
 	connUnsub func()
+	// retry is the reconnection due while a connection lost waits for the
+	// host to come back: retries counts those that failed in a row, and
+	// retryAt is when the next starts.
+	retry   *time.Timer
+	retries int
+	retryAt time.Time
 	// indexed is when the files of a remote folder were last listed,
 	// which is done again at most every remoteIndexEvery.
 	indexed time.Time
@@ -637,6 +643,9 @@ func (a *app) windowTitle() string {
 
 // tick runs once a frame, after the posted functions.
 func (a *app) tick() {
+	if a.tree != nil {
+		a.tree.SetIdle(a.blurred)
+	}
 	a.markOffline()
 	a.refreshIgnored()
 	a.refreshGit()

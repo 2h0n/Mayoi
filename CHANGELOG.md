@@ -3,6 +3,28 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Remote SSH: a connection that drops, as the network goes or the laptop
+  sleeps, connects again by itself, after 2 seconds, then less often, up
+  to every 30 seconds, and at once as the window comes back to the front.
+  The banner says when it tries next, with **Reconnect Now**; a host that
+  refuses the keys, or whose key is not trusted, says so and waits.
+- Remote SSH: the Connect to Host box groups the recent hosts, with the
+  folder opened last on each, apart from those of `~/.ssh/config`, and
+  marks the letters the query matched. While it connects it says as whom
+  and for how long, and Escape goes back to the hosts.
+- Remote SSH: the folders of the host list by name, with `..` to go up,
+  `~` for the home folder, and why a folder could not be read; the host
+  shows beside the path.
+- Remote SSH: the Explorer of a folder whose host is not connected says
+  so, with a button to reconnect, and the title bar names the host.
+- Remote SSH: a remote folder looks for changes every 15 seconds rather
+  than 3 while its window is in the background, and at once as it comes
+  back; who each host signs in as is remembered until `~/.ssh/config`
+  changes, and a remote file opens at one round trip to the host, not
+  two.
+
 ## 0.9.0
 
 - Remote SSH: **File → Remote SSH → Connect to Host…** opens a folder on

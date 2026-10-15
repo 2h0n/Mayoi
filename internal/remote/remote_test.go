@@ -230,6 +230,19 @@ func exerciseHost(t *testing.T, host string) {
 	if _, err := c.ReadFile(dir+"/nope", 0); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("missing file: %v", err)
 	}
+	// Read and stat at once.
+	if fi, got, err := c.ReadFileInfo(name, 0); err != nil || string(got) != string(data) || fi.Size() != int64(len(data)) || fi.IsDir() {
+		t.Fatalf("ReadFileInfo = %+v, %q, %v", fi, got, err)
+	}
+	if _, _, err := c.ReadFileInfo(name, 4); !errors.Is(err, ErrTooLarge) {
+		t.Fatalf("ReadFileInfo limit: %v", err)
+	}
+	if _, _, err := c.ReadFileInfo(dir+"/nope", 0); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("ReadFileInfo of a missing file: %v", err)
+	}
+	if _, _, err := c.ReadFileInfo(dir, 0); err == nil || errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("ReadFileInfo of a folder: %v", err)
+	}
 	if _, err := c.Stat(dir + "/nope"); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("stat of a missing file: %v", err)
 	}
@@ -304,5 +317,21 @@ func exerciseHost(t *testing.T, host string) {
 	}
 	if _, err := c.Stat(dir); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRefused: a host that refuses the keys, or whose key is not
+// trusted, is not worth trying again; one that is not there is.
+func TestRefused(t *testing.T) {
+	for stderr, want := range map[string]bool{
+		"me@box: Permission denied (publickey).":                     true,
+		"Host key verification failed.":                              true,
+		"ssh: connect to host box port 22: Operation timed out":      false,
+		"ssh: Could not resolve hostname box: nodename nor servname": false,
+		"": false,
+	} {
+		if got := Refused(sshError(stderr, ErrLost)); got != want {
+			t.Errorf("Refused(%q) = %v", stderr, got)
+		}
 	}
 }

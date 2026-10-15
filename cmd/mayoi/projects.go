@@ -92,6 +92,7 @@ func (m *mayoi) newFrame(h *desktop) *frame {
 		a := h.a
 		a.post(func() { a.blurred = false })
 		a.post(a.gitChanged)
+		a.post(a.wake)
 		// The File menu's recent folders leave out this one's.
 		m.refreshMenu()
 	})
@@ -201,6 +202,10 @@ func (f *frame) activate(h *desktop) {
 	if old := f.active; old != nil {
 		old.a.autoSaveAll()
 		old.a.blurred = true
+		// Its frames stop: its tree learns it is idle from here.
+		if old.a.tree != nil {
+			old.a.tree.SetIdle(true)
+		}
 	}
 	f.active = h
 	a := h.a

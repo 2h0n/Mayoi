@@ -16,7 +16,6 @@ import (
 
 	"mayoi/internal/remote"
 	"mayoi/internal/vfs"
-	"mayoi/internal/workspace"
 )
 
 // remoteSupported is whether Mayoi reaches folders over SSH here: the
@@ -64,6 +63,8 @@ func (a *app) detachRemote() {
 		return
 	}
 	a.connUnsub()
+	a.stopRetry()
+	a.retries = 0
 	a.conn, a.connUnsub, a.connState, a.connErr = nil, nil, remote.Offline, nil
 	// Ending it waits on ssh.
 	go c.Release()
@@ -81,8 +82,65 @@ func (a *app) connChanged() {
 	}
 	was := a.connState
 	a.connState, a.connErr = a.conn.State()
-	if a.connState == remote.Connected && was != remote.Connected {
-		a.reconnected()
+	switch {
+	case a.connState == remote.Connected:
+		a.stopRetry()
+		a.retries = 0
+		if was != remote.Connected {
+			a.reconnected()
+		}
+	case a.connState == remote.Offline && a.connErr != nil && !remote.Refused(a.connErr):
+		// Lost, or the host did not answer: tried again by itself, ever
+		// less often, as the network may be back in a moment.
+		if was == remote.Connecting && a.retry == nil {
+			a.retries++
+		}
+		a.scheduleRetry()
+	default:
+		// Disconnected on purpose, or refused: until asked.
+		a.stopRetry()
+	}
+}
+
+// retryDelay is how long to wait before the reconnection after n failed
+// in a row: 2s, then twice as long each time, up to half a minute.
+func retryDelay(n int) time.Duration {
+	return min(2*time.Second<<min(n, 5), 30*time.Second)
+}
+
+// scheduleRetry connects again once retryDelay passed, unless it is due.
+func (a *app) scheduleRetry() {
+	if a.retry != nil || a.conn == nil {
+		return
+	}
+	d := retryDelay(a.retries)
+	a.retryAt = time.Now().Add(d)
+	a.retry = time.AfterFunc(d, func() {
+		a.post(func() {
+			if a.retry == nil {
+				return
+			}
+			a.retry = nil
+			if a.conn != nil {
+				a.conn.Connect()
+			}
+		})
+	})
+}
+
+func (a *app) stopRetry() {
+	if a.retry != nil {
+		a.retry.Stop()
+		a.retry = nil
+	}
+}
+
+// wake connects at once a folder whose host was lost, as the window comes
+// back to the front: after sleep the network is often back by then.
+func (a *app) wake() {
+	if a.conn != nil && a.retry != nil {
+		a.stopRetry()
+		a.conn.Connect()
 	}
 }
 
@@ -132,6 +190,8 @@ func (a *app) reconnected() {
 // reconnect connects the folder's host again.
 func (a *app) reconnect() {
 	if a.conn != nil {
+		a.stopRetry()
+		a.retries = 0
 		a.conn.Connect()
 	}
 }
@@ -163,15 +223,8 @@ func (a *app) loadRemote(d *document) {
 		return
 	}
 	go func() {
-		info, err := vfs.Stat(path)
-		var data []byte
-		switch {
-		case err != nil:
-		case info.IsDir():
-			err = errors.New("it is a folder")
-		default:
-			data, err = vfs.ReadFileLimit(path, maxOpenBytes)
-		}
+		// The stat and the text at one round trip.
+		info, data, err := vfs.ReadFileInfo(path, maxOpenBytes)
 		a.post(func() { a.remoteLoaded(d, path, info, data, err) })
 	}()
 }
@@ -260,7 +313,7 @@ func (a *app) reloadRemote(d *document) {
 		if now := stampOf(info); old != nil && *now == *old {
 			return
 		}
-		data, err := vfs.ReadFileLimit(path, maxOpenBytes)
+		info, data, err := vfs.ReadFileInfo(path, maxOpenBytes)
 		if err != nil || isBinary(data) {
 			return
 		}
@@ -346,32 +399,111 @@ func hostPath(p string) string {
 }
 
 // remoteBanner shows above the editors of a remote folder while its host
-// is not connected: connecting, or why not, and a button to connect.
+// is not connected: connecting, the reconnection due, or why it is not,
+// and a button to connect now.
 func (a *app) remoteBanner(c *ui.Context) {
 	if a.conn == nil || a.connState == remote.Connected {
 		return
 	}
 	p := a.pal
 	host := a.conn.Host
-	ui.Row(c.Key("remote-banner")).Padding(6, 12).Gap(8).AlignItems(ui.Center).Background(p.hover).
+	bold := func(t string) ui.Span { return ui.Span{Text: t, Color: p.text, Weight: 600} }
+	plain := func(t string) ui.Span { return ui.Span{Text: t, Color: p.text} }
+	faint := func(t string) ui.Span { return ui.Span{Text: t, Color: p.muted} }
+	tint, icon, iconCol := p.hover, iconServer, p.muted
+	var spans []ui.Span
+	button := "Reconnect"
+	switch {
+	case a.connState == remote.Connecting && a.retries > 0:
+		spans = []ui.Span{plain("Reconnecting to "), bold(host), plain("…"), faint(fmt.Sprintf("  attempt %d", a.retries+1))}
+	case a.connState == remote.Connecting:
+		spans = []ui.Span{plain("Connecting to "), bold(host), plain("…")}
+	case remote.Refused(a.connErr):
+		tint, icon, iconCol = p.danger.Alpha(0.10), iconLock, p.danger
+		spans = []ui.Span{bold(host), plain(" refused the connection. "), faint(a.connErr.Error())}
+		button = "Try Again"
+	case a.connErr != nil:
+		tint, icon, iconCol = p.danger.Alpha(0.08), iconWifiOff, p.danger
+		spans = []ui.Span{plain("Lost the connection to "), bold(host), plain(". ")}
+		if !errors.Is(a.connErr, remote.ErrLost) {
+			spans = append(spans, faint(a.connErr.Error()))
+		}
+		button = "Reconnect Now"
+	default:
+		spans = []ui.Span{plain("Disconnected from "), bold(host), plain(". "),
+			faint("The files are read-only until it connects again.")}
+	}
+	full := ""
+	for _, sp := range spans {
+		full += sp.Text
+	}
+	ui.Row(c.Key("remote-banner")).Tooltip(full).Height(34).Padding(0, 6, 0, 12).Gap(10).AlignItems(ui.Center).Background(tint).
 		BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
-		switch {
-		case a.connState == remote.Connecting:
-			ui.Spinner(c).Size(12, 12)
-			ui.Text(c, "Connecting to "+host+"…").FontSize(12.5).TextColor(p.text).SingleLine().Shrink(1)
-		default:
-			ui.Icon(c, iconServer).FontSize(13).TextColor(p.muted)
-			msg := "Disconnected from " + host + ": the files are read-only until it connects again."
-			if a.connErr != nil {
-				msg = "Could not reach " + host + ": " + a.connErr.Error()
+		if a.connState == remote.Connecting {
+			ui.Spinner(c).Size(13, 13)
+		} else {
+			ui.Icon(c, icon).FontSize(14).TextColor(iconCol)
+		}
+		ui.RichText(c, spans...).FontSize(12.5).SingleLine().Shrink(1)
+		ui.Spacer(c)
+		if a.connState == remote.Connecting {
+			return
+		}
+		if a.retry != nil {
+			left := max(time.Until(a.retryAt).Round(time.Second), time.Second)
+			ui.Text(c, fmt.Sprintf("Retrying in %ds", int(left.Seconds()))).FontSize(12).TextColor(p.muted).SingleLine().Shrink(0)
+			// Again as the count goes down.
+			time.AfterFunc(max(time.Until(a.retryAt)%time.Second, 0)+20*time.Millisecond, a.invalidate)
+		}
+		if a.barButton(c, "remote-banner-connect", button).Clicked() {
+			a.reconnect()
+		}
+	})
+}
+
+// remoteTreeWaits shows in the explorer of a remote folder not read yet:
+// that its host is connecting, or is not, with a button to connect.
+func (a *app) remoteTreeWaits(c *ui.Context) {
+	p := a.pal
+	host := a.conn.Host
+	ui.Column(c).Padding(28, 20, 16, 20).Gap(8).AlignItems(ui.Center).Children(func() {
+		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+			if a.connState == remote.Connecting {
+				ui.Spinner(c).Size(18, 18)
+			} else {
+				ui.Icon(c, iconWifiOff).FontSize(20).TextColor(p.muted)
 			}
-			ui.Text(c, msg).FontSize(12.5).TextColor(p.text).Shrink(1)
-			ui.Spacer(c)
-			if ui.Button(c, "Reconnect").Clicked() {
+		})
+		title, msg := "Connecting…", "The files show once "+host+" answers."
+		if a.connState == remote.Offline {
+			title, msg = "Not Connected", "The files of "+host+" show once it connects."
+		}
+		ui.Text(c, title).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, msg).FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
+		if a.connState == remote.Offline {
+			ui.Box(c).Height(4)
+			if ui.Button(c.Key("tree-reconnect"), "Reconnect").FillWidth().Clicked() {
 				a.reconnect()
 			}
 		}
 	})
+}
+
+// barButton is a compact button of a bar, as the banner's.
+func (a *app) barButton(c *ui.Context, key, label string) ui.Element {
+	p := a.pal
+	b := ui.ButtonBase(c.Key(key)).Height(24).Padding(0, 10).Radius(5).AlignItems(ui.Center).Label(label).
+		Background(p.surface).Border(1, p.border)
+	switch {
+	case b.Pressed():
+		b.Background(p.surfacePressed)
+	case b.Hovered():
+		b.Background(p.surfaceHover)
+	}
+	b.Children(func() {
+		ui.Text(c, label).FontSize(12).FontWeight(500).TextColor(p.text).SingleLine()
+	})
+	return b
 }
 
 // remoteStatus is the part of the status bar of a remote folder: its host
@@ -382,27 +514,34 @@ func (a *app) remoteStatus(c *ui.Context, text func(string) ui.Element) {
 	}
 	p := a.pal
 	host := a.conn.Host
-	label, tip := "SSH: "+host, "Connected to "+host
-	switch a.connState {
-	case remote.Connecting:
+	label, tip, tint := "SSH: "+host, "Connected to "+host, p.accent
+	switch {
+	case a.connState == remote.Connected:
+		if info := a.conn.Info(); info.OS != "" {
+			tip += " (" + info.OS + ")"
+		}
+	case a.connState == remote.Connecting:
 		tip = "Connecting to " + host
-	case remote.Offline:
-		tip = "Disconnected from " + host
+	case a.retry != nil:
+		tip, tint = "Lost the connection to "+host+": reconnecting", p.danger
+	default:
+		tip, tint = "Disconnected from "+host, p.danger
 	}
-	b := ui.ButtonBase(c.Key("status:ssh")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
+	b := ui.ButtonBase(c.Key("status:ssh")).Height(statusBarH-6).Padding(0, 7).Gap(5).Radius(4).
 		AlignItems(ui.Center).Label(tip).Tooltip(tip)
-	b.Background(p.accent.Alpha(0.16))
+	b.Background(tint.Alpha(0.16))
 	if b.Hovered() {
-		b.Background(p.accent.Alpha(0.26))
+		b.Background(tint.Alpha(0.26))
 	}
 	b.Children(func() {
 		if a.connState == remote.Connecting {
 			ui.Spinner(c).Size(11, 11)
 		} else {
-			icon := ui.Icon(c, iconServer).FontSize(12).TextColor(p.statusFg)
+			icon, col := iconServer, p.statusFg
 			if a.connState == remote.Offline {
-				icon.TextColor(p.danger)
+				icon, col = iconWifiOff, p.danger
 			}
+			ui.Icon(c, icon).FontSize(12).TextColor(col)
 		}
 		text(label)
 	})
@@ -423,498 +562,6 @@ func (a *app) remoteStatus(c *ui.Context, text func(string) ui.Element) {
 		m.Separator()
 		if m.Item("Close Remote Folder").Chosen() {
 			a.post(a.closeFolder)
-		}
-	})
-}
-
-// remotePicker is the box that connects to a host and chooses a folder
-// on it: first the hosts, of ~/.ssh/config and those connected to before,
-// then, once connected, the folders of the host.
-type remotePicker struct {
-	open  bool
-	stage pickStage
-	query string
-	sel   int
-	moved bool
-	err   string
-
-	// hosts are the hosts to choose from, names their rows, resolved who
-	// and where each signs in as, as ssh's config says, and results those
-	// the query matches.
-	hosts    []string
-	recent   map[string]bool
-	resolved map[string]string
-	results  []workspace.Match
-	shown    string
-	stale    bool
-
-	// conn is the connection to the host chosen, held while the box is
-	// open, and unsub stops following it.
-	conn  *remote.Conn
-	unsub func()
-	// dir is the folder listed on the host, dirs its folders, listing set
-	// while it is read; checking is set while the folder to open is
-	// looked at.
-	dir      string
-	dirs     []string
-	listing  bool
-	listed   string
-	checking bool
-}
-
-type pickStage int
-
-const (
-	pickHost pickStage = iota
-	pickConnecting
-	pickFolder
-)
-
-// recentHosts are the hosts of the recent folders, the latest first.
-func (a *app) recentHosts() []string {
-	var hosts []string
-	for _, d := range a.settings.Recent {
-		if h := remote.HostOf(d); h != "" && !slices.Contains(hosts, h) {
-			hosts = append(hosts, h)
-		}
-	}
-	return hosts
-}
-
-// openRemotePicker shows the box of the hosts.
-func (a *app) openRemotePicker() {
-	if !remoteSupported {
-		return
-	}
-	a.closeRemotePicker()
-	r := &a.remotePick
-	*r = remotePicker{open: true, stale: true, recent: map[string]bool{}, resolved: map[string]string{}}
-	for _, h := range a.recentHosts() {
-		r.hosts = append(r.hosts, h)
-		r.recent[h] = true
-	}
-	for _, h := range remote.ConfigHosts() {
-		if !slices.Contains(r.hosts, h) {
-			r.hosts = append(r.hosts, h)
-		}
-	}
-	// Who and where each signs in as, which ssh -G tells, a few at a time.
-	hosts := slices.Clone(r.hosts)
-	go func() {
-		for _, h := range hosts {
-			if s := remote.Resolve(h); s != "" {
-				a.post(func() {
-					if a.remotePick.resolved != nil {
-						a.remotePick.resolved[h] = s
-					}
-				})
-			}
-		}
-	}()
-}
-
-// openRemoteFolder shows the box of the folders of the folder's host, or
-// of the hosts for a folder of this machine.
-func (a *app) openRemoteFolder() {
-	if a.conn == nil || a.connState != remote.Connected {
-		a.openRemotePicker()
-		return
-	}
-	a.openRemotePicker()
-	a.chooseHost(a.conn.Host)
-}
-
-// closeRemotePicker hides the box, letting go of the connection it held,
-// which ends unless a folder uses it.
-func (a *app) closeRemotePicker() {
-	r := &a.remotePick
-	if !r.open {
-		return
-	}
-	r.open = false
-	a.releasePick()
-	if a.focus != paneTerminal {
-		a.focusColumn()
-	}
-}
-
-func (a *app) releasePick() {
-	r := &a.remotePick
-	if r.conn != nil {
-		r.unsub()
-		c := r.conn
-		r.conn, r.unsub = nil, nil
-		go c.Release()
-	}
-}
-
-// chooseHost connects to host, then lists its folders.
-func (a *app) chooseHost(host string) {
-	r := &a.remotePick
-	host = strings.TrimSpace(host)
-	if err := remote.CheckHost(host); err != nil {
-		r.err = err.Error()
-		return
-	}
-	a.releasePick()
-	c := remote.For(host)
-	c.Acquire()
-	r.conn, r.err = c, ""
-	r.unsub = c.Subscribe(func() { a.post(a.pickConnChanged) })
-	r.stage, r.query = pickConnecting, ""
-	c.Connect()
-	a.pickConnChanged()
-}
-
-// pickConnChanged follows the connection of the box: once connected, it
-// lists the home folder, or the folder of the host opened last.
-func (a *app) pickConnChanged() {
-	r := &a.remotePick
-	if !r.open || r.conn == nil || r.stage != pickConnecting {
-		return
-	}
-	switch s, err := r.conn.State(); s {
-	case remote.Connected:
-		start := r.conn.Info().Home
-		for _, d := range a.settings.Recent {
-			if host, rp, ok := remote.Split(d); ok && host == r.conn.Host && d != a.root {
-				start = rp
-				break
-			}
-		}
-		r.stage, r.sel = pickFolder, 0
-		r.query = strings.TrimSuffix(start, "/") + "/"
-		r.listed = ""
-	case remote.Offline:
-		r.stage = pickHost
-		r.query = r.conn.Host
-		if err != nil {
-			r.err = err.Error()
-		} else {
-			r.err = "Could not connect to " + r.conn.Host
-		}
-		a.releasePick()
-	}
-}
-
-// pickDir is the folder the query of the box lists, and the start of the
-// name of the folder in it typed so far.
-func pickDir(query string) (dir, prefix string) {
-	q := strings.TrimSpace(query)
-	if q == "" {
-		return "/", ""
-	}
-	if strings.HasSuffix(q, "/") {
-		return path.Clean(q), ""
-	}
-	return path.Dir(path.Clean(q)), path.Base(q)
-}
-
-// listPick reads the folders of the folder the query names, in the
-// background, when it changed.
-func (a *app) listPick() {
-	r := &a.remotePick
-	dir, _ := pickDir(r.query)
-	if r.conn == nil || r.listing || dir == r.listed || !strings.HasPrefix(dir, "/") {
-		return
-	}
-	r.listing, r.listed = true, dir
-	c := r.conn
-	go func() {
-		entries, err := c.ReadDir(dir)
-		a.post(func() {
-			r.listing = false
-			if r.conn != c || r.listed != dir {
-				return
-			}
-			r.dir, r.dirs = dir, nil
-			if err != nil {
-				return
-			}
-			for _, e := range entries {
-				if e.Dir {
-					r.dirs = append(r.dirs, e.Name)
-				}
-			}
-			slices.SortFunc(r.dirs, func(x, y string) int {
-				// Hidden folders last.
-				if hx, hy := strings.HasPrefix(x, "."), strings.HasPrefix(y, "."); hx != hy {
-					if hx {
-						return 1
-					}
-					return -1
-				}
-				return strings.Compare(strings.ToLower(x), strings.ToLower(y))
-			})
-		})
-	}()
-}
-
-// pickRows are the rows of the folders of the box: the folder typed, to
-// open it, then the folders in it whose names start as the query's last
-// part does.
-func (a *app) pickRows() []string {
-	r := &a.remotePick
-	dir, prefix := pickDir(r.query)
-	rows := []string{""}
-	if r.dir != dir {
-		return rows
-	}
-	for _, name := range r.dirs {
-		if strings.HasPrefix(strings.ToLower(name), strings.ToLower(prefix)) &&
-			(prefix != "" || !strings.HasPrefix(name, ".")) {
-			rows = append(rows, name)
-		}
-	}
-	return rows
-}
-
-// pickFolderRow goes into the folder of a row, or opens the folder typed
-// for the first, as it is there.
-func (a *app) pickFolderRow(i int) {
-	r := &a.remotePick
-	rows := a.pickRows()
-	if i < 0 || i >= len(rows) {
-		return
-	}
-	if i > 0 {
-		dir, _ := pickDir(r.query)
-		r.query = path.Join(dir, rows[i]) + "/"
-		r.sel, r.err = 0, ""
-		return
-	}
-	target := path.Clean(strings.TrimSpace(r.query))
-	if !strings.HasPrefix(target, "/") {
-		r.err = "Enter a path from /."
-		return
-	}
-	if r.checking || r.conn == nil {
-		return
-	}
-	r.checking, r.err = true, ""
-	c := r.conn
-	go func() {
-		info, err := c.Stat(target)
-		a.post(func() {
-			r.checking = false
-			if r.conn != c || !r.open {
-				return
-			}
-			switch {
-			case errors.Is(err, fs.ErrNotExist):
-				r.err = "There is no folder " + target + "."
-			case err != nil:
-				r.err = err.Error()
-			case !info.IsDir():
-				r.err = target + " is not a folder."
-			default:
-				a.openRemote(remote.Path(c.Host, target))
-			}
-		})
-	}()
-}
-
-// openRemote opens a remote folder as Open Folder opens one: in the
-// window when it shows nothing, else in a window, or a project tab, of
-// its own.
-func (a *app) openRemote(dir string) {
-	// The folder holds the connection before the box lets go of it.
-	if a.blank() {
-		a.switchFolder(dir)
-	} else {
-		a.host.newWindow(dir)
-	}
-	a.closeRemotePicker()
-}
-
-// remotePickerView shows the box of the hosts, or of the folders of the
-// host chosen, while it is open.
-func (a *app) remotePickerView(c *ui.Context) {
-	r := &a.remotePick
-	if !r.open {
-		return
-	}
-	p := a.pal
-	if r.stage == pickHost && (r.stale || r.shown != r.query) {
-		r.results = workspace.Fuzzy(r.hosts, strings.TrimSpace(r.query), 60)
-		if strings.TrimSpace(r.query) == "" {
-			r.results = r.results[:0]
-			for i := range r.hosts {
-				r.results = append(r.results, workspace.Match{Index: i})
-			}
-		}
-		r.shown, r.stale, r.sel = r.query, false, 0
-	}
-	if r.stage == pickFolder {
-		a.listPick()
-	}
-	// The host typed, when it is none of those listed, is the first row.
-	typed := strings.TrimSpace(r.query)
-	extra := r.stage == pickHost && typed != "" && !slices.Contains(r.hosts, typed)
-	var rows []string
-	if r.stage == pickFolder {
-		rows = a.pickRows()
-	}
-	count := len(r.results)
-	switch {
-	case r.stage == pickFolder:
-		count = len(rows)
-	case extra:
-		count++
-	}
-	r.sel = min(r.sel, max(count-1, 0))
-	choose := func(i int) {
-		switch r.stage {
-		case pickHost:
-			if extra {
-				if i == 0 {
-					a.chooseHost(typed)
-					return
-				}
-				i--
-			}
-			if i >= 0 && i < len(r.results) {
-				a.chooseHost(r.hosts[r.results[i].Index])
-			} else if typed != "" {
-				a.chooseHost(typed)
-			}
-		case pickFolder:
-			a.pickFolderRow(i)
-		}
-	}
-	title, placeholder := "Connect to Host", "Choose or type a host: [user@]host[:port]"
-	if r.stage != pickHost && r.conn != nil {
-		title, placeholder = "Open Folder on "+r.conn.Host, "Type the path of a folder"
-	}
-	ui.Overlay(c, func() {
-		back := a.dialogBack(c, "remote")
-		back.Children(func() {
-			box := a.floating(c, ui.Column(c).Width(560).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
-				Role(ui.RoleDialog).Label(title)
-			box.Children(func() {
-				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
-					icon := iconServer
-					if r.stage == pickFolder {
-						icon = iconFolderOpen
-					}
-					ui.Icon(c, icon).FontSize(15).TextColor(p.muted)
-					if r.stage == pickConnecting {
-						ui.Spinner(c).Size(13, 13)
-						ui.Text(c, "Connecting to "+r.conn.Host+"…").FontSize(14).TextColor(p.text).Grow(1)
-						return
-					}
-					in := a.textKeys(ui.TextInputBase(c.Key(fmt.Sprintf("remote-input-%d", r.stage)), &r.query)).Grow(1).FontSize(14).AutoFocus().
-						Placeholder(placeholder).Label(title)
-					if in.Changed() {
-						r.err = ""
-					}
-					if in.Shortcut(0, ui.KeyDown) {
-						r.sel, r.moved = min(r.sel+1, count-1), true
-					}
-					if in.Shortcut(0, ui.KeyUp) {
-						r.sel, r.moved = max(r.sel-1, 0), true
-					}
-					sel := r.sel
-					if r.stage == pickFolder && in.Shortcut(0, ui.KeyTab) {
-						// Into the folder chosen, or the only one that matches.
-						if sel == 0 && len(rows) == 2 {
-							sel = 1
-						}
-						if sel > 0 {
-							a.post(func() { a.pickFolderRow(sel) })
-						}
-					}
-					if in.Submitted() {
-						a.post(func() { choose(sel) })
-					}
-					if r.checking || r.listing {
-						ui.Spinner(c).Size(12, 12)
-					}
-				})
-				if r.err != "" {
-					ui.Text(c, r.err).FontSize(12.5).TextColor(p.danger).Padding(8, 16, 0)
-				}
-				switch r.stage {
-				case pickHost:
-					a.pickHostRows(c, extra, typed, choose)
-				case pickFolder:
-					ui.Scroll(c.Key("remote-folders")).MaxHeight(380).Padding(6).Children(func() {
-						dir, _ := pickDir(r.query)
-						for i, name := range rows {
-							label, icon := "Open "+path.Clean(strings.TrimSpace(r.query)), iconFolderOpen
-							if i > 0 {
-								label, icon = path.Join(dir, name), iconFolder
-							}
-							a.pickRow(c, i, "remote-dir:"+label, icon, label, "", choose)
-						}
-					})
-				}
-				r.moved = false
-				switch r.stage {
-				case pickFolder:
-					a.quickFooter(c, false, "open or go in", "tab goes into a folder", false)
-				case pickHost:
-					a.quickFooter(c, false, "connect", "Keys and the SSH agent sign in", false)
-				}
-			})
-			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
-				a.closeRemotePicker()
-			}
-		})
-	})
-}
-
-// pickHostRows are the rows of the hosts of the box: the host typed, then
-// those the query matches.
-func (a *app) pickHostRows(c *ui.Context, extra bool, typed string, choose func(int)) {
-	r := &a.remotePick
-	p := a.pal
-	if !extra && len(r.results) == 0 {
-		msg := "No hosts in ~/.ssh/config: type one, as user@host"
-		ui.Text(c, msg).FontSize(13).TextColor(p.muted).Padding(12, 16)
-		return
-	}
-	ui.Scroll(c.Key("remote-hosts")).MaxHeight(380).Padding(6).Children(func() {
-		i := 0
-		if extra {
-			a.pickRow(c, 0, "remote-typed", iconPlus, "Connect to "+typed, "", choose)
-			i++
-		}
-		for _, m := range r.results {
-			h := r.hosts[m.Index]
-			detail := r.resolved[h]
-			if r.recent[h] {
-				detail = strings.TrimSpace("recent  " + detail)
-			}
-			row := i
-			a.pickRow(c, row, "remote-host:"+h, iconServer, h, detail, choose)
-			i++
-		}
-	})
-}
-
-// pickRow is a row of the box, chosen by click or Enter.
-func (a *app) pickRow(c *ui.Context, i int, key string, icon *ui.SVG, label, detail string, choose func(int)) {
-	r := &a.remotePick
-	p := a.pal
-	row := ui.ButtonBase(c.Key(key)).Padding(5, 10).Gap(10).Radius(6).Justify(ui.Start).AlignItems(ui.Center).Label(label)
-	switch {
-	case i == r.sel:
-		row.Background(p.active)
-	case row.Hovered():
-		row.Background(p.hover)
-	}
-	if i == r.sel && r.moved {
-		row.ScrollIntoView()
-	}
-	if row.Clicked() {
-		a.post(func() { choose(i) })
-	}
-	row.Children(func() {
-		ui.Icon(c, icon).FontSize(15).TextColor(p.accent)
-		ui.Text(c, label).FontSize(13).TextColor(p.text).SingleLine().Shrink(0)
-		if detail != "" {
-			ui.Text(c, detail).FontSize(12).TextColor(p.faint).SingleLine().Shrink(1)
 		}
 	})
 }

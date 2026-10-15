@@ -254,6 +254,39 @@ exec head -c ` + strconv.FormatInt(limit+1, 10) + ` -- "$1"`
 	return out, nil
 }
 
+// ReadFileInfo reads a file of the host as ReadFile does, and stats it,
+// at one round trip: what opening a file needs.
+func (c *Conn) ReadFileInfo(p string, limit int64) (*FileInfo, []byte, error) {
+	read := "cat"
+	if limit > 0 {
+		read = "head -c " + strconv.FormatInt(limit+1, 10)
+	}
+	script := `if [ -d "$1" ]; then echo "$1: is a directory" >&2; exit 1; fi
+if [ ! -e "$1" ]; then echo "$1: No such file or directory" >&2; exit 1; fi
+` + c.Info().statCmd(true) + ` -- "$1" || exit 1
+exec ` + read + ` -- "$1"`
+	out, err := c.Run(nil, script, p)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil, notExist("open", p)
+		}
+		return nil, nil, err
+	}
+	// The line of stat ends with the path, then the file.
+	head, data, ok := bytes.Cut(out, []byte("|"+p+"\n"))
+	if !ok {
+		return nil, nil, errors.New("the host did not answer as a POSIX shell does")
+	}
+	info, ok := parseStat(append(head, "|"+p...))[p]
+	if !ok {
+		return nil, nil, fmt.Errorf("could not stat %s", p)
+	}
+	if limit > 0 && int64(len(data)) > limit {
+		return nil, nil, ErrTooLarge
+	}
+	return info, data, nil
+}
+
 // WriteFile writes data to a file of the host, and returns what stat says
 // of it then. data goes whole to a file beside the host's temporary ones
 // first, and is copied into the file only once it is all there, so that

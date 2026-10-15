@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -114,9 +115,55 @@ func configLine(line string) (string, []string) {
 	return key, args
 }
 
+var (
+	resolvedMu sync.Mutex
+	// resolved are the answers of Resolve, until ~/.ssh/config changes,
+	// as configMod says it last did.
+	resolved  = map[string]string{}
+	configMod time.Time
+)
+
+// configStamp is when ~/.ssh/config last changed.
+func configStamp() time.Time {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return time.Time{}
+	}
+	info, err := os.Stat(filepath.Join(home, ".ssh", "config"))
+	if err != nil {
+		return time.Time{}
+	}
+	return info.ModTime()
+}
+
+// Resolved returns what Resolve said of host, if it did since ssh's
+// config last changed, without running ssh.
+func Resolved(host string) (string, bool) {
+	mod := configStamp()
+	resolvedMu.Lock()
+	defer resolvedMu.Unlock()
+	if !mod.Equal(configMod) {
+		clear(resolved)
+		configMod = mod
+	}
+	s, ok := resolved[host]
+	return s, ok
+}
+
 // Resolve returns who and where ssh signs in as for host, by its config:
 // "user@hostname", or "" when ssh cannot say.
 func Resolve(host string) string {
+	if s, ok := Resolved(host); ok {
+		return s
+	}
+	s := resolve(host)
+	resolvedMu.Lock()
+	resolved[host] = s
+	resolvedMu.Unlock()
+	return s
+}
+
+func resolve(host string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, "ssh", append([]string{"-G"}, hostArgs(host)...)...).Output()

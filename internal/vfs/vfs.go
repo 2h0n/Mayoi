@@ -9,6 +9,7 @@ package vfs
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -91,6 +92,30 @@ func ReadFileLimit(p string, limit int64) ([]byte, error) {
 		}
 	}
 	return os.ReadFile(p)
+}
+
+// ReadFileInfo stats a file and reads it, as Stat and ReadFileLimit do,
+// at one round trip for one of a host.
+func ReadFileInfo(p string, limit int64) (fs.FileInfo, []byte, error) {
+	if c, rp, ok := remote.Lookup(p); ok {
+		info, data, err := c.ReadFileInfo(rp, limit)
+		if err != nil {
+			return nil, nil, err
+		}
+		return info, data, nil
+	}
+	info, err := os.Stat(p)
+	if err != nil {
+		return nil, nil, err
+	}
+	if info.IsDir() {
+		return nil, nil, &fs.PathError{Op: "read", Path: p, Err: errors.New("is a directory")}
+	}
+	data, err := ReadFileLimit(p, limit)
+	if err != nil {
+		return nil, nil, err
+	}
+	return info, data, nil
 }
 
 // WriteFile writes data to a file, made with perm when it is new, and

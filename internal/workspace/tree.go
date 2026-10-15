@@ -84,6 +84,8 @@ type Tree struct {
 	gone    map[string]bool // paths removed
 	timer   *time.Timer
 	closed  bool
+	// idle is set while the tree's window is not in front.
+	idle bool
 }
 
 // NewTree opens the tree of root. post runs a function on the main thread.
@@ -394,17 +396,42 @@ func stampOf(info fs.FileInfo) *stamp {
 	return &stamp{size: info.Size(), mod: info.ModTime(), dir: info.IsDir()}
 }
 
+// IdlePolls is how many polls of a remote tree are left out while it is
+// idle, for each that runs.
+const IdlePolls = 4
+
+// SetIdle has a remote tree poll less often while its window is not in
+// front, and at once as it comes back.
+func (t *Tree) SetIdle(idle bool) {
+	if !t.remote {
+		return
+	}
+	t.mu.Lock()
+	was := t.idle
+	t.idle = idle
+	t.mu.Unlock()
+	if was && !idle {
+		t.poll(false)
+	}
+}
+
 // pollLoop has the main thread poll a remote tree until it closes.
 func (t *Tree) pollLoop() {
 	tick := time.NewTicker(PollEvery)
 	defer tick.Stop()
+	skipped := 0
 	for range tick.C {
 		t.mu.Lock()
-		closed := t.closed
+		closed, idle := t.closed, t.idle
 		t.mu.Unlock()
 		if closed {
 			return
 		}
+		if idle && skipped < IdlePolls {
+			skipped++
+			continue
+		}
+		skipped = 0
 		t.post(func() { t.poll(false) })
 	}
 }

@@ -38,6 +38,10 @@ func (s State) String() string {
 // ErrOffline is the error of what needs a connection that is not there.
 var ErrOffline = errors.New("not connected")
 
+// ErrLost is the error of a connection that ended without ssh saying why,
+// as when the network goes.
+var ErrLost = errors.New("the connection was lost")
+
 // Info is what the connection found of the host as it connected.
 type Info struct {
 	Home string // the home folder
@@ -274,7 +278,7 @@ func (c *Conn) dial(ctx context.Context) {
 	for ready := false; !ready; {
 		select {
 		case <-exited:
-			fail(sshError(stderr.String(), "ssh exited"))
+			fail(sshError(stderr.String(), errors.New("ssh exited")))
 			return
 		case <-ctx.Done():
 			cmd.Process.Kill()
@@ -322,7 +326,7 @@ func (c *Conn) dial(ctx context.Context) {
 			c.master, c.exited = nil, nil
 			c.state = Offline
 			if !c.leaving {
-				c.err = sshError(stderr.String(), "the connection was lost")
+				c.err = sshError(stderr.String(), ErrLost)
 			}
 			c.cancel()
 		}
@@ -526,7 +530,7 @@ func (c *Conn) TerminalCommand(dir string) []string {
 }
 
 // sshError is what to say of an ssh that failed, by what it said.
-func sshError(stderr, fallback string) error {
+func sshError(stderr string, fallback error) error {
 	var lines []string
 	for l := range strings.SplitSeq(stderr, "\n") {
 		if l = strings.TrimSpace(l); l != "" && !strings.HasPrefix(l, "Warning:") {
@@ -534,16 +538,30 @@ func sshError(stderr, fallback string) error {
 		}
 	}
 	if len(lines) == 0 {
-		return errors.New(fallback)
+		return fallback
 	}
 	msg := lines[len(lines)-1]
 	switch {
 	case strings.Contains(msg, "Host key verification failed"):
-		msg += " Connect once with ssh in a terminal to trust the host's key."
+		return &refusedError{msg + " Connect once with ssh in a terminal to trust the host's key."}
 	case strings.Contains(msg, "Permission denied"):
-		msg += " Mayoi signs in with keys and the SSH agent, not passwords."
+		return &refusedError{msg + " Mayoi signs in with keys and the SSH agent, not passwords."}
 	}
 	return errors.New(msg)
+}
+
+// refusedError is a host that would not let ssh sign in, or whose key is
+// not trusted: connecting again fails the same way until something
+// changes.
+type refusedError struct{ msg string }
+
+func (e *refusedError) Error() string { return e.msg }
+
+// Refused reports whether err is a connection the host refused, which is
+// not worth trying again by itself, unlike one lost or timed out.
+func Refused(err error) bool {
+	var r *refusedError
+	return errors.As(err, &r)
 }
 
 // syncBuffer is a buffer that a process writes to while another goroutine

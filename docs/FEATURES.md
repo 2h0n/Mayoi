@@ -323,12 +323,14 @@ Each folder gets its own window.
 over SSH, with the system's `ssh` and nothing to install on the other side. It works on macOS and Linux; Windows does
 not have it yet.
 
-- The box lists the hosts of `~/.ssh/config`, with those it includes, and the hosts connected to before, first. Each
-  shows the user and the machine `ssh -G` resolves it to. Type `user@host` or `user@host:port` to connect to one it
-  does not list.
+- The box lists the hosts connected to before under **Recent**, each with the folder opened there last, then the hosts
+  of `~/.ssh/config`, with those it includes. Each shows the user and the machine `ssh -G` resolves it to. Type to
+  filter them, or type `user@host` or `user@host:port` to connect to one it does not list. While it connects, the box
+  says as whom, and after a few seconds for how long; Escape goes back to the hosts.
 - Once connected, the box lists the folders of the host, from the folder opened there last, or the home folder. Type a
-  path, ↑↓ choose a folder, ↵ or Tab goes into it, and ↵ on the first row opens the folder typed. The folder opens as
-  **Open Folder** opens one: in the window if it shows nothing, else in a window, or a project tab, of its own.
+  path (`~` for the home folder), ↑↓ choose a folder, ↵ or Tab goes into it, `..` goes up, and ↵ on the first row opens
+  the folder typed. The folder opens as **Open Folder** opens one: in the window if it shows nothing, else in a window,
+  or a project tab, of its own.
 - Mayoi signs in with keys and the SSH agent, never a password, and honors `~/.ssh/config`: users, ports, keys,
   `ProxyJump` and the rest. A host whose key is not trusted yet needs one `ssh` from a terminal first. One connection
   goes to each host (an ssh ControlMaster), shared by every window and command, and ends with the last window of the
@@ -339,13 +341,18 @@ not have it yet.
   the host and is copied into the file only once it all arrived, so the file keeps its owner, mode and links, and a
   connection lost on the way leaves it as it was.
 - Changes on the host show as they would locally: `inotifywait` reports them where the host has it (the
-  `inotify-tools` package), and otherwise the folders shown and the files open are looked at every 3 seconds. Without
+  `inotify-tools` package), and otherwise the folders shown and the files open are looked at every 3 seconds, every 15
+  while the window is in the background, and at once as it comes back. Without
   inotify, a change within the same second that leaves a file's size alone can go unseen on hosts whose `stat` has no
   sub-second times.
 - The status bar shows `SSH: host`, red while disconnected, with a menu to reconnect, disconnect, open another folder
-  of the host or close it. **Disconnect** keeps the window and its tabs: the files are read-only, with a banner to
-  reconnect, until it connects again, and their unsaved changes stay. A connection that drops does the same.
-  Reconnecting reads the tree, the open files and the status again; the terminals of the host end with the connection.
+  of the host or close it, and the title bar names the host. **Disconnect** keeps the window and its tabs: the files
+  are read-only, with a banner to reconnect, until it connects again, and their unsaved changes stay.
+- A connection that drops, as the network goes or the Mac sleeps, does the same, and connects again by itself: after 2
+  seconds, then twice as long each time, up to every 30 seconds, and at once as the window comes back to the front. The
+  banner says when it tries next, with **Reconnect Now**. A host that refuses the keys, or whose key is not trusted,
+  is not tried again until asked. Reconnecting reads the tree, the open files and the status again; the terminals of
+  the host end with the connection.
 - Reveal in Finder and copying files to and from the Finder are left out of a remote folder, and deleting a file
   deletes it for good, after asking, as a remote folder has no trash.
 - Recent folders, the windows and the tabs of a remote folder are kept as those of a local one, and a remote folder of

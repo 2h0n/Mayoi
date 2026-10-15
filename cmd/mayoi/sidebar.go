@@ -101,6 +101,10 @@ func (a *app) sidebar(c *ui.Context) {
 		if t := a.tree; t.Loaded(a.root) && len(t.Children(a.root)) == 0 {
 			a.emptyFolder(c)
 		}
+		if a.conn != nil && !a.tree.Loaded(a.root) {
+			a.remoteTreeWaits(c)
+			return
+		}
 		a.fileTree(c)
 	})
 }
@@ -190,6 +194,9 @@ func (a *app) noFolder(c *ui.Context) {
 		ui.Box(c).Height(4)
 		if ui.PrimaryButton(c, "Open Folder").FillWidth().Clicked() {
 			a.chooseFolder()
+		}
+		if remoteSupported && ui.Button(c.Key("no-folder-remote"), "Connect to Host…").FillWidth().Clicked() {
+			a.openRemotePicker()
 		}
 	})
 }

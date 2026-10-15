@@ -115,14 +115,24 @@ func TestConnectBoxListsHosts(t *testing.T) {
 // fakeSSH is an ssh that runs the command on this machine: as a master it
 // makes its socket and waits.
 const fakeSSH = `#!/bin/sh
-sock= master= last=
+sock= master= last= resolve=
 for a; do
   case $a in
     ControlPath=*) sock=${a#ControlPath=} ;;
     -N) master=1 ;;
+    -G) resolve=1 ;;
   esac
   last=$a
 done
+if [ -n "$resolve" ]; then
+  printf 'user deploy\nhostname %s.example.com\nport 22\n' "$last"
+  exit 0
+fi
+# A host that refuses, and one that never answers.
+case $last in
+  *refused*) echo "deploy@$last: Permission denied (publickey)." >&2; exit 255 ;;
+  *slow*) if [ -n "$master" ]; then exec sleep 600; fi ;;
+esac
 if [ -n "$master" ]; then
   trap 'rm -f "$sock"; exit 0' INT TERM
   : > "$sock"
@@ -138,11 +148,7 @@ exec sh -c "$last"
 func remoteHarness(t *testing.T) (*harness, *remote.Conn, string) {
 	host := os.Getenv("MAYOI_SSH_TEST_HOST")
 	if host == "" {
-		bin := t.TempDir()
-		if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSH), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		useFakeSSH(t)
 		host = "fake.invalid"
 	}
 	c := remote.For(host)
@@ -176,6 +182,15 @@ git init -q && git -c user.email=t@t -c user.name=t add -A && git -c user.email=
 	hs.untilLong("the remote tree", func() bool { return tt.HasText("main.go") && tt.HasText("src") })
 	t.Cleanup(a.shutdown)
 	return hs, c, dir
+}
+
+// useFakeSSH puts fakeSSH first on the PATH.
+func useFakeSSH(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSH), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // untilLong draws frames until ok, as until does, waiting longer, for a
