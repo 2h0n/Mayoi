@@ -17,6 +17,8 @@ needs a `## <version>` section here, or its build fails.
   opens it in the browser, and **Forward a Port…** forwards one by its
   number. The status bar shows the ports forwarded, with a menu to open,
   copy or stop each.
+- Remote SSH: the folders of the Explorer open at once: those in a
+  folder are read along with it, at one round trip to the host.
 - Remote SSH: a terminal of the host pastes files, and a screenshot alone
   on the clipboard, as copies uploaded to the host, and types their paths
   there, so Claude Code on the host takes a pasted screenshot. A remote

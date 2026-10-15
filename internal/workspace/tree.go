@@ -77,6 +77,10 @@ type Tree struct {
 	noNotify bool
 	// fullAgain has a full poll follow the one running.
 	fullAgain bool
+	// ahead are the folders of a remote tree read before they open: as a
+	// folder is read, so are those in it, at one round trip, which then
+	// open at once.
+	ahead map[string]aheadList
 
 	mu      sync.Mutex
 	pending map[string]bool // directories to read again
@@ -148,6 +152,20 @@ func (t *Tree) Children(path string) []string {
 	return []string{}
 }
 
+// aheadList is a folder of a remote tree read ahead, and when.
+type aheadList struct {
+	entries []vfs.Entry
+	at      time.Time
+}
+
+// aheadMax is the most folders read ahead at once, and aheadFresh how
+// long a folder read ahead is taken as it is: one older shows at once,
+// and is read again.
+const (
+	aheadMax   = 48
+	aheadFresh = 5 * time.Second
+)
+
 // Load reads a directory's entries in the background, unless they were.
 func (t *Tree) Load(dir string) {
 	if !t.dirs[dir] || t.loading[dir] {
@@ -156,7 +174,67 @@ func (t *Tree) Load(dir string) {
 	if _, ok := t.children[dir]; ok {
 		return
 	}
+	if l, ok := t.ahead[dir]; ok {
+		delete(t.ahead, dir)
+		kids, dirs := sortEntries(dir, l.entries)
+		t.set(dir, kids, dirs)
+		if time.Since(l.at) > aheadFresh {
+			t.reload(dir)
+		} else {
+			t.readAhead(dir)
+		}
+		return
+	}
 	t.reload(dir)
+}
+
+// ReadAhead reports whether a folder of a remote tree was read ahead,
+// to open at once.
+func (t *Tree) ReadAhead(dir string) bool {
+	_, ok := t.ahead[dir]
+	return ok
+}
+
+// readAhead reads the folders in dir of a remote tree, but those the
+// index skips, as node_modules, in the background, for them to open at
+// once.
+func (t *Tree) readAhead(dir string) {
+	if !t.remote {
+		return
+	}
+	var dirs []string
+	for _, k := range t.children[dir] {
+		if _, read := t.children[k]; read || !t.dirs[k] || t.loading[k] || Skipped(filepath.Base(k)) {
+			continue
+		}
+		if l, ok := t.ahead[k]; ok && time.Since(l.at) < aheadFresh {
+			continue
+		}
+		dirs = append(dirs, k)
+		if len(dirs) == aheadMax {
+			break
+		}
+	}
+	if len(dirs) == 0 {
+		return
+	}
+	go func() {
+		lists, _, err := vfs.ReadDirs(dirs)
+		if err != nil {
+			return
+		}
+		now := time.Now()
+		t.post(func() {
+			if t.ahead == nil {
+				t.ahead = map[string]aheadList{}
+			}
+			for d, es := range lists {
+				if _, read := t.children[d]; !read && t.dirs[d] {
+					t.ahead[d] = aheadList{es, now}
+				}
+			}
+		})
+	}()
 }
 
 func (t *Tree) reload(dir string) {
@@ -174,6 +252,9 @@ func (t *Tree) reload(dir string) {
 			}
 			kids, dirs := sortEntries(dir, entries)
 			t.set(dir, kids, dirs)
+			if err == nil {
+				t.readAhead(dir)
+			}
 		})
 	}()
 }
@@ -532,6 +613,7 @@ func (t *Tree) took(lists map[string][]vfs.Entry, errs map[string]error, files [
 			}
 		}
 		t.set(dir, kids, dirs)
+		t.readAhead(dir)
 	}
 	for dir, err := range errs {
 		if errors.Is(err, fs.ErrNotExist) && dir != t.Root && t.dirs[dir] {

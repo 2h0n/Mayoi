@@ -337,6 +337,9 @@ not have it yet.
   host.
 - The Explorer, quick open, search and replace in files, Source Control, blame, the gutter marks and diffs work as in a
   local folder, running `git`, `rg` (or `grep`) and `find` on the host. Terminals are shells of the host.
+- The folders in a folder of the Explorer are read along with it, at one round trip, but those the index skips, as
+  `node_modules`, so that they open at once, without waiting on the host; one read more than a few seconds before
+  shows at once and is read again.
 - Files open at once, read in the background, and save in the background: a save goes whole to a temporary file on
   the host and is copied into the file only once it all arrived, so the file keeps its owner, mode and links, and a
   connection lost on the way leaves it as it was.

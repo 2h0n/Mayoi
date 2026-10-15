@@ -193,3 +193,28 @@ func TestForwardPorts(t *testing.T) {
 		t.Error("the status bar still shows the port")
 	}
 }
+
+// TestRemoteReadAhead: the folders of a remote folder are read as it is,
+// and open at once, with no round trip to the host.
+func TestRemoteReadAhead(t *testing.T) {
+	hs, c, dir := remoteHarness(t)
+	a := hs.a
+	src := hs.path("src")
+	hs.untilLong("src read ahead", func() bool { return a.tree.ReadAhead(src) })
+	a.tree.Load(src)
+	if !a.tree.Loaded(src) || len(a.tree.Children(src)) != 1 {
+		t.Fatalf("src did not open at once: %q", a.tree.Children(src))
+	}
+	// A folder read ahead a while ago shows at once, and is read again.
+	if _, err := c.Run(nil, `mkdir -p "$1/src/deeper/x" && : > "$1/src/deeper/x/f"`, dir); err != nil {
+		t.Fatal(err)
+	}
+	a.files.Open.Add(src)
+	hs.untilLong("the new folder", func() bool { return hs.tt.HasText("deeper") })
+	deeper := hs.path("src/deeper")
+	hs.untilLong("deeper read ahead", func() bool { return a.tree.ReadAhead(deeper) })
+	a.tree.Load(deeper)
+	if got := a.tree.Children(deeper); len(got) != 1 || filepath.Base(got[0]) != "x" {
+		t.Fatalf("deeper = %q", got)
+	}
+}
