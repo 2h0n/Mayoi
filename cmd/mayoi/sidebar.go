@@ -243,8 +243,14 @@ func (a *app) fileTree(c *ui.Context) {
 	var clicked, kept string
 	var action func()
 	// end is where the last row ends, while it shows: a click below it is
-	// on no file.
-	end := float32(-1)
+	// on no file. top is where the first row starts, while it shows.
+	end, top := float32(-1), float32(0)
+	// activeDir is the folder of the document shown, whose guide is
+	// brighter, as the block of the caret's is in the editor.
+	activeDir := ""
+	if activePath != "" {
+		activeDir = filepath.Dir(activePath)
+	}
 	out := ui.Outline(c.Key("files"), &a.files, t.Children(a.root), children, func(path string) {
 		isDir := t.IsDir(path)
 		name := filepath.Base(path)
@@ -253,6 +259,14 @@ func (a *app) fileTree(c *ui.Context) {
 			if r := row.Bounds(); r.H > 0 {
 				end = r.Y + r.H
 			}
+		}
+		if n := a.files.Rows(); n > 0 && a.files.Item(0) == path {
+			if r := row.Bounds(); r.H > 0 {
+				top = r.Y
+			}
+		}
+		if depth := treeDepth(a.root, path); depth > 0 {
+			row.Draw(func(pt *ui.Painter, r ui.Rect) { a.treeGuides(pt, r, path, depth, activeDir) })
 		}
 		if row.Clicked() {
 			clicked = path
@@ -379,6 +393,14 @@ func (a *app) fileTree(c *ui.Context) {
 				TextColor(gitColor(p, letter)).Shrink(0)
 		})
 	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
+	if first, _ := a.files.List.Visible(); first > 0 || top < out.Bounds().Y {
+		// A shadow under the folder's row, as the files scroll up under it.
+		out.DrawOver(func(pt *ui.Painter, r ui.Rect) {
+			pt.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: 6}, ui.LinearGradient{
+				From: p.shadow, To: p.shadow.Alpha(0), Angle: 180,
+			}, 0)
+		})
+	}
 	a.takeKeys(out, placeExplorer, a.explorerInput)
 	out.Bind(&a.filesView)
 	if a.focusFiles {
@@ -464,6 +486,40 @@ func (a *app) fileTree(c *ui.Context) {
 	if kept != "" {
 		// A double click: keep the file open with the focus.
 		a.openFile(kept, true)
+	}
+}
+
+// treeDepth returns how deep path is in the tree of root: 0 for the
+// files and folders at its top.
+func treeDepth(root, path string) int {
+	if len(path) <= len(root)+1 || !strings.HasPrefix(path, root) {
+		return 0
+	}
+	return strings.Count(path[len(root)+1:], string(filepath.Separator))
+}
+
+// treeGuides paints the indent guides of a row of the tree, depth deep,
+// whose content is in r: a line down from the arrow of each folder above
+// it, as VS Code draws them, brighter for the folder of the document shown.
+func (a *app) treeGuides(pt *ui.Painter, r ui.Rect, path string, depth int, activeDir string) {
+	p, th := a.pal, pt.Theme()
+	step, gap := th.Space(4), th.Space(1)
+	// Where a row of the top level starts its content: the arrow, then the
+	// gap, before it; deeper rows have their indentation and a gap more.
+	base := r.X - float32(depth)*step - gap
+	y, h := r.Y-gap, r.H+2*gap
+	dir := filepath.Dir(path)
+	for k := depth - 1; k >= 0; k-- {
+		x := base - gap - step/2
+		if k > 0 {
+			x += float32(k)*step + gap
+		}
+		col := p.guide
+		if dir == activeDir {
+			col = p.guideNow
+		}
+		pt.Fill(ui.Rect{X: x, Y: y, W: 1, H: h}, col, 0)
+		dir = filepath.Dir(dir)
 	}
 }
 
