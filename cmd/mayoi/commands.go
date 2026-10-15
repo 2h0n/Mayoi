@@ -39,6 +39,7 @@ func (a *app) commands() []command {
 		{"remote.openFolder", "Open Remote Folder…", "", a.openRemoteFolder},
 		{"remote.reconnect", "Reconnect to Host", "", a.reconnect},
 		{"remote.disconnect", "Disconnect from Host", "", a.disconnect},
+		{"remote.forwardPort", "Forward a Port…", "", a.askForwardPort},
 		{"file.save", "Save", "CmdOrCtrl+S", a.saveActive},
 		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
 		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
@@ -338,10 +339,10 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	}
 	if remoteSupported {
 		// Reconnecting and disconnecting are of a remote folder's window.
-		reconnect, disconnect := item("remote.reconnect"), item("remote.disconnect")
-		reconnect.Disabled, disconnect.Disabled = a.conn == nil, a.conn == nil
+		reconnect, disconnect, forward := item("remote.reconnect"), item("remote.disconnect"), item("remote.forwardPort")
+		reconnect.Disabled, disconnect.Disabled, forward.Disabled = a.conn == nil, a.conn == nil, a.conn == nil
 		file = append(file, &mygo.MenuItem{Label: "Remote SSH", Submenu: []*mygo.MenuItem{
-			item("remote.connect"), item("remote.openFolder"), mygo.Separator(), reconnect, disconnect,
+			item("remote.connect"), item("remote.openFolder"), mygo.Separator(), reconnect, disconnect, mygo.Separator(), forward,
 		}})
 	}
 	file = append(file, mygo.Separator(),

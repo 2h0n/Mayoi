@@ -704,6 +704,12 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 	if busy := a.git.busy; busy != "" {
 		used += measure(busy, true)
 	}
+	if a.conn != nil {
+		used += measure("SSH: "+a.conn.Host, true) + 2
+		if l := portsLabel(a.conn.Forwards()); l != "" {
+			used += measure(l, true)
+		}
+	}
 	if x := a.transferText(); x != "" {
 		used += measure(x, true)
 	}
@@ -819,6 +825,7 @@ func (a *app) statusBar(c *ui.Context) {
 			a.statusMascot(c, m)
 		}
 		a.remoteStatus(c, text)
+		a.portsStatus(c, text)
 		if b := a.branch(); b != "" {
 			bb := ui.ButtonBase(c.Key("status:branch")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
 				AlignItems(ui.Center).Label("Branch " + b).Tooltip("Branch " + b + ": switch, fetch, pull or push")

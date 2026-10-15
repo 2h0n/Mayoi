@@ -1,6 +1,10 @@
 package remote
 
 import (
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -127,5 +131,65 @@ func TestTransfer(t *testing.T) {
 	}
 	if err := c.Download(host+"/dir", filepath.Join(back, "again"), stop); err != ErrCanceled {
 		t.Fatalf("canceled download: %v", err)
+	}
+}
+
+// fakeSSHW is fakeSSH, which also carries -W host:port to a port of this
+// machine, with nc.
+const fakeSSHW = `#!/bin/sh
+for a; do
+  if [ "$w" = 1 ]; then exec nc "${a%:*}" "${a##*:}"; fi
+  [ "$a" = -W ] && w=1
+done
+` + fakeSSH
+
+func TestForward(t *testing.T) {
+	bin := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSHW), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	c := For("fake-forward.invalid")
+	t.Cleanup(Shutdown)
+	c.Connect()
+	for deadline := time.Now().Add(30 * time.Second); !c.Connected(); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("could not connect")
+		}
+	}
+	// A server "on the host": on this machine, as the fake ssh runs there.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "hello from the host "+r.URL.Path)
+	}))
+	defer srv.Close()
+	port := srv.Listener.Addr().(*net.TCPAddr).Port
+	f, err := c.Forward(port)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Its port is taken here by the server itself: another one.
+	if f.Local == port || f.Local == 0 || c.LocalPort(port) != f.Local {
+		t.Fatalf("local port %d for %d", f.Local, port)
+	}
+	if again, _ := c.Forward(port); again != f {
+		t.Fatal("forwarded twice")
+	}
+	for range 3 {
+		res, err := http.Get(f.URL() + "/x")
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if string(body) != "hello from the host /x" {
+			t.Fatalf("body %q", body)
+		}
+	}
+	f.Close()
+	if len(c.Forwards()) != 0 || c.LocalPort(port) != 0 {
+		t.Fatal("still forwarded")
+	}
+	if _, err := http.Get(f.URL()); err == nil {
+		t.Fatal("still listening")
 	}
 }

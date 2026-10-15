@@ -553,6 +553,8 @@ func (a *app) remoteStatus(c *ui.Context, text func(string) ui.Element) {
 			a.disconnect()
 		}
 		m.Separator()
+		m.Submenu("Ports", a.portsMenu)
+		m.Separator()
 		if m.Item("Open Remote Folder…").Chosen() {
 			a.post(a.openRemoteFolder)
 		}

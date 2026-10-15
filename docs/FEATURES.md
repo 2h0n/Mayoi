@@ -366,6 +366,13 @@ not have it yet.
   uploaded to a temporary folder of the host, and types their paths there. An image alone on the clipboard, as a
   screenshot, goes up as a PNG file of its own, so that Claude Code running on the host takes it as it does a
   screenshot pasted on the Mac. A file of the host dragged to its terminal types its path on the host.
+- Ports of the host forward to this machine, so that a server running there, as a web app in development, opens in
+  a browser here. Clicking a link to `localhost`, `127.0.0.1` or `0.0.0.0` in a terminal of the host forwards its port
+  and opens it; **Forward a Port…**, in **File → Remote SSH**, the command palette and the status bar's `SSH` menu,
+  forwards one by its number. A port goes to the same port here when it is free, else to another, and the status bar
+  shows the ports forwarded, with a menu to open each in the browser, copy its address or stop forwarding it. Each
+  connection goes through the host's ssh connection, so a forward works again once a host lost connects again, and
+  ends as the last window of the host closes.
 - Reveal in Finder is left out of a remote folder, and deleting a file deletes it for good, after asking, as a remote
   folder has no trash.
 - Recent folders, the windows and the tabs of a remote folder are kept as those of a local one, and a remote folder of

@@ -12,10 +12,17 @@ needs a `## <version>` section here, or its build fails.
   **Upload…** and **Download…** in the explorer's menu do the same by a
   dialog. The status bar shows each transfer and how far it got, and a
   click on it cancels one.
+- Remote SSH: ports of the host forward to this machine. A link to
+  `localhost` clicked in a terminal of the host forwards its port and
+  opens it in the browser, and **Forward a Port…** forwards one by its
+  number. The status bar shows the ports forwarded, with a menu to open,
+  copy or stop each.
 - Remote SSH: a terminal of the host pastes files, and a screenshot alone
   on the clipboard, as copies uploaded to the host, and types their paths
   there, so Claude Code on the host takes a pasted screenshot. A remote
   file dragged to a terminal types its path on the host, not Mayoi's.
+- With Git 2.55 or later, the diff of a submodule shows the commits it
+  went from and to again, not the log of the submodule's commit.
 - Remote SSH: a connection that drops, as the network goes or the laptop
   sleeps, connects again by itself, after 2 seconds, then less often, up
   to every 30 seconds, and at once as the window comes back to the front.

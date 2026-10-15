@@ -1,6 +1,8 @@
 package main
 
 import (
+	"fmt"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -145,4 +147,49 @@ func TestShotTransfer(t *testing.T) {
 	a.startTransfer("Downloading build…")
 	hs.settle()
 	hs.shot("transfer-status")
+}
+
+// TestForwardPorts: a link to a port of the host forwards it, and opens
+// at the port of this machine that forwards to it; the status bar shows
+// the ports forwarded.
+func TestForwardPorts(t *testing.T) {
+	hs, c, _ := remoteHarness(t)
+	a := hs.a
+	// A port in use here, as by the server itself when the host is this
+	// machine: the forward takes another.
+	busy, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer busy.Close()
+	port := busy.Addr().(*net.TCPAddr).Port
+	link := fmt.Sprintf("http://0.0.0.0:%d/app?x=1#top", port)
+	got, ok := a.localLink(link)
+	local := c.LocalPort(port)
+	if !ok || local == 0 || local == port || got != fmt.Sprintf("http://localhost:%d/app?x=1#top", local) {
+		t.Fatalf("localLink = %q, %v (local %d)", got, ok, local)
+	}
+	if again, _ := a.localLink(fmt.Sprintf("http://localhost:%d/", port)); again != fmt.Sprintf("http://localhost:%d/", local) {
+		t.Errorf("again %q", again)
+	}
+	if len(c.Forwards()) != 1 {
+		t.Errorf("forwards %d", len(c.Forwards()))
+	}
+	for _, other := range []string{"https://example.com:8080/", "http://localhost/", "file:///x", "http://10.0.0.1:3000/"} {
+		if _, ok := a.localLink(other); ok {
+			t.Errorf("%q forwarded", other)
+		}
+	}
+	hs.settle()
+	if want := fmt.Sprintf("%d → %d", port, local); !hs.tt.HasText(want) {
+		t.Errorf("status bar has no %q", want)
+	}
+	hs.shot("ports-status")
+	for _, f := range c.Forwards() {
+		f.Close()
+	}
+	hs.settle()
+	if hs.tt.HasText(fmt.Sprintf("%d → %d", port, local)) {
+		t.Error("the status bar still shows the port")
+	}
 }

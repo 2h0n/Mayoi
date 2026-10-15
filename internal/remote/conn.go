@@ -76,6 +76,8 @@ type Conn struct {
 	users   int
 	subs    map[int]func()
 	nextSub int
+	// forwards are the ports of the host forwarded to this machine.
+	forwards []*Forward
 }
 
 var (
@@ -114,6 +116,7 @@ func Shutdown() {
 	}
 	connsMu.Unlock()
 	for _, c := range all {
+		c.stopForwards()
 		c.Disconnect()
 		c.mu.Lock()
 		if c.dir != "" {
@@ -185,6 +188,7 @@ func (c *Conn) Release() {
 	last := c.users <= 0
 	c.mu.Unlock()
 	if last {
+		c.stopForwards()
 		c.Disconnect()
 	}
 }
