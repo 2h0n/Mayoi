@@ -383,7 +383,10 @@ func (a *app) fileTree(c *ui.Context) {
 	out.Bind(&a.filesView)
 	if a.focusFiles {
 		a.focusFiles = false
-		a.filesView.Focus()
+		// Not from a box open over the window, which keeps the keyboard.
+		if !a.quick.open && a.prompt == nil && a.confirm == nil {
+			a.filesView.Focus()
+		}
 	}
 	// Below the rows, into the workspace.
 	if paths := out.DroppedFiles(); paths != nil {
