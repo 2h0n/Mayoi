@@ -5,14 +5,12 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
-- ⌘W closes a redundant empty column while preserving locked columns
-  and the last file workspace beside them.
-- Columns can be locked from their tab menu, and terminals can move to a
-  locked right column in one step. Files opened from the Explorer, Search,
-  Quick Open or Source Control use an unlocked workspace. Closing its last
-  file leaves that workspace beside the terminal, keeping the terminal's
-  width. Empty locked columns offer a new terminal, and each project's
-  session remembers its locks, widths and last file column.
+- Lock a column from its tab menu to keep it for terminals: Move to Locked
+  Right Column puts a running terminal there in one step. Files opened from
+  the Explorer, Search, Quick Open or Source Control go to an unlocked
+  column, which stays beside the terminal, at the same width, when its last
+  file closes. An empty locked column offers a new terminal, ⌘W closes an
+  extra empty column, and each project's session remembers the locks.
 - Source Control selects several files: Shift-click or Shift+Up/Down
   for a range, Cmd-click (Ctrl-click on Windows and Linux) for one more,
   and Cmd+A for all. Space, and a selected row's stage, unstage and
