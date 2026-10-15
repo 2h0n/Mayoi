@@ -380,6 +380,11 @@ func (a *app) fileTree(c *ui.Context) {
 		})
 	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
 	a.takeKeys(out, placeExplorer, a.explorerInput)
+	out.Bind(&a.filesView)
+	if a.focusFiles {
+		a.focusFiles = false
+		a.filesView.Focus()
+	}
 	// Below the rows, into the workspace.
 	if paths := out.DroppedFiles(); paths != nil {
 		srcs := slices.Clone(paths)

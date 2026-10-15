@@ -117,6 +117,10 @@ type app struct {
 	indexed time.Time
 	files   ui.OutlineState[string]
 	fileRow int
+	// filesView is the explorer's list, which focusFiles has take the
+	// keyboard as it next shows.
+	filesView  ui.Handle
+	focusFiles bool
 	// treeSynced is the document the tree last followed, selectInTree the
 	// file it should choose once its row shows.
 	treeSynced, selectInTree string

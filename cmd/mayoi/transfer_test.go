@@ -323,3 +323,27 @@ func TestRemoteSaveConflict(t *testing.T) {
 		t.Fatal("asked again")
 	}
 }
+
+// TestShowExplorerFocuses: ⇧⌘E gives the files the keyboard, so that ⌘V
+// pastes into the workspace.
+func TestShowExplorerFocuses(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	a.openFile(hs.path("main.go"), true)
+	hs.settle()
+	a.run("view.explorer")
+	hs.settle()
+	hs.settle()
+	if a.keyFocus != placeExplorer {
+		t.Fatalf("the keyboard is at %v", a.keyFocus)
+	}
+	other := filepath.Join(t.TempDir(), "dropped.txt")
+	os.WriteFile(other, []byte("x"), 0o644)
+	hs.h.clipboard = []string{other}
+	a.fileRow = -1
+	hs.tt.Command("paste")
+	hs.settle()
+	if _, err := os.Stat(hs.path("dropped.txt")); err != nil {
+		t.Fatal(err)
+	}
+}

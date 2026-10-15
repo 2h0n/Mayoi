@@ -5,6 +5,8 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- ⇧⌘E gives the Explorer the keyboard, as in VS Code, so that the arrows
+  choose a file and ⌘V pastes into the folder chosen.
 - Remote SSH: files copied in the Finder paste into a folder of the host,
   and files dropped from the Finder on the explorer copy into the folder
   under the pointer. A remote file copied in the explorer pastes as a

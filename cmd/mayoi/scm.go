@@ -1597,6 +1597,9 @@ func (a *app) initRepo() {
 func (a *app) showExplorer() {
 	a.window.SidebarClosed, a.window.SidebarView = false, ""
 	a.settings.Changed()
+	// The files take the keyboard, as in VS Code: arrows choose, and ⌘V
+	// pastes into the folder chosen.
+	a.focusFiles = true
 }
 
 // showSourceControl shows the changes in the sidebar.
