@@ -3,6 +3,14 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Source Control supports Shift-click and Shift+Up/Down range selection,
+  and Cmd/Ctrl-click to choose individual files. The selected files can
+  be staged or unstaged together with the row buttons, context menu or Space.
+- Clicking a file in Source Control previews its diff while keeping the
+  file list focused for selection; Enter moves the focus into the diff.
+
 ## 0.9.1
 
 - ⇧⌘E gives the Explorer the keyboard, as in VS Code, so that the arrows

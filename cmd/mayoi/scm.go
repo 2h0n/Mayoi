@@ -57,6 +57,8 @@ func (r *scmRow) file() bool { return !r.header && r.commit == nil && !r.more &&
 type scmState struct {
 	list      ui.ListState
 	row       int
+	selection ui.Selection[string]
+	anchor    string // the file Shift extends the choice from
 	collapsed [groupCount]bool
 	rows      []scmRow // as the last frame built them
 	// closedDirs are the folders of the tree closed, by their rows' keys;
@@ -153,6 +155,18 @@ func (a *app) scmRows() []scmRow {
 	}
 	s.rows, s.rowsOf, s.rowsCollapsed, s.rowsHistory = rows, g.status, s.collapsed, g.historyGen
 	s.rowsDirs, s.rowsTree = s.dirsGen, tree
+	// A refresh or a collapsed folder must not leave invisible files chosen.
+	if s.selection.Len() > 0 {
+		visible := make(map[string]bool, len(rows))
+		for _, r := range rows {
+			visible[r.key] = true
+		}
+		for key := range s.selection.All() {
+			if !visible[key] {
+				s.selection.Remove(key)
+			}
+		}
+	}
 	if s.rows == nil {
 		s.rows = []scmRow{}
 	}
@@ -328,6 +342,9 @@ func (a *app) scmView(c *ui.Context) {
 	base := c.Theme()
 	quiet := *base
 	quiet.Accent, quiet.AccentText, quiet.SurfaceHover = p.active, p.text, p.hover
+	if s.row >= 0 && s.row < len(rows) && rows[s.row].file() && !s.selection.Has(rows[s.row].key) {
+		quiet.Accent = p.chrome
+	}
 	c.SetTheme(&quiet)
 	var action func()
 	out := ui.List(c.Key("scm"), &s.list, len(rows), func(i int) {
@@ -353,6 +370,51 @@ func (a *app) scmView(c *ui.Context) {
 			return rows[s.row], true
 		}
 		return scmRow{}, false
+	}
+	if out.Changed() {
+		if _, ok := chosen(); ok {
+			a.selectScmRow(s.row, 0)
+			a.openChange(rows[s.row], false)
+		} else {
+			s.selection.Clear()
+			s.anchor = ""
+		}
+	}
+	for _, key := range []ui.Key{ui.KeyUp, ui.KeyDown, ui.KeyHome, ui.KeyEnd} {
+		if !out.Shortcut(ui.Shift, key) {
+			continue
+		}
+		step, start := 1, s.row+1
+		switch key {
+		case ui.KeyUp:
+			step, start = -1, s.row-1
+		case ui.KeyHome:
+			start = 0
+		case ui.KeyEnd:
+			step, start = -1, len(rows)-1
+		}
+		for i := start; i >= 0 && i < len(rows); i += step {
+			if rows[i].file() {
+				a.selectScmRow(i, ui.Shift)
+				s.list.ScrollIntoView(i)
+				break
+			}
+		}
+	}
+	if out.Shortcut(ui.Cmd, ui.KeyA) {
+		if _, ok := chosen(); !ok {
+			for i, r := range rows {
+				if r.file() {
+					s.row, s.anchor = i, r.key
+					break
+				}
+			}
+		}
+		for _, r := range rows {
+			if r.file() {
+				s.selection.Add(r.key)
+			}
+		}
 	}
 	if s.row >= 0 && s.row < len(rows) && out.Submitted() {
 		switch r := rows[s.row]; {
@@ -700,6 +762,9 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 		indent = treeIndent(r.depth) + 16
 	}
 	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, indent)
+	if a.scm.selection.Has(r.key) {
+		row.Background(p.active)
+	}
 	hovered := row.Hovered()
 	clicked := row.Clicked()
 	row.ContextMenu(func(m *ui.Menu) { a.scmFileMenu(m, r, action) })
@@ -729,14 +794,14 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 			switch r.group {
 			case groupStaged:
 				if a.smallButton(c, iconMinus, "Unstage Changes") {
-					*action = func() { a.unstage(entryPaths(e, true)...) }
+					*action = func() { a.toggleStaged(r) }
 				}
 			default:
 				if r.group != groupMerge && !e.Submodule() && a.smallButton(c, iconUndo, "Discard Changes…") {
 					*action = func() { a.discard(e) }
 				}
 				if a.smallButton(c, iconPlus, "Stage Changes") {
-					*action = func() { a.stage(e.Path) }
+					*action = func() { a.toggleStaged(r) }
 				}
 			}
 		}
@@ -744,8 +809,59 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 			TextColor(gitColor(p, letter)).Shrink(0)
 	})
 	if clicked && *action == nil {
-		*action = func() { a.openChange(r, true) }
+		mods := row.ClickModifiers()
+		*action = func() {
+			for i, row := range a.scmRows() {
+				if row.key == r.key {
+					a.selectScmRow(i, mods)
+					break
+				}
+			}
+			if mods == 0 {
+				a.openChange(r, false)
+			}
+		}
 	}
+}
+
+// selectScmRow keeps a file's range anchor independent of the diff preview
+// and the list's keyboard cursor. File rows also handle dragging, so their
+// pointer clicks do not reach the list's built-in selection handler.
+func (a *app) selectScmRow(i int, mods ui.Modifiers) {
+	s := &a.scm
+	rows := a.scmRows()
+	if i < 0 || i >= len(rows) || !rows[i].file() {
+		return
+	}
+	r := rows[i]
+	anchor := -1
+	for j, row := range rows {
+		if row.key == s.anchor && row.file() {
+			anchor = j
+			break
+		}
+	}
+	switch {
+	case mods&ui.Shift != 0 && anchor >= 0:
+		s.selection.Clear()
+		for j := min(anchor, i); j <= max(anchor, i); j++ {
+			if rows[j].file() {
+				s.selection.Add(rows[j].key)
+			}
+		}
+	case mods&ui.Cmd != 0:
+		if s.selection.Has(r.key) {
+			s.selection.Remove(r.key)
+		} else {
+			s.selection.Add(r.key)
+		}
+		s.anchor = r.key
+	default:
+		s.selection.Clear()
+		s.selection.Add(r.key)
+		s.anchor = r.key
+	}
+	s.row = i
 }
 
 // scmCommit is the row of a commit of the history: its lanes of the
@@ -822,6 +938,8 @@ func (a *app) scmCommit(c *ui.Context, i int, r scmRow, action *func()) {
 	})
 	if clicked && *action == nil {
 		*action = func() {
+			a.scm.selection.Clear()
+			a.scm.anchor = ""
 			a.scm.row = i
 			a.previewCommit(*cm)
 		}
@@ -1182,11 +1300,11 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 	m.Separator()
 	if r.group == groupStaged {
 		if m.Item("Unstage Changes").Chosen() {
-			*action = func() { a.unstage(entryPaths(e, true)...) }
+			*action = func() { a.toggleStaged(r) }
 		}
 	} else {
 		if m.Item("Stage Changes").Chosen() {
-			*action = func() { a.stage(e.Path) }
+			*action = func() { a.toggleStaged(r) }
 		}
 		if r.group != groupMerge && !e.Submodule() && m.Item("Discard Changes…").Chosen() {
 			*action = func() { a.discard(e) }
@@ -1344,12 +1462,37 @@ func entryIcon(p *palette, e git.Entry, name string) (*ui.SVG, ui.Color) {
 	return fileIcon(p, name)
 }
 
-// toggleStaged stages a file of the view, or unstages it when staged.
+// scmActionEntries returns the chosen files on the same side of the index
+// as r. An action on an unselected row still acts on that file alone.
+func (a *app) scmActionEntries(r scmRow) []git.Entry {
+	if !a.scm.selection.Has(r.key) {
+		return []git.Entry{r.e}
+	}
+	var es []git.Entry
+	for _, row := range a.scmRows() {
+		if row.file() && a.scm.selection.Has(row.key) && (row.group == groupStaged) == (r.group == groupStaged) {
+			es = append(es, row.e)
+		}
+	}
+	return es
+}
+
+// toggleStaged stages the chosen files, or unstages those already staged.
 func (a *app) toggleStaged(r scmRow) {
+	var paths []string
+	seen := map[string]bool{}
+	for _, e := range a.scmActionEntries(r) {
+		for _, path := range entryPaths(e, r.group == groupStaged) {
+			if !seen[path] {
+				paths = append(paths, path)
+				seen[path] = true
+			}
+		}
+	}
 	if r.group == groupStaged {
-		a.unstage(entryPaths(r.e, true)...)
+		a.unstage(paths...)
 	} else {
-		a.stage(r.e.Path)
+		a.stage(paths...)
 	}
 }
 
