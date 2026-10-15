@@ -80,6 +80,29 @@ func TestRemotePaste(t *testing.T) {
 		t.Errorf("sources %q", srcs)
 	}
 
+	// Upload… asks for files, and Download… for a folder.
+	hs.h.chosen = []string{local}
+	a.askUpload(hs.path("src"))
+	hs.untilLong("Upload…", func() bool { return len(a.transfers) == 0 && read(dir+"/src/notes.txt") == "from the mac\n" })
+	into := t.TempDir()
+	hs.h.chosen = []string{into}
+	a.askDownload(hs.path("src"))
+	hs.untilLong("Download…", func() bool { return len(a.transfers) == 0 })
+	if b, _ := os.ReadFile(filepath.Join(into, "src", "notes.txt")); string(b) != "from the mac\n" {
+		t.Fatalf("downloaded %q", b)
+	}
+
+	// A transfer canceled says so, and leaves nothing.
+	a.pasteFiles(a.root) // nothing: the clipboard has other text
+	hs.h.clipboard = []string{local}
+	a.pasteFiles(hs.path("src"))
+	a.transfers[0].progress.Cancel()
+	hs.untilLong("the cancel", func() bool { return len(a.transfers) == 0 })
+	if got := read(dir + "/src/notes copy.txt"); !strings.HasPrefix(got, "error") {
+		t.Errorf("a canceled paste arrived: %q", got)
+	}
+	hs.h.clipboard = nil
+
 	// For a terminal of the host: copies in a temporary folder of its
 	// own, and the host's own files where they are.
 	got, err = toHost(c, []string{local, hs.path("main.go")}, "", nil)
@@ -108,4 +131,18 @@ func TestTransferLabel(t *testing.T) {
 	if byteSize(999) != "999 B" || byteSize(12_345) != "12 KB" || byteSize(3_400_000) != "3.4 MB" {
 		t.Errorf("byteSize: %s %s %s", byteSize(999), byteSize(12_345), byteSize(3_400_000))
 	}
+}
+
+// TestShotTransfer shoots the status bar of a transfer running.
+func TestShotTransfer(t *testing.T) {
+	if os.Getenv("SHOTS") == "" {
+		t.Skip("SHOTS is not set")
+	}
+	hs, _, _ := remoteHarness(t)
+	a := hs.a
+	x := a.startTransfer("Uploading 3 items to fake.invalid…")
+	x.progress.Cancel()
+	a.startTransfer("Downloading build…")
+	hs.settle()
+	hs.shot("transfer-status")
 }

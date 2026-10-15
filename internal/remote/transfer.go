@@ -3,6 +3,7 @@ package remote
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,9 +22,57 @@ import (
 // leaves nothing half copied.
 
 // Progress counts the bytes of a transfer as they go, which another
-// goroutine may read, and how many there are, when that is known.
+// goroutine may read, and how many there are, when that is known. One of
+// NewProgress can also stop the transfer.
 type Progress struct {
 	done, total atomic.Int64
+	ctx         context.Context
+	cancel      context.CancelFunc
+}
+
+// ErrCanceled is the error of a transfer stopped by Progress.Cancel.
+var ErrCanceled = errors.New("canceled")
+
+// NewProgress returns the Progress of a transfer that Cancel can stop.
+func NewProgress() *Progress {
+	p := &Progress{}
+	p.ctx, p.cancel = context.WithCancel(context.Background())
+	return p
+}
+
+// Cancel stops the transfer: what arrived of it is taken away.
+func (p *Progress) Cancel() {
+	if p != nil && p.cancel != nil {
+		p.cancel()
+	}
+}
+
+// Canceled reports whether Cancel was called.
+func (p *Progress) Canceled() bool {
+	return p != nil && p.ctx != nil && p.ctx.Err() != nil
+}
+
+// within returns the context of the connection, which also ends as p is
+// canceled, and a function to call once the transfer is done.
+func (c *Conn) within(p *Progress) (string, context.Context, func(), error) {
+	sock, ctx, err := c.live()
+	if err != nil {
+		return "", nil, nil, err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	if p == nil || p.ctx == nil {
+		return sock, ctx, cancel, nil
+	}
+	stop := context.AfterFunc(p.ctx, cancel)
+	return sock, ctx, func() { stop(); cancel() }, nil
+}
+
+// stopped is err, or ErrCanceled once p was canceled.
+func (p *Progress) stopped(err error) error {
+	if err != nil && p.Canceled() {
+		return ErrCanceled
+	}
+	return err
 }
 
 // Done returns the bytes sent or received so far.
@@ -120,6 +169,11 @@ func (c *Conn) Upload(srcs []string, dir string, p *Progress) ([]string, error) 
 	if p != nil {
 		p.total.Store(total)
 	}
+	sock, ctx, done, err := c.within(p)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
 	pr, pw := io.Pipe()
 	go func() {
 		pw.CloseWithError(writeTar(&counter{w: pw, p: p}, srcs))
@@ -128,25 +182,31 @@ func (c *Conn) Upload(srcs []string, dir string, p *Progress) ([]string, error) 
 if [ -z "$dir" ]; then dir=$(mktemp -d "${TMPDIR:-/tmp}/mayoi-paste.XXXXXX") || exit 1; fi
 s=$(mktemp -d "$dir/.mayoi-paste.XXXXXX") || exit 1
 trap 'rm -rf "$s"' EXIT
+trap 'exit 1' HUP INT TERM PIPE
 tar -x -o -f - -C "$s" || exit 1
 ` + placeScript
-	out, err := c.Run(pr, script, append([]string{dir}, names...)...)
+	out, err := c.run(ctx, sock, pr, script, append([]string{dir}, names...)...)
 	pr.Close()
 	if err != nil {
-		return nil, err
+		return nil, p.stopped(err)
 	}
 	return splitNul(out), nil
 }
 
 // CopyOnHost copies files and folders of the host into its folder dir,
 // each under a name no file there has, and returns where each went.
-func (c *Conn) CopyOnHost(srcs []string, dir string) ([]string, error) {
+func (c *Conn) CopyOnHost(srcs []string, dir string, p *Progress) ([]string, error) {
 	for _, src := range srcs {
 		if dir == src || strings.HasPrefix(dir, strings.TrimSuffix(src, "/")+"/") {
 			return nil, errors.New("a folder cannot be pasted into itself")
 		}
 	}
-	out, err := c.Run(nil, freeNameFn+`dir=$1; shift
+	sock, ctx, done, err := c.within(p)
+	if err != nil {
+		return nil, err
+	}
+	defer done()
+	out, err := c.run(ctx, sock, nil, freeNameFn+`dir=$1; shift
 for src; do
   d=0; [ -d "$src" ] && [ ! -L "$src" ] && d=1
   to=$(free "$(basename -- "$src")" $d) || exit 1
@@ -155,7 +215,7 @@ for src; do
 done
 `, append([]string{dir}, srcs...)...)
 	if err != nil {
-		return nil, err
+		return splitNul(out), p.stopped(err)
 	}
 	return splitNul(out), nil
 }
@@ -163,11 +223,13 @@ done
 // Download copies a file or folder of the host into the folder dir of
 // this machine, under name, which is where it lands.
 func (c *Conn) Download(src, to string, p *Progress) error {
-	cmd, err := c.Command(nil, `cd -- "$(dirname -- "$1")" || exit 1
-COPYFILE_DISABLE=1 exec tar -c -f - -- "$(basename -- "$1")"`, src)
+	sock, ctx, done, err := c.within(p)
 	if err != nil {
 		return err
 	}
+	defer done()
+	cmd := c.command(ctx, sock, nil, `cd -- "$(dirname -- "$1")" || exit 1
+COPYFILE_DISABLE=1 exec tar -c -f - -- "$(basename -- "$1")"`, src)
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -175,14 +237,14 @@ COPYFILE_DISABLE=1 exec tar -c -f - -- "$(basename -- "$1")"`, src)
 	var errb bytes.Buffer
 	cmd.Stderr = &errb
 	if err := cmd.Start(); err != nil {
-		return err
+		return p.stopped(err)
 	}
 	readErr := readTar(&counter{r: out, p: p}, path.Base(src), to)
 	io.Copy(io.Discard, out)
 	if err := cmd.Wait(); err != nil {
-		return c.failure(err, errb.String())
+		return p.stopped(c.failure(err, errb.String()))
 	}
-	return readErr
+	return p.stopped(readErr)
 }
 
 // splitNul splits what placeScript printed into the paths.

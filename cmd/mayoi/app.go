@@ -40,6 +40,9 @@ type host interface {
 	clipboardFiles() []string
 	// clipboardImage is the image the clipboard has, as PNG, or nil.
 	clipboardImage() []byte
+	// choosePaths asks in the native dialog for files, or for a folder
+	// when folders is set, starting in dir.
+	choosePaths(title, button, dir string, folders bool, done func(paths []string))
 	setTitle(title string)
 	closeWindow()
 	// setTheme gives the windows a theme and an appearance of the

@@ -86,14 +86,14 @@ func TestTransfer(t *testing.T) {
 	os.RemoveAll(filepath.Dir(tmp[0]))
 
 	// On the host, a folder twice, then into itself.
-	got, err = c.CopyOnHost([]string{host + "/dir", host + "/dir"}, host)
+	got, err = c.CopyOnHost([]string{host + "/dir", host + "/dir"}, host, nil)
 	if err != nil || len(got) != 2 || got[0] != host+"/dir copy" || got[1] != host+"/dir copy 2" {
 		t.Fatalf("copied to %q, %v", got, err)
 	}
 	if read(host+"/dir copy 2/sub/deep.txt") != "deep" {
 		t.Fatal("the copy is not whole")
 	}
-	if _, err := c.CopyOnHost([]string{host + "/dir"}, host+"/dir/sub"); err == nil {
+	if _, err := c.CopyOnHost([]string{host + "/dir"}, host+"/dir/sub", nil); err == nil {
 		t.Fatal("pasted a folder into itself")
 	}
 
@@ -114,5 +114,18 @@ func TestTransfer(t *testing.T) {
 	}
 	if err := c.Download(host+"/gone", filepath.Join(back, "gone"), nil); err == nil {
 		t.Fatal("downloaded a file that is not there")
+	}
+
+	// Canceled, a transfer leaves nothing behind.
+	stop := NewProgress()
+	stop.Cancel()
+	if _, err := c.Upload([]string{filepath.Join(local, "dir")}, host+"/dir/sub", stop); err != ErrCanceled {
+		t.Fatalf("canceled upload: %v", err)
+	}
+	if _, err := os.Stat(host + "/dir/sub/dir"); err == nil {
+		t.Fatal("a canceled upload arrived")
+	}
+	if err := c.Download(host+"/dir", filepath.Join(back, "again"), stop); err != ErrCanceled {
+		t.Fatalf("canceled download: %v", err)
 	}
 }

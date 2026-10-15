@@ -56,6 +56,18 @@ func (h *desktop) openFolder(done func(string)) {
 	}()
 }
 
+func (h *desktop) choosePaths(title, button, dir string, folders bool, done func([]string)) {
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: h.f.win, Title: title, ButtonLabel: button, DefaultPath: dir,
+			Directory: folders, Multiple: !folders, CreateDirectories: folders,
+		})
+		if err == nil && len(paths) > 0 {
+			h.a.post(func() { done(paths) })
+		}
+	}()
+}
+
 func (h *desktop) saveAs(name string, done func(string)) {
 	dir := h.a.root
 	go func() {

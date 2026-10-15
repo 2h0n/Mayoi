@@ -8,8 +8,10 @@ needs a `## <version>` section here, or its build fails.
 - Remote SSH: files copied in the Finder paste into a folder of the host,
   and files dropped from the Finder on the explorer copy into the folder
   under the pointer. A remote file copied in the explorer pastes as a
-  copy on its host, or downloads into a folder of this machine. The
-  status bar shows each transfer and how far it got.
+  copy on its host, or downloads into a folder of this machine.
+  **Upload…** and **Download…** in the explorer's menu do the same by a
+  dialog. The status bar shows each transfer and how far it got, and a
+  click on it cancels one.
 - Remote SSH: a terminal of the host pastes files, and a screenshot alone
   on the clipboard, as copies uploaded to the host, and types their paths
   there, so Claude Code on the host takes a pasted screenshot. A remote

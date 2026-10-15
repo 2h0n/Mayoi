@@ -143,7 +143,7 @@ func (a *app) pasteAcross(srcs []string, dir string) {
 		a.post(func() {
 			a.endTransfer(x)
 			if err != nil {
-				a.fail("Could not paste: %v", err)
+				a.transferFailed("Could not paste", err)
 			}
 			if len(got) > 0 {
 				a.pasted(dir, got[0])
@@ -233,7 +233,7 @@ func toHost(c *remote.Conn, srcs []string, rdir string, p *remote.Progress) ([]s
 		}
 	}
 	if len(same) > 0 {
-		out, err := c.CopyOnHost(same, rdir)
+		out, err := c.CopyOnHost(same, rdir, p)
 		for k, rp := range out {
 			got[sameAt[k]] = rp
 		}

@@ -37,6 +37,8 @@ type fakeHost struct {
 	// clipboard are the files on the clipboard, and image its image.
 	clipboard []string
 	image     []byte
+	// chosen are the paths the dialog of choosePaths answers.
+	chosen []string
 }
 
 func (h *fakeHost) openFolder(done func(string)) { done(h.folder) }
@@ -60,8 +62,14 @@ func (h *fakeHost) copyFiles(paths []string) error {
 }
 func (h *fakeHost) clipboardFiles() []string { return h.clipboard }
 func (h *fakeHost) clipboardImage() []byte   { return h.image }
-func (h *fakeHost) closeWindow()             { h.closed = true }
-func (h *fakeHost) setTheme(_, _ string)     {}
+func (h *fakeHost) choosePaths(title, _, _ string, _ bool, done func([]string)) {
+	h.asked = append(h.asked, title)
+	if len(h.chosen) > 0 {
+		done(h.chosen)
+	}
+}
+func (h *fakeHost) closeWindow()         { h.closed = true }
+func (h *fakeHost) setTheme(_, _ string) {}
 func (h *fakeHost) showFolder(dir string) bool {
 	return slices.Contains(h.others, dir)
 }

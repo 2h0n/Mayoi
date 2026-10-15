@@ -358,7 +358,10 @@ not have it yet.
   through the connection, land beside the folder, and take their names, as copies when a name is taken, once they all
   arrived. A remote file copied in the explorer puts its path on the host on the clipboard, and pastes into another
   folder of the host as a copy made there, into a folder of this machine as a download, and into a folder of another
-  host by way of this machine. The status bar shows each transfer and how far it got.
+  host by way of this machine. **Upload…** in the explorer's menu copies files chosen in a dialog into a folder of the
+  host, and **Download…** a file or folder of the host into a folder of this machine, the Downloads folder first,
+  with a button to reveal it once it is there. The status bar shows each transfer and how far it got, and a click on
+  it cancels one: what arrived of it is taken away.
 - A terminal of the host pastes files of the Finder, of the explorer of a local folder, or dropped on it, as copies
   uploaded to a temporary folder of the host, and types their paths there. An image alone on the clipboard, as a
   screenshot, goes up as a PNG file of its own, so that Claude Code running on the host takes it as it does a

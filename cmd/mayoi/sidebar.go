@@ -312,6 +312,15 @@ func (a *app) fileTree(c *ui.Context) {
 				action = func() { a.pasteFiles(dir) }
 			}
 			m.Separator()
+			if a.conn != nil {
+				if m.Item("Upload…").Chosen() {
+					action = func() { a.askUpload(dir) }
+				}
+				if m.Item("Download…").Chosen() {
+					action = func() { a.askDownload(path) }
+				}
+				m.Separator()
+			}
 			if m.Item("Copy Path").Chosen() {
 				action = func() { a.services.WriteClipboard(hostPath(path)) }
 			}
@@ -410,6 +419,9 @@ func (a *app) fileTree(c *ui.Context) {
 		m.Separator()
 		if m.Item("Paste").Disabled(len(a.clipboardSources()) == 0).Chosen() {
 			action = func() { a.pasteFiles(a.root) }
+		}
+		if a.conn != nil && m.Item("Upload…").Chosen() {
+			action = func() { a.askUpload(a.root) }
 		}
 	})
 	if a.files.List.Shortcut(c, 0, ui.KeyEscape) {

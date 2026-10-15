@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -22,7 +24,7 @@ type transfer struct {
 
 // startTransfer shows a transfer in the status bar until endTransfer.
 func (a *app) startTransfer(label string) *transfer {
-	x := &transfer{label: label, progress: &remote.Progress{}}
+	x := &transfer{label: label, progress: remote.NewProgress()}
 	a.transfers = append(a.transfers, x)
 	return x
 }
@@ -55,17 +57,44 @@ func (a *app) transferText() string {
 }
 
 // transferStatus is the part of the status bar of the transfers running,
-// drawn again a few times a second while they run.
+// drawn again a few times a second while they run: a click on it offers
+// to cancel them.
 func (a *app) transferStatus(c *ui.Context, text func(string) ui.Element) {
 	label := a.transferText()
 	if label == "" {
 		return
 	}
-	ui.Row(c.Key("status:transfer")).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
+	p := a.pal
+	b := ui.ButtonBase(c.Key("status:transfer")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
+		AlignItems(ui.Center).Label(label).Tooltip(label + " Click to cancel.")
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Children(func() {
 		ui.Spinner(c).Size(11, 11)
 		text(label)
 	})
+	b.Menu(func(m *ui.Menu) {
+		for _, x := range a.transfers {
+			title := "Cancel " + strings.TrimSuffix(x.label, "…")
+			if len(a.transfers) == 1 {
+				title = "Cancel"
+			}
+			if m.Item(title).Chosen() {
+				x.progress.Cancel()
+			}
+		}
+	})
 	time.AfterFunc(250*time.Millisecond, a.invalidate)
+}
+
+// transferFailed says why a transfer failed, unless it was canceled.
+func (a *app) transferFailed(what string, err error) {
+	if errors.Is(err, remote.ErrCanceled) {
+		a.tell(note{message: "Canceled"})
+		return
+	}
+	a.fail("%s: %v", what, err)
 }
 
 // byteSize is a count of bytes as people read it: 12 KB, 3.4 MB.
@@ -155,7 +184,7 @@ func (a *app) uploadPaths(s *session, srcs []string, done func()) {
 		a.post(func() {
 			a.endTransfer(x)
 			if err != nil {
-				a.fail("Could not paste: %v", err)
+				a.transferFailed("Could not paste", err)
 				return
 			}
 			if slices.Contains(a.terms, s) {
@@ -173,4 +202,44 @@ func quotePaths(paths []string) string {
 		quoted[i] = shellQuote(p)
 	}
 	return strings.Join(quoted, " ") + " "
+}
+
+// askUpload asks for files of this machine to copy into dir, a folder of
+// a host.
+func (a *app) askUpload(dir string) {
+	home, _ := os.UserHomeDir()
+	a.host.choosePaths("Upload to "+remote.Display(dir), "Upload", home, false, func(paths []string) {
+		a.copyPathsInto(paths, dir)
+	})
+}
+
+// askDownload asks for a folder of this machine to copy a file or folder
+// of a host into, the Downloads folder first.
+func (a *app) askDownload(src string) {
+	home, _ := os.UserHomeDir()
+	a.host.choosePaths("Download "+path.Base(src), "Download", filepath.Join(home, "Downloads"), true, func(paths []string) {
+		a.download(src, paths[0])
+	})
+}
+
+// download copies a file or folder of a host into the folder dir of this
+// machine in the background, and offers to show it once it is there.
+func (a *app) download(src, dir string) {
+	if !remote.IsConnected(src) {
+		a.fail("Could not download: %s is not connected", remote.HostOf(src))
+		return
+	}
+	x := a.startTransfer(transferLabel([]string{src}, dir))
+	go func() {
+		got, err := transferInto([]string{src}, dir, x.progress)
+		a.post(func() {
+			a.endTransfer(x)
+			if err != nil {
+				a.transferFailed("Could not download "+path.Base(src), err)
+				return
+			}
+			to := got[0]
+			a.tell(note{message: "Downloaded " + filepath.Base(to), label: revealLabel(), action: func() { a.host.reveal(to) }})
+		})
+	}()
 }
