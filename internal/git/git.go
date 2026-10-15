@@ -279,6 +279,13 @@ func (r *Repo) Show(rev, path string) (text string, ok bool, err error) {
 		}
 		return "", false, err
 	}
+	// Git 2.55 and later show the commit of a submodule whose repository
+	// it can reach, as a log entry and its diff.
+	if bytes.HasPrefix(out, []byte("commit ")) {
+		if hash := r.gitlink(rev, path); hash != "" {
+			return subproject(hash, false), true, nil
+		}
+	}
 	return strings.ReplaceAll(string(out), "\r\n", "\n"), true, nil
 }
 
