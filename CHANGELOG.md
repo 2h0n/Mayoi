@@ -18,6 +18,8 @@ needs a `## <version>` section here, or its build fails.
 - The Explorer draws indent guides down from each open folder, brighter
   for the folder of the file shown, and a shadow under the folder's name
   as the files scroll under it.
+- The Markdown preview draws a task's checkbox as a box, filled once
+  done, and lists with softer bullets, rings for a list in a list.
 
 ## 0.9.1
 

@@ -713,8 +713,31 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 				}
 				if b.marker != "" {
 					if b.marker == "•" {
-						ui.Box(c).Width(size * b.markerWidth).Height(size * a.settings.LineHeight).Children(func() {
-							ui.Box(c).Width(size*0.35).Height(size*0.35).Radius(size*0.175).Background(p.text).Margin((size*a.settings.LineHeight-size*0.35)/2, 0)
+						// A dot in the middle of the marker's room, a ring for a
+						// list inside another, as GitHub draws them.
+						d := size * 0.32
+						ui.Box(c).Width(size * b.markerWidth).Height(size * a.settings.LineHeight).AlignItems(ui.Center).Children(func() {
+							dot := ui.Box(c).Width(d).Height(d).Radius(d/2).Margin((size*a.settings.LineHeight-d)/2, 0)
+							if b.indent > 1 {
+								dot.Border(1.25, p.muted)
+							} else {
+								dot.Background(p.muted)
+							}
+						})
+					} else if b.marker == "☐" || b.marker == "☑" {
+						// A task's box, in the middle of the marker's room as a
+						// dot is, filled with the accent once done.
+						d := size * 0.9
+						ui.Box(c).Width(size * b.markerWidth).Height(size * a.settings.LineHeight).AlignItems(ui.Center).Children(func() {
+							box := ui.Box(c).Width(d).Height(d).Radius(3).Margin((size*a.settings.LineHeight-d)/2, 0).
+								Justify(ui.Center).AlignItems(ui.Center)
+							if b.marker == "☑" {
+								box.Background(p.fill).Children(func() {
+									ui.Icon(c, iconCheck).FontSize(d * 0.8).TextColor(p.fillText)
+								})
+							} else {
+								box.Border(1.25, p.muted)
+							}
 						})
 					} else {
 						ui.Text(c, b.marker).Width(size * b.markerWidth).TextColor(p.text).FontSize(size).LineHeight(a.settings.LineHeight)
