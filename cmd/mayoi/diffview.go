@@ -163,6 +163,8 @@ type diffView struct {
 	rows          []diffRow
 	tops          []int
 	starts, heads []int
+	// cards are the rows of the cards of notes.
+	cards []int
 	// sections counts the files of the changes not staged, and of those
 	// staged, as the rows were laid out.
 	sections [2]int
@@ -840,7 +842,7 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		}
 	}
 	v.built = b
-	v.rows, v.starts, v.heads = v.rows[:0], v.starts[:0], v.heads[:0]
+	v.rows, v.starts, v.heads, v.cards = v.rows[:0], v.starts[:0], v.heads[:0], v.cards[:0]
 	v.sections = [2]int{}
 	for _, f := range v.files {
 		v.sections[btoi(f.base == diffStaged)]++
@@ -910,6 +912,9 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		}
 		if r.changed() && (prev < 0 || v.rows[prev].hunk != r.hunk || v.rows[prev].file != r.file || !v.rows[prev].changed()) {
 			v.starts = append(v.starts, i)
+		}
+		if r.kind == rowComment {
+			v.cards = append(v.cards, i)
 		}
 		if r.kind != rowCommit && r.kind != rowComment {
 			r.h = 1
@@ -1300,6 +1305,15 @@ func (a *app) diffInput(v *diffView, ev ui.InputEvent) bool {
 		v.anchor = -1
 	case ui.KeyC:
 		a.commentDiff(v)
+	case ui.KeyBackspace, ui.KeyDelete:
+		// On the card of a note, it deletes the note.
+		c := v.cursor
+		if c < 0 || c >= len(v.rows) || v.rows[c].kind != rowComment {
+			return false
+		}
+		if n := a.review.noteAt(v.rows[c].n); n != nil {
+			a.deleteNote(n)
+		}
 	case ui.KeySpace:
 		if shift {
 			a.pageDiff(v, -page)
@@ -1454,6 +1468,7 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 			a.post(fn)
 		}
 	}
+	a.reviewSendButton(c)
 	act(iconArrowUp, "Previous Change ([)", func() { v.stepHunk(-1) })
 	act(iconArrowDown, "Next Change (])", func() { v.stepHunk(1) })
 	if button(iconUnfold, "Show Full Files", v.full).Clicked() {

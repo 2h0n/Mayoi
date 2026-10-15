@@ -93,12 +93,30 @@ func (n *reviewNote) same(o *reviewNote) bool {
 // relocate finds lines in text, at from or as near it as they are, and
 // reports whether it found them.
 func relocate(lines, text []string, from int) (int, bool) {
+	return relocateIn(lines, len(text), func(i int) string { return text[i] }, from)
+}
+
+// relocateIn finds lines in a text of count lines, line(i) its line i, at
+// from or as near it as they are, and reports whether it found them. It
+// reads only the lines it compares, so a text need not be split to search
+// it.
+func relocateIn(lines []string, count int, line func(int) string, from int) (int, bool) {
 	n := len(lines)
-	at := func(i int) bool { return i >= 0 && i+n <= len(text) && slices.Equal(text[i:i+n], lines) }
+	at := func(i int) bool {
+		if i < 0 || i+n > count {
+			return false
+		}
+		for k, l := range lines {
+			if line(i+k) != l {
+				return false
+			}
+		}
+		return true
+	}
 	if n == 0 || at(from) {
 		return from, n > 0
 	}
-	for d := 1; d <= max(from, len(text)-from); d++ {
+	for d := 1; d <= max(from, count-from); d++ {
 		if at(from - d) {
 			return from - d, true
 		}
@@ -112,7 +130,12 @@ func relocate(lines, text []string, from int) (int, bool) {
 // follow finds a note's lines again in text, the lines of its side now,
 // or marks it outdated.
 func (n *reviewNote) follow(text []string) {
-	at, ok := relocate(n.lines, text, n.from)
+	n.found(relocate(n.lines, text, n.from))
+}
+
+// found moves a note to its lines found at line at, or marks it outdated
+// when they were not.
+func (n *reviewNote) found(at int, ok bool) {
 	n.outdated = !ok
 	if ok {
 		n.from, n.to = at, at+len(n.lines)
@@ -387,23 +410,26 @@ func (a *app) followNote(n *reviewNote) {
 	if !n.work() {
 		return
 	}
-	var text string
 	if i := a.docIndex(n.path); i >= 0 {
 		doc := a.docs[i]
 		if doc.buf.Version() == n.version {
 			return
 		}
 		n.version = doc.buf.Version()
-		text = doc.buf.Snapshot().String()
-	} else if remote.Is(n.path) {
+		// Read in place, line by line, as it is searched: a keystroke in
+		// a long file copies none of it.
+		snap := doc.buf.Snapshot()
+		line := func(i int) string { return strings.TrimSuffix(snap.Line(i), "\r") }
+		n.found(relocateIn(n.lines, snap.LineCount(), line, n.from))
 		return
-	} else {
-		t, _, err := readWork(n.path)
-		if err != nil {
-			n.outdated = true
-			return
-		}
-		text = t
+	}
+	if remote.Is(n.path) {
+		return
+	}
+	text, _, err := readWork(n.path)
+	if err != nil {
+		n.outdated = true
+		return
 	}
 	n.follow(strings.Split(text, "\n"))
 }
@@ -500,21 +526,18 @@ func (a *app) editNote(n *reviewNote, ed *editor) {
 	}
 }
 
-// saveDraft keeps the comment typed for its note; an empty one deletes
-// the note.
+// saveDraft keeps the comment typed for its note; an empty one is not
+// kept, and the box stays.
 func (a *app) saveDraft() {
 	r := &a.review
 	n := r.draft
-	if n == nil {
+	text := strings.TrimSpace(r.text)
+	if n == nil || text == "" {
 		return
 	}
-	if text := strings.TrimSpace(r.text); text == "" {
-		r.notes = slices.DeleteFunc(r.notes, func(o *reviewNote) bool { return o == n })
-	} else {
-		n.text = text
-		if !slices.Contains(r.notes, n) {
-			r.notes = append(r.notes, n)
-		}
+	n.text = text
+	if !slices.Contains(r.notes, n) {
+		r.notes = append(r.notes, n)
 	}
 	a.endDraft()
 }
@@ -647,6 +670,9 @@ func (a *app) reviewMenu(m *ui.Menu) {
 			text = string(r[:47]) + "…"
 		}
 		label := fmt.Sprintf("%s:%d  %s", filepath.Base(n.path), n.from+1, text)
+		if n.outdated {
+			label += "  (outdated)"
+		}
 		if m.Item(label).Chosen() {
 			a.goToNote(n)
 		}
@@ -664,23 +690,50 @@ func (a *app) reviewMenu(m *ui.Menu) {
 }
 
 // noteButton is a small button of a note's card, of text, which reports
-// whether it was clicked.
-func (a *app) noteButton(c *ui.Context, label string, primary bool) bool {
+// whether it was clicked: the primary one filled with the accent, off
+// while disabled.
+func (a *app) noteButton(c *ui.Context, label string, primary, disabled bool) bool {
 	p := a.pal
-	b := ui.ButtonBase(c.Key("note:"+label)).Height(a.font.lineH-4).Padding(0, 8).Radius(4).AlignItems(ui.Center).Shrink(0).Label(label)
+	b := ui.ButtonBase(c.Key("note:"+label)).Height(a.font.lineH-2).Padding(0, 10).Radius(5).AlignItems(ui.Center).Shrink(0).
+		Label(label).Disabled(disabled)
 	col := p.text
 	switch {
+	case disabled:
+		b.Background(p.text.Alpha(0.07))
+		col = p.faint
 	case primary:
-		b.Background(p.accent)
-		col = p.editor
-		if b.Hovered() {
-			b.Background(mix(p.accent, p.text, 0.15))
+		col = p.fillText
+		switch {
+		case b.Pressed():
+			b.Background(p.fillPressed)
+		case b.Hovered():
+			b.Background(p.fillHover)
+		default:
+			b.Background(p.fill)
 		}
+	case b.Pressed():
+		b.Background(p.surfacePressed)
 	case b.Hovered():
 		b.Background(p.hover)
 	}
-	b.Children(func() { ui.Text(c, label).FontSize(11.5).TextColor(col).SingleLine() })
-	return b.Clicked()
+	b.Children(func() { ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(col).SingleLine() })
+	return b.Clicked() && !disabled
+}
+
+// notePill is a word on a note's card in a pill of its color, as the
+// header of a file of a diff says how it changed.
+func notePill(c *ui.Context, word, tip string, col ui.Color) {
+	ui.Row(c).Height(16).Padding(0, 6).Radius(8).AlignItems(ui.Center).Background(col.Alpha(0.14)).Shrink(0).Tooltip(tip).
+		Children(func() { ui.Text(c, word).FontSize(10.5).FontWeight(600).TextColor(col).SingleLine() })
+}
+
+// noteColor is the color of a note's card: the accent, or for one whose
+// lines have changed since, the color of a change.
+func (a *app) noteColor(n *reviewNote) ui.Color {
+	if n.outdated {
+		return a.pal.modified
+	}
+	return a.pal.accent
 }
 
 // noteCard shows the inside of a note's card, its text cols columns wide:
@@ -691,11 +744,18 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, cols int) {
 	p, f := a.pal, a.font
 	r := &a.review
 	editing := r.draft == n && r.ed == ed
+	// A stripe down its left edge, of its color.
+	ui.Box(c).Absolute().Left(0).Top(0).Bottom(0).Width(3).Background(a.noteColor(n))
 	ui.Row(c).Height(f.lineH).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Icon(c, iconComment).FontSize(12).TextColor(p.accent)
-		ui.Text(c, n.where()).FontSize(11.5).TextColor(p.muted).SingleLine().Shrink(1)
+		ui.Icon(c, iconComment).FontSize(12).TextColor(a.noteColor(n)).Shrink(0)
+		title := "Comment"
+		if editing && !slices.Contains(r.notes, n) {
+			title = "New Comment"
+		}
+		ui.Text(c, title).FontSize(11.5).FontWeight(600).TextColor(p.text).SingleLine().Shrink(0)
+		ui.Text(c, "on "+lowerFirst(n.where())).FontSize(11.5).TextColor(p.muted).SingleLine().Shrink(1)
 		if n.outdated {
-			ui.Text(c, "Outdated").FontSize(11).TextColor(p.changed).SingleLine().Tooltip("The lines have changed since")
+			notePill(c, "Outdated", "The lines have changed since", p.modified)
 		}
 		ui.Spacer(c)
 		if editing {
@@ -716,26 +776,39 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, cols int) {
 		return
 	}
 	in := a.textKeys(ui.TextArea(c.Key("review-text"), &r.text)).AutoFocus().Font(f.family).FontSize(f.size).
-		Grow(1).MinHeight(0).Placeholder("Comment for the agent…").Label("Review Comment")
+		Grow(1).MinHeight(0).Placeholder("Leave a comment for the agent…").Label("Review Comment")
 	if in.Focused() {
 		r.typed = a.frame
 	}
+	empty := strings.TrimSpace(r.text) == ""
 	if in.Shortcut(ui.Cmd, ui.KeyEnter) {
 		a.post(a.saveDraft)
 	}
 	if in.Shortcut(0, ui.KeyEscape) {
 		a.post(a.endDraft)
 	}
-	ui.Row(c).Height(f.lineH + 2).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Text(c, keyText("CmdOrCtrl+Enter")+" to save · Esc to cancel").FontSize(11).TextColor(p.faint).SingleLine().Shrink(1)
+	ui.Row(c).Height(f.lineH + 4).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+		ui.Text(c, keyText("CmdOrCtrl+Enter")+" to comment · Esc to cancel").FontSize(11).TextColor(p.faint).SingleLine().Shrink(1)
 		ui.Spacer(c)
-		if a.noteButton(c, "Cancel", false) {
+		if a.noteButton(c, "Cancel", false, false) {
 			a.post(a.endDraft)
 		}
-		if a.noteButton(c, "Comment", true) {
+		label := "Comment"
+		if slices.Contains(r.notes, n) {
+			label = "Save"
+		}
+		if a.noteButton(c, label, true, empty) {
 			a.post(a.saveDraft)
 		}
 	})
+}
+
+// lowerFirst lowers the first letter of s.
+func lowerFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToLower(s[:1]) + s[1:]
 }
 
 // typingNote reports whether the box of the note being written has the
@@ -748,12 +821,12 @@ func (a *app) typingNote() bool {
 func (a *app) noteCardBox(c *ui.Context, key string, x, y, w, h float32) ui.Element {
 	p := a.pal
 	return ui.Column(c.Key(key)).Absolute().Left(x).Top(y).Width(w).Height(h).Radius(6).Clip().
-		Background(p.panel).Border(1, p.border).Padding(0, 10)
+		Background(p.panel).Border(1, p.border).Padding(0, 10, 0, 13).Justify(ui.Center)
 }
 
 // noteCols is how many columns of a comment fit in a card w wide.
 func (a *app) noteCols(w float32) int {
-	return max(int((w-20)/a.font.charW), 10)
+	return max(int((w-23)/a.font.charW), 10)
 }
 
 // diffNoteGeometry is where the cards of notes go in a diff whose view is
@@ -806,33 +879,172 @@ func (a *app) noteRows(v *diffView, f *diffFile, file, start, cols int) {
 	}
 }
 
-// notedLines returns the runs of lines of an editor's file that notes
-// are on, found again in its text as it changed.
-func (a *app) notedLines(d *editor) []span {
-	var out []span
+// lineCommentSize is how wide and tall the button by a line of a diff is,
+// which comments on it.
+const lineCommentSize = 18
+
+// lineCommentButton is the button by row i of a diff, at (x, y), which
+// comments on its line, or on the rows chosen with it, and the room it
+// takes.
+func (a *app) lineCommentButton(c *ui.Context, v *diffView, i int, x, y float32) ui.Rect {
+	p := a.pal
+	label := "Add Comment (C)"
+	ui.Box(c.Key("line-comment")).Absolute().Left(x).Top(y).Children(func() {
+		b := ui.ButtonBase(c).Size(lineCommentSize, lineCommentSize).Radius(4).Justify(ui.Center).AlignItems(ui.Center).
+			Label(label).Tooltip(label)
+		switch {
+		case b.Pressed():
+			b.Background(p.fillPressed)
+		case b.Hovered():
+			b.Background(p.fillHover)
+		default:
+			b.Background(p.fill)
+		}
+		b.Children(func() { ui.Icon(c, iconPlus).FontSize(12).TextColor(p.fillText) })
+		if !b.Clicked() {
+			return
+		}
+		a.post(func() {
+			if i >= len(v.rows) || v.rows[i].kind != rowLine {
+				return
+			}
+			if !v.selected(i) {
+				v.anchor = -1
+				v.setCursor(i)
+			}
+			v.pane.Focus()
+			a.commentDiff(v)
+		})
+	})
+	return ui.Rect{X: x, Y: y, W: lineCommentSize, H: lineCommentSize}
+}
+
+// diffNotes returns the notes that show in a diff: those kept, and the
+// one being written in it.
+func (a *app) diffNotes(v *diffView) []*reviewNote {
+	r := &a.review
+	if r.draft != nil && r.ed == nil && !slices.Contains(r.notes, r.draft) {
+		return append(slices.Clip(r.notes), r.draft)
+	}
+	return r.notes
+}
+
+// notedLine reports whether a line row of a diff is of the lines of one
+// of notes: its line of the old side, or of the new.
+func notedLine(v *diffView, notes []*reviewNote, row diffRow, old bool) bool {
+	line := row.new
+	if old {
+		line = row.old
+	}
+	if line < 0 || len(notes) == 0 {
+		return false
+	}
+	f := v.files[row.file]
+	for _, n := range notes {
+		if n.oldSide == old && !n.outdated && line >= n.from && line < n.to && n.inDiff(v, f) {
+			return true
+		}
+	}
+	return false
+}
+
+// notedLines returns the notes on lines of an editor's file, found again
+// in its text as it changed, but for those no longer in it.
+func (a *app) notedLines(d *editor) []*reviewNote {
+	var out []*reviewNote
 	for _, n := range a.review.notes {
 		if n.work() && n.path == d.path && d.path != "" {
 			a.followNote(n)
 			if !n.outdated {
-				out = append(out, span{n.from, n.to})
+				out = append(out, n)
 			}
 		}
 	}
 	return out
 }
 
+// noteHint is what a note says after the last of its lines in an editor:
+// its comment's first line, cut short.
+func noteHint(n *reviewNote) string {
+	s, _, more := strings.Cut(strings.TrimSpace(n.text), "\n")
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > 80 {
+		s, more = string(r[:79]), true
+	}
+	if more {
+		s += "…"
+	}
+	return s
+}
+
+// editorHint is a note's comment as it shows after the last of its
+// lines, line, in an editor: from x, in the editor's text area, w wide.
+type editorHint struct {
+	n    *reviewNote
+	line int
+	x, w float32
+	text string
+}
+
+// hintGap is the room between the icon of a hint and its text, in
+// columns.
+const hintGap = 0.75
+
+// editorHints returns the hints of noted, the notes on an editor's lines,
+// whose last lines are from first to last: all but the one being written
+// in the editor's box.
+func (a *app) editorHints(d *editor, snap ui.TextSnapshot, noted []*reviewNote, first, last int) []editorHint {
+	f := a.font
+	var out []editorHint
+	for _, n := range noted {
+		l := n.to - 1
+		if l < first || l > last || a.review.draft == n && a.review.ed == d {
+			continue
+		}
+		s, e := snap.LineRange(l)
+		text := noteHint(n)
+		x := d.gutterW + gutterGap + f.width(snap.Slice(s, min(e, s+maxBlameAfter))) + 4*f.charW
+		w := f.size*0.85 + (hintGap+float32(len([]rune(text)))*0.92)*f.charW
+		out = append(out, editorHint{n, l, x, w, text})
+	}
+	return out
+}
+
 // reviewBoxView is the box under the lines of an editor a note is being
-// written on.
+// written on, and over the hints of its notes, buttons that edit them.
 func (a *app) reviewBoxView(c *ui.Context, d *editor) {
 	r := &a.review
-	n := r.draft
-	if n == nil || r.ed != d {
+	if len(r.notes) == 0 && r.draft == nil {
 		return
 	}
 	snap := d.buf.Snapshot()
 	count := snap.LineCount()
 	g := a.geometry(d, count)
 	view := d.hscroll.Bounds(c)
+	if g.lines == nil {
+		first, last := a.linesInView(g, d.vscroll.Y, view.H)
+		for _, h := range a.editorHints(d, snap, a.notedLines(d), first, last) {
+			y := editorPadY + g.top(h.line) - d.vscroll.Y
+			x := h.x - d.hscroll.X
+			if x < d.gutterW || y < 0 || y > view.H {
+				continue
+			}
+			tip := "Edit Comment: " + strings.TrimSpace(h.n.text)
+			b := ui.ButtonBase(c.Key(fmt.Sprintf("hint:%p", h.n))).Absolute().Left(x-3).Top(y+1).Size(h.w+6, a.font.lineH-2).
+				Radius(4).Label("Edit Comment").Tooltip(tip)
+			if b.Hovered() {
+				b.Background(a.pal.hover)
+			}
+			if b.Clicked() {
+				n := h.n
+				a.post(func() { a.editNote(n, d) })
+			}
+		}
+	}
+	n := r.draft
+	if n == nil || r.ed != d {
+		return
+	}
 	left := d.gutterW - 4
 	w := view.W - left - 14
 	cols := a.noteCols(w)
@@ -842,6 +1054,35 @@ func (a *app) reviewBoxView(c *ui.Context, d *editor) {
 	y = clamp(y, 0, max(0, view.H-h))
 	box := a.floating(c, a.noteCardBox(c, "review-box", left, y+1, w, h), false).Transition(popIn).Label("Review Comment")
 	box.Children(func() { a.noteCard(c, n, d, cols) })
+}
+
+// reviewSendButton is the button of a diff's breadcrumbs that sends the
+// notes to the terminal, with their count, and its menu the rest of
+// what is done with them; none while there are none.
+func (a *app) reviewSendButton(c *ui.Context) {
+	k := len(a.review.notes)
+	if k == 0 {
+		return
+	}
+	p := a.pal
+	tip := "Send " + plural(k, "Review Comment") + " to Terminal"
+	b := ui.ButtonBase(c.Key("review-send")).Height(crumbsH-6).Padding(0, 8).Gap(5).Radius(5).Shrink(0).
+		AlignItems(ui.Center).Label(tip).Tooltip(tip).Margin(0, 6, 0, 0)
+	switch {
+	case b.Pressed():
+		b.Background(p.fillPressed)
+	case b.Hovered():
+		b.Background(p.fillHover)
+	default:
+		b.Background(p.fill)
+	}
+	b.Children(func() {
+		ui.Icon(c, iconSend).FontSize(12).TextColor(p.fillText)
+		ui.Text(c, "Send "+plural(k, "Comment")).FontSize(11.5).FontWeight(600).TextColor(p.fillText).SingleLine()
+	})
+	if b.Clicked() {
+		a.post(a.sendReview)
+	}
 }
 
 // reviewStatus is the part of the status bar that counts the notes, with

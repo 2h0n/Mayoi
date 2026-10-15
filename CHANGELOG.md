@@ -10,6 +10,16 @@ needs a `## <version>` section here, or its build fails.
   comment on them. **Send Review Comments to Terminal** pastes them all
   into the terminal used last, for the agent there, each with its path,
   line numbers and lines; ⌘C in a diff copies the lines chosen so.
+- A **+** button by the line under the pointer in a diff comments on it,
+  or on the lines chosen with it, and a bar marks the lines of each
+  comment, with a mark on the scroll bar.
+- A diff with review comments offers **Send N Comments** in its toolbar,
+  and Delete deletes the comment chosen in it.
+- A file shows each review comment after the last of its lines; click it
+  to edit the comment, or hover it to read it all.
+- Review comment cards are redrawn: a stripe of the accent down their
+  edge, an **Outdated** badge when their lines changed, and a Comment
+  button that stays off until there is something to say.
 - Lock a column from its tab menu to keep it for terminals: Move to Locked
   Right Column puts a running terminal there in one step. Files opened from
   the Explorer, Search, Quick Open or Source Control go to an unlocked

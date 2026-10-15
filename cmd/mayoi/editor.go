@@ -1,6 +1,7 @@
 package main
 
 import (
+	"slices"
 	"strconv"
 	"strings"
 
@@ -283,7 +284,14 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		// Who changed the caret's line last, after it, unless it wraps.
 		var blame string
 		var blameX float32
+		// The comment of each review note after its last line, in its
+		// place, unless the lines wrap.
+		noted := a.notedLines(d)
+		var hints []editorHint
 		if !wrap {
+			hints = a.editorHints(d, snap, noted, first, last)
+		}
+		if !wrap && !slices.ContainsFunc(hints, func(h editorHint) bool { return h.line == caretLine }) {
 			if blame = a.blameLine(d, caretLine, snap.Version(), focused); blame != "" {
 				s, e := snap.LineRange(caretLine)
 				blameX = textX + f.width(snap.Slice(s, min(e, s+maxBlameAfter))) + 4*charW
@@ -294,7 +302,6 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		d.git.Refresh(d.path, d.buf.Snapshot(), a.post)
 		marks := d.git.Lines
 		gitRuns := d.gitRuns()
-		noted := a.notedLines(d)
 		guideW := f.indentWidth(d.indent)
 		rows := a.overviewRows(d, snap, view.H)
 		spaces := a.selectedWhitespace(d, snap, first, last)
@@ -429,6 +436,14 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 					}
 				})
 			}
+			for _, h := range hints {
+				y := lineY(r, h.line)
+				icon := size * 0.85
+				pt.Icon(iconComment, ui.Rect{X: r.X + h.x, Y: y + (lineH-icon)/2, W: icon, H: icon}, p.accent)
+				span := ui.Span{Text: h.text, Font: family, Size: size * 0.92, Color: p.muted}
+				_, th := pt.MeasureText(0, span)
+				pt.RichText(r.X+h.x+icon+hintGap*charW, y+(lineH-th)/2, 0, span)
+			}
 			if blame != "" {
 				span := ui.Span{Text: blame, Font: family, Size: size * 0.92, Color: p.faint}
 				_, h := pt.MeasureText(0, span)
@@ -469,7 +484,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			// Along the right edge, where the scroll bar goes, the whole
 			// document: the lines changed since the last commit, find's
 			// matches and the caret's line.
-			if lines > 1 && len(gitRuns)+len(rows) > 0 {
+			if lines > 1 && len(gitRuns)+len(rows)+len(noted) > 0 {
 				right := x + view.W - 10
 				for _, g := range gitRuns {
 					y, h := r.Y+g.from*r.H, max((g.to-g.from)*r.H, 2)
@@ -484,6 +499,9 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 				}
 				for _, f := range rows {
 					pt.Fill(ui.Rect{X: right + 4, Y: r.Y + f*r.H, W: 5, H: 2}, p.matchRing, 1)
+				}
+				for _, n := range noted {
+					pt.Fill(ui.Rect{X: right + 4, Y: r.Y + float32(n.from)/float32(lines)*r.H - 1, W: 5, H: 3}, p.accent, 1)
 				}
 				caretAt := float32(caretLine) / float32(lines)
 				pt.Fill(ui.Rect{X: right, Y: r.Y + caretAt*r.H - 1, W: 9, H: 2}, p.text.Alpha(0.6), 1)
@@ -518,8 +536,8 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 					}
 				}
 				// A bar along the lines of each review comment.
-				for _, sp := range noted {
-					for i := max(sp.from, from); i < sp.to && i <= to; i++ {
+				for _, n := range noted {
+					for i := max(n.from, from); i < n.to && i <= to; i++ {
 						pt.Fill(ui.Rect{X: x + 2, Y: lineY(r, i), W: 2, H: lineHeight(i)}, p.accent, 0)
 					}
 				}

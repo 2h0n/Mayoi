@@ -210,7 +210,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				}
 			}
 		}
-		var buttons, hunkButtons, cardRect ui.Rect
+		var buttons, hunkButtons, cardRect, commentButton ui.Rect
 		box.Children(func() {
 			if card != nil && first == 0 && rows[0].kind == rowCommit {
 				cardRect = ui.Rect{X: v.scroll.X, Y: editorPadY + float32(v.tops[0])*lineH, W: view.W, H: float32(rows[0].h) * lineH}
@@ -237,6 +237,20 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					card := a.noteCardBox(c, fmt.Sprintf("note:%p", n), v.scroll.X+noteX, y+3, noteW, float32(rows[i].h)*lineH-6)
 					card.Children(func() { a.noteCard(c, n, nil, v.built.noteCols) })
 				}
+			}
+			// A button by the line under the pointer comments on it, unless
+			// the pointer chooses rows.
+			if hovered >= first && hovered <= last && hovered != sticky && rows[hovered].kind == rowLine && !v.dragged {
+				row := rows[hovered]
+				x := diffRailW + 2*l.numW + 3
+				if v.split {
+					x = diffRailW + l.numW + 3
+					if row.new >= 0 {
+						x += l.half
+					}
+				}
+				y := editorPadY + float32(v.tops[hovered])*lineH + (lineH-lineCommentSize)/2
+				commentButton = a.lineCommentButton(c, v, hovered, v.scroll.X+x, y)
 			}
 			// The buttons of the run of changes under the pointer, or chosen.
 			for _, i := range []int{hovered, v.cursor} {
@@ -274,7 +288,8 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		// click opens the file at a line, unless its first click did that.
 		// Shift chooses the rows from the one chosen to it.
 		if clicked, double := box.Clicked(), box.DoubleClicked(); clicked || double {
-			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) && !cardRect.Contains(x, y) {
+			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) && !cardRect.Contains(x, y) &&
+				!commentButton.Contains(x, y) {
 				i := v.rowAt(y, lineH)
 				stuck := onSticky(y)
 				if stuck {
@@ -340,6 +355,13 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			}
 			dim := func(col ui.Color) ui.Color { return col.Mix(p.editor, 0.55) }
 			neutral := p.gutter.Alpha(0.45)
+			// A bar by the rail along the lines of each note.
+			notes := a.diffNotes(v)
+			noted := func(x, y, h float32, row diffRow, old bool) {
+				if notedLine(v, notes, row, old) {
+					pt.Fill(ui.Rect{X: x + diffRailW + 1, Y: y, W: 2, H: h}, p.accent, 0)
+				}
+			}
 			for i := first; i <= last; i++ {
 				row := &rows[i]
 				file := v.files[row.file]
@@ -430,6 +452,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 									rail(x0, y, h, neutral)
 								}
 								number(n, x0+diffRailW+l.numW, y, numCol)
+								noted(x0, y, h, *row, side == 0)
 								if changed {
 									mark := "-"
 									if side == 1 {
@@ -470,6 +493,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					default:
 						rail(vx, y, h, neutral)
 					}
+					noted(vx, y, h, *row, row.new < 0)
 					if row.old >= 0 {
 						number(row.old, vx+diffRailW+l.numW, y, numCol)
 					}
@@ -531,6 +555,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 						col = p.removed
 					}
 					pt.Fill(ui.Rect{X: right, Y: y0, W: 3, H: hh}, col, 0)
+				}
+				// And the cards of the notes.
+				for _, at := range v.cards {
+					y0 := vy + float32(v.tops[at])/float32(total)*view.H
+					pt.Fill(ui.Rect{X: right + 4, Y: y0 - 1, W: 5, H: 3}, p.accent, 1)
 				}
 			}
 		})

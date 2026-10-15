@@ -187,20 +187,22 @@ added and removed. With the diff focused, keys work as in a pager:
 | `s` | Stage the changes of the chosen line or run, or unstage them |
 | Shift+`j` `k`, Shift+↓ ↑ | Choose more rows, as do Shift-click and a drag |
 | `c` | Comment on the rows chosen, or edit the comment chosen |
+| Delete | Delete the comment chosen |
 | ⌘C | Copy the lines chosen with their path and line numbers |
 | Escape | Choose one row again |
 
 ### Review comments
 
-Review an agent's changes, then hand it the review in one paste. Choose lines in a diff and press `c`, or select lines
-in a file and press ⇧⌘M (**Add Review Comment**), and type a comment: ⌘Enter keeps it, Escape drops it. In a diff the
-comment shows under its lines, with buttons to edit or delete it; in a file a bar by the line numbers marks its lines,
-and the command on them edits it. Comments work in the diff of a commit too. The status bar counts them, with a menu to
-go to each.
+Review an agent's changes, then hand it the review in one paste. Choose lines in a diff and press `c`, or click the
+**+** by the line under the pointer, or select lines in a file and press ⇧⌘M (**Add Review Comment**), and type a
+comment: ⌘Enter keeps it, Escape drops it. In a diff the comment shows under its lines, with buttons to edit or delete
+it, and a bar by the line numbers marks its lines. In a file the bar marks them too, and the comment shows after the
+last of them: click it, or run the command on its lines, to edit it. The scroll bar marks where each comment is.
+Comments work in the diff of a commit too. The status bar counts them, with a menu to go to each.
 
-**Send Review Comments to Terminal**, from that menu, the **Git** menu or the command palette, pastes every comment
-into the terminal used last, without pressing Enter, so you can add to it before it goes to the agent, and clears
-them. **Copy Review Comments** copies them instead. Each says where its lines are, relative to the folder, then shows
+**Send Review Comments to Terminal**, from the button in the diff's toolbar, that menu, the **Git** menu or the
+command palette, pastes every comment into the terminal used last, without pressing Enter, so you can add to it before
+it goes to the agent, and clears them. **Copy Review Comments** copies them instead. Each says where its lines are, relative to the folder, then shows
 them, as a diff when it was made in one, then the comment, numbered when there are more than one:
 
 ````
