@@ -244,7 +244,7 @@ func (a *app) fileTree(c *ui.Context) {
 	var action func()
 	// end is where the last row ends, while it shows: a click below it is
 	// on no file. top is where the first row starts, while it shows.
-	end, top := float32(-1), float32(0)
+	end, top := float32(-1), float32(-1)
 	// activeDir is the folder of the document shown, whose guide is
 	// brighter, as the block of the caret's is in the editor.
 	activeDir := ""
@@ -393,7 +393,7 @@ func (a *app) fileTree(c *ui.Context) {
 				TextColor(gitColor(p, letter)).Shrink(0)
 		})
 	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
-	if first, _ := a.files.List.Visible(); first > 0 || top < out.Bounds().Y {
+	if first, _ := a.files.List.Visible(); a.files.Rows() > 0 && (first > 0 || top >= 0 && top < out.Bounds().Y-0.5) {
 		// A shadow under the folder's row, as the files scroll up under it.
 		out.DrawOver(func(pt *ui.Painter, r ui.Rect) {
 			pt.FillGradient(ui.Rect{X: r.X, Y: r.Y, W: r.W, H: 6}, ui.LinearGradient{
