@@ -354,8 +354,9 @@ not have it yet.
 - A connection that drops, as the network goes or the Mac sleeps, does the same, and connects again by itself: after 2
   seconds, then twice as long each time, up to every 30 seconds, and at once as the window comes back to the front. The
   banner says when it tries next, with **Reconnect Now**. A host that refuses the keys, or whose key is not trusted,
-  is not tried again until asked. Reconnecting reads the tree, the open files and the status again; the terminals of
-  the host end with the connection.
+  is not tried again until asked. Reconnecting reads the tree, the open files and the status again. The terminals of
+  the host stay, with what they showed, and say the connection went; they start again as it comes back, in the
+  folder their shell was last in when it says so, with what they showed above.
 - Files copied in the Finder, or in the explorer of another window, paste into a folder of the host with ⌘V or
   **Paste**, and files dropped from the Finder on a folder of the explorer copy into it: they go up as one tar stream
   through the connection, land beside the folder, and take their names, as copies when a name is taken, once they all

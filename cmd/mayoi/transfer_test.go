@@ -6,8 +6,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"mayoi/internal/remote"
 )
 
 // TestRemotePaste: files of the Finder paste into a remote folder, a
@@ -216,5 +219,41 @@ func TestRemoteReadAhead(t *testing.T) {
 	a.tree.Load(deeper)
 	if got := a.tree.Children(deeper); len(got) != 1 || filepath.Base(got[0]) != "x" {
 		t.Fatalf("deeper = %q", got)
+	}
+}
+
+// TestRemoteTerminalComesBack: a terminal of a host whose connection
+// went stays, says so, and starts again with what it showed once the
+// host is back.
+func TestRemoteTerminalComesBack(t *testing.T) {
+	hs, _, _ := remoteHarness(t)
+	a := hs.a
+	a.newTerminal()
+	s := a.panelTerm
+	if s == nil || sessionConn(s) == nil {
+		t.Fatal("no terminal of the host")
+	}
+	first := s.term
+	first.Feed([]byte("MARKER\r\n"))
+	a.disconnect()
+	hs.untilLong("the disconnection", func() bool { return a.connState == remote.Offline })
+	// ssh ends as the connection does.
+	a.terminalExited(s, first, 255)
+	if !s.lost || !slices.Contains(a.terms, s) || !strings.Contains(first.Text(), "was lost") {
+		t.Fatalf("lost %v, kept %v, text %q", s.lost, slices.Contains(a.terms, s), first.Text())
+	}
+	a.reconnect()
+	hs.untilLong("the terminal again", func() bool { return !s.lost })
+	if s.term == first || !strings.Contains(s.term.Text(), "MARKER") {
+		t.Fatalf("restarted: %v, text %q", s.term != first, s.term.Text())
+	}
+	// An exit of the shell itself closes it.
+	a.terminalExited(s, first, 0)
+	if !slices.Contains(a.terms, s) {
+		t.Fatal("the old terminal's end closed the new")
+	}
+	a.terminalExited(s, s.term, 0)
+	if slices.Contains(a.terms, s) {
+		t.Fatal("an exit kept the terminal")
 	}
 }

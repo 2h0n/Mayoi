@@ -23,6 +23,9 @@ type session struct {
 	dir   string
 	view  ui.Handle // its view, which takes the keyboard
 	tab   *colTab   // the tab that shows it, nil for one of the panel
+	// lost is set while a terminal of a host waits for the connection
+	// that ended it, to start again.
+	lost bool
 }
 
 // termTheme is the terminal's colors for a palette: its background the
@@ -69,14 +72,32 @@ func (a *app) workDir() string {
 func (a *app) startTerminal(dir string) *session {
 	a.nextTerm++
 	s := &session{id: a.nextTerm, dir: dir, title: shellName()}
+	if c := sessionConn(s); c != nil {
+		s.title = c.Host
+	}
+	term, err := a.spawnTerminal(s, dir)
+	if err != nil {
+		a.fail("Could not start a terminal: %v", err)
+		return nil
+	}
+	s.term = term
+	a.terms = append(a.terms, s)
+	return s
+}
+
+// spawnTerminal starts the program of a terminal in dir: the shell, of
+// the host in a remote folder.
+func (a *app) spawnTerminal(s *session, dir string) (*terminal.Terminal, error) {
 	light, dark := a.termThemes()
 	// In a remote folder, a shell of its host, over the connection.
 	var command []string
 	if c, rdir, ok := remote.Lookup(dir); ok {
 		command = c.TerminalCommand(rdir)
-		s.title = c.Host
 		dir, _ = os.UserHomeDir()
 	}
+	// term is the terminal made, which OnExit tells from one that took
+	// its place.
+	var term *terminal.Terminal
 	term, err := terminal.New(terminal.Options{
 		Command:   command,
 		Dir:       dir,
@@ -114,8 +135,8 @@ func (a *app) startTerminal(dir string) *session {
 			}
 			return ok
 		},
-		OnExit: func(int) {
-			a.post(func() { a.removeTerminal(s) })
+		OnExit: func(code int) {
+			a.post(func() { a.terminalExited(s, term, code) })
 		},
 		// A program done in a project out of sight, as a build or an
 		// agent, has the rail mark the project's square.
@@ -131,13 +152,7 @@ func (a *app) startTerminal(dir string) *session {
 			})
 		},
 	})
-	if err != nil {
-		a.fail("Could not start a terminal: %v", err)
-		return nil
-	}
-	s.term = term
-	a.terms = append(a.terms, s)
-	return s
+	return term, err
 }
 
 // newTerminal starts a terminal in the panel and shows it.

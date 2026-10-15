@@ -185,6 +185,7 @@ func (a *app) reconnected() {
 	a.git.meta, a.git.refsMeta = time.Time{}, time.Time{}
 	a.indexStale, a.ignoredStale = true, true
 	a.gitChanged()
+	a.restartTerminals()
 }
 
 // reconnect connects the folder's host again.
