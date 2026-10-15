@@ -56,6 +56,9 @@ type document struct {
 	loading, offline, restored bool
 	loadErr                    error
 	stamp                      *fileStamp
+	// conflict is set while a save of a remote file that changed on its
+	// host waits to be told what to do.
+	conflict bool
 	// saving is set while a remote file is written; resave saves it again
 	// then, calling resaveDone or resaveFailed.
 	saving, resave bool

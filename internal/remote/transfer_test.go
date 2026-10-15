@@ -193,3 +193,35 @@ func TestForward(t *testing.T) {
 		t.Fatal("still listening")
 	}
 }
+
+// TestWriteFileIf: a write with the stamp of the file read goes, one
+// after the file changed on the host fails and leaves it.
+func TestWriteFileIf(t *testing.T) {
+	c := connectFake(t)
+	p := filepath.Join(t.TempDir(), "f.txt")
+	os.WriteFile(p, []byte("one\n"), 0o644)
+	info, _, err := c.ReadFileInfo(p, 0)
+	if err != nil || info.Stamp() == "" {
+		t.Fatalf("read: %+v, %v", info, err)
+	}
+	info, err = c.WriteFileIf(p, []byte("two\n"), info.Stamp())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Changed on the host meanwhile.
+	os.WriteFile(p, []byte("changed there\n"), 0o644)
+	if _, err := c.WriteFileIf(p, []byte("three\n"), info.Stamp()); err != ErrChanged {
+		t.Fatalf("over a change: %v", err)
+	}
+	if b, _ := os.ReadFile(p); string(b) != "changed there\n" {
+		t.Fatalf("the file is %q", b)
+	}
+	// Without a stamp, or once gone, it writes.
+	if _, err := c.WriteFileIf(p, []byte("four\n"), ""); err != nil {
+		t.Fatal(err)
+	}
+	os.Remove(p)
+	if _, err := c.WriteFileIf(p, []byte("five\n"), info.Stamp()); err != nil {
+		t.Fatal(err)
+	}
+}

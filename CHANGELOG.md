@@ -19,6 +19,9 @@ needs a `## <version>` section here, or its build fails.
   copy or stop each.
 - Remote SSH: the folders of the Explorer open at once: those in a
   folder are read along with it, at one round trip to the host.
+- Remote SSH: saving a file that changed on the host since it was
+  opened asks whether to overwrite it or revert to it, rather than
+  writing over the change.
 - Remote SSH: a terminal of the host no longer closes as the connection
   goes: it keeps what it showed, says the connection was lost, and
   starts again as it comes back.

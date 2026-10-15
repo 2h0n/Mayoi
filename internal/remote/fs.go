@@ -19,6 +19,9 @@ type FileInfo struct {
 	size    int64
 	mode    fs.FileMode
 	modTime time.Time
+	// stamp is the size and time of the file as the host's stat
+	// printed them, which WriteFileIf compares with what it prints then.
+	stamp string
 }
 
 func (f *FileInfo) Name() string       { return f.name }
@@ -27,6 +30,10 @@ func (f *FileInfo) Mode() fs.FileMode  { return f.mode }
 func (f *FileInfo) ModTime() time.Time { return f.modTime }
 func (f *FileInfo) IsDir() bool        { return f.mode.IsDir() }
 func (f *FileInfo) Sys() any           { return nil }
+
+// Stamp is the size and time of the file as the host printed them, which
+// tell whether it changed since, to WriteFileIf.
+func (f *FileInfo) Stamp() string { return f.stamp }
 
 // NewFileInfo makes the FileInfo of a file, as for tests.
 func NewFileInfo(name string, size int64, mode fs.FileMode, modTime time.Time) *FileInfo {
@@ -67,7 +74,8 @@ func parseStat(out []byte) map[string]*FileInfo {
 		if err1 != nil || err2 != nil {
 			continue
 		}
-		infos[name] = &FileInfo{name: path.Base(name), size: size, mode: fileMode(uint32(mode)), modTime: parseTime(f[1])}
+		infos[name] = &FileInfo{name: path.Base(name), size: size, mode: fileMode(uint32(mode)), modTime: parseTime(f[1]),
+			stamp: f[0] + " " + f[1]}
 	}
 	return infos
 }
@@ -294,16 +302,39 @@ exec ` + read + ` -- "$1"`
 // than renamed in place, the file keeps its owner, mode, links and
 // attributes, as the editors of a terminal keep them.
 func (c *Conn) WriteFile(p string, data []byte) (*FileInfo, error) {
-	script := `t=$(mktemp "${TMPDIR:-/tmp}/mayoi.XXXXXX") || exit 1
+	return c.WriteFileIf(p, data, "")
+}
+
+// ErrChanged is the error of a write to a file that changed on the host
+// since it was read.
+var ErrChanged = errors.New("the file changed on the host since it was read")
+
+// changedMark is what the script of WriteFileIf says of a file changed.
+const changedMark = "mayoi: changed since read"
+
+// WriteFileIf writes a file as WriteFile does, unless the file there no
+// longer has the Stamp stamp, which fails with ErrChanged and leaves it
+// as it is: the check and the write are one round trip. An empty stamp,
+// or a file not there, writes as WriteFile does.
+func (c *Conn) WriteFileIf(p string, data []byte, stamp string) (*FileInfo, error) {
+	st := c.Info().statCmd(true)
+	script := `if [ -n "$3" ] && [ -e "$1" ]; then
+  cur=$(` + st + ` -- "$1" | sed -n '1s/^\([^ ]* [^ ]*\) .*/\1/p')
+  if [ "$cur" != "$3" ]; then cat > /dev/null; echo "` + changedMark + `" >&2; exit 3; fi
+fi
+t=$(mktemp "${TMPDIR:-/tmp}/mayoi.XXXXXX") || exit 1
 trap 'rm -f "$t"' EXIT
 cat > "$t" || exit 1
 n=$(wc -c < "$t")
 if [ $n -ne $2 ]; then echo "the file did not arrive whole" >&2; exit 1; fi
 cat "$t" > "$1" || exit 1
-` + c.Info().statCmd(true) + ` -- "$1"
+` + st + ` -- "$1"
 `
-	out, err := c.Run(bytes.NewReader(data), script, p, strconv.Itoa(len(data)))
+	out, err := c.Run(bytes.NewReader(data), script, p, strconv.Itoa(len(data)), stamp)
 	if err != nil {
+		if re, ok := err.(*Error); ok && strings.Contains(re.Stderr, changedMark) {
+			return nil, ErrChanged
+		}
 		return nil, err
 	}
 	if f, ok := parseStat(out)[p]; ok {

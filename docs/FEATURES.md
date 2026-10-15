@@ -342,7 +342,8 @@ not have it yet.
   shows at once and is read again.
 - Files open at once, read in the background, and save in the background: a save goes whole to a temporary file on
   the host and is copied into the file only once it all arrived, so the file keeps its owner, mode and links, and a
-  connection lost on the way leaves it as it was.
+  connection lost on the way leaves it as it was. A save first checks, in the same round trip, that the file is as it
+  was read: one changed on the host since asks whether to overwrite it or to revert to it, which Undo takes back.
 - Changes on the host show as they would locally: `inotifywait` reports them where the host has it (the
   `inotify-tools` package), and otherwise the folders shown and the files open are looked at every 3 seconds, every 15
   while the window is in the background, and at once as it comes back. Without

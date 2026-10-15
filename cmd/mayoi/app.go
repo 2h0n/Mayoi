@@ -443,6 +443,8 @@ func (a *app) saveDoc(d *document, then func()) {
 		}
 	}
 	if remote.Is(d.path) {
+		// Saved by hand, a file that changed on its host asks again.
+		d.conflict = false
 		a.saveRemote(d, saved, func(err error) { a.fail("Could not save %s: %v", d.name(), err) })
 		return
 	}

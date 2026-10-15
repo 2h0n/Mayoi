@@ -23,17 +23,23 @@ import (
 var remoteSupported = runtime.GOOS != "windows"
 
 // fileStamp is what tells that a file changed: its size and the time of
-// its last change.
+// its last change, and, for a remote file, both as its host printed
+// them, which a save compares with the file's then.
 type fileStamp struct {
 	size int64
 	mod  time.Time
+	raw  string
 }
 
 func stampOf(info fs.FileInfo) *fileStamp {
 	if info == nil {
 		return nil
 	}
-	return &fileStamp{info.Size(), info.ModTime()}
+	st := &fileStamp{size: info.Size(), mod: info.ModTime()}
+	if r, ok := info.(interface{ Stamp() string }); ok {
+		st.raw = r.Stamp()
+	}
+	return st
 }
 
 // attachRemote follows the connection to the host of a remote folder,
@@ -343,11 +349,23 @@ func (a *app) saveRemote(d *document, done func(), failed func(error)) {
 	d.saving = true
 	snap, data := d.encode()
 	crlf, path := d.crlf, d.path
+	// The file as it was read, unless it changed on the host since.
+	expect := ""
+	if d.stamp != nil {
+		expect = d.stamp.raw
+	}
 	go func() {
-		info, err := vfs.WriteFile(path, data, 0o644)
+		var info fs.FileInfo
+		c, rp, _ := remote.Lookup(path)
+		ri, err := c.WriteFileIf(rp, data, expect)
+		if err == nil {
+			info = ri
+		}
 		a.post(func() {
 			d.saving = false
-			if err != nil {
+			if errors.Is(err, remote.ErrChanged) && d.path == path {
+				a.saveConflict(d, done, failed)
+			} else if err != nil {
 				failed(err)
 			} else {
 				if d.path == path {
@@ -600,4 +618,54 @@ func (a *app) shutdown() {
 	}
 	a.detachRemote()
 	a.closeRemotePicker()
+}
+
+// saveConflict asks what to do with a remote document whose file changed
+// on the host since it was read: write it over the file, or take the
+// file's text, as a step that undo takes back. An autosave asks once,
+// until the document is saved by hand.
+func (a *app) saveConflict(d *document, done func(), failed func(error)) {
+	if d.conflict {
+		return
+	}
+	d.conflict = true
+	host := remote.HostOf(d.path)
+	a.confirm = &confirm{
+		title:   d.name() + " changed on " + host,
+		message: "It changed on " + host + " since it was opened here. Overwrite it with your changes, or revert to the file on the host? Undo brings your changes back after a revert.",
+		ok:      "Overwrite", danger: true, okShort: "Overwrite",
+		run: func() {
+			d.conflict, d.stamp = false, nil
+			a.saveRemote(d, done, failed)
+		},
+		alternate: "Revert to the File", alternateShort: "Revert",
+		runAlternate: func() {
+			d.conflict = false
+			a.revertRemote(d)
+		},
+	}
+}
+
+// revertRemote makes a remote document's text the file's, changes and
+// all, as a step of undo.
+func (a *app) revertRemote(d *document) {
+	path := d.path
+	go func() {
+		info, data, err := vfs.ReadFileInfo(path, maxOpenBytes)
+		a.post(func() {
+			if !slices.Contains(a.docs, d) || d.path != path {
+				return
+			}
+			if err != nil {
+				a.fail("Could not read %s: %v", d.name(), err)
+				return
+			}
+			if isBinary(data) {
+				a.fail("%s is a binary file now", d.name())
+				return
+			}
+			d.takeText(data)
+			d.stamp = stampOf(info)
+		})
+	}()
 }

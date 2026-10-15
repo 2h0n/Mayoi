@@ -257,3 +257,61 @@ func TestRemoteTerminalComesBack(t *testing.T) {
 		t.Fatal("an exit kept the terminal")
 	}
 }
+
+// TestRemoteSaveConflict: saving a remote file that changed on its host
+// since it was read asks first, to overwrite it or to take its text.
+func TestRemoteSaveConflict(t *testing.T) {
+	hs, c, dir := remoteHarness(t)
+	a := hs.a
+	a.openFile(hs.path("main.go"), true)
+	hs.untilLong("main.go to be read", func() bool {
+		d := a.activeEditor()
+		return d != nil && !d.loading && d.stamp != nil
+	})
+	d := a.activeEditor()
+	change := func(text string) {
+		t.Helper()
+		if _, err := c.Run(nil, `printf '%s' "$2" > "$1/main.go"`, dir, text); err != nil {
+			t.Fatal(err)
+		}
+	}
+	d.edit(d.sel, textEdit{0, 0, "// mine\n"})
+	change("theirs, longer than it was\n")
+	a.saveDoc(d.document, nil)
+	hs.untilLong("the question", func() bool { return a.confirm != nil })
+	if !strings.Contains(a.confirm.title, "main.go changed on "+c.Host) {
+		t.Fatalf("title %q", a.confirm.title)
+	}
+	hs.settle()
+	hs.shot("save-conflict")
+	host, _ := c.ReadFile(dir+"/main.go", 0)
+	if string(host) != "theirs, longer than it was\n" {
+		t.Fatalf("the save went: %q", host)
+	}
+	// Revert takes the file's text.
+	cf := a.confirm
+	a.confirm = nil
+	cf.runAlternate()
+	hs.untilLong("the revert", func() bool { return d.buf.String() == "theirs, longer than it was\n" })
+
+	// Overwrite writes over a change.
+	d.edit(d.sel, textEdit{0, 0, "// mine again\n"})
+	change("theirs again, and longer still\n")
+	a.saveDoc(d.document, nil)
+	hs.untilLong("the question again", func() bool { return a.confirm != nil })
+	cf = a.confirm
+	a.confirm = nil
+	cf.run()
+	hs.untilLong("the overwrite", func() bool { return !d.saving && !d.dirty() })
+	host, _ = c.ReadFile(dir+"/main.go", 0)
+	if !strings.HasPrefix(string(host), "// mine again\n") {
+		t.Fatalf("on the host: %q", host)
+	}
+	// Saved since, it saves without asking.
+	d.edit(d.sel, textEdit{0, 0, "// once more\n"})
+	a.saveDoc(d.document, nil)
+	hs.untilLong("a plain save", func() bool { return !d.saving && !d.dirty() })
+	if a.confirm != nil {
+		t.Fatal("asked again")
+	}
+}
