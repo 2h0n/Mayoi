@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.9.1
 
 - ⇧⌘E gives the Explorer the keyboard, as in VS Code, so that the arrows
   choose a file and ⌘V pastes into the folder chosen.
