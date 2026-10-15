@@ -20,6 +20,8 @@ needs a `## <version>` section here, or its build fails.
   as the files scroll under it.
 - The Markdown preview draws a task's checkbox as a box, filled once
   done, and lists with softer bullets, rings for a list in a list.
+- A picture fitted to its tab leaves a margin around it, and a hairline
+  sets it off from the pane.
 
 ## 0.9.1
 

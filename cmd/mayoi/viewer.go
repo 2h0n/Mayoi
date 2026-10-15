@@ -238,11 +238,18 @@ func (v *viewer) stop() {
 	}
 }
 
+// fitMargin is the room a fitted picture leaves around it, in a pane
+// that has room for it.
+const fitMargin = 24
+
 // fitScale is the scale that fits the picture in a pane w×h, never above
-// its own size.
+// its own size, with fitMargin around it.
 func (v *viewer) fitScale(w, h float32) float32 {
 	if v.w <= 0 || v.h <= 0 || w <= 0 || h <= 0 {
 		return 1
+	}
+	if w > 8*fitMargin && h > 8*fitMargin {
+		w, h = w-2*fitMargin, h-2*fitMargin
 	}
 	return min(1, w/v.w, h/v.h)
 }
@@ -413,6 +420,11 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 			}
 			pt.Image(v.src, at, ui.FillBox)
 		})
+		if at.W < r.W && at.H < r.H {
+			// A hairline sets the picture off from the pane, as the
+			// checks would not where it is transparent at its edges.
+			pt.Stroke(ui.Rect{X: at.X - 1, Y: at.Y - 1, W: at.W + 2, H: at.H + 2}, p.border, 0, 1)
+		}
 	})
 	pane.Children(func() {
 		switch {
