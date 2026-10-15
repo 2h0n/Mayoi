@@ -34,8 +34,9 @@ type fakeHost struct {
 	folders []string
 	// recentChanges counts the changes of the recent folders.
 	recentChanges int
-	// clipboard are the files on the clipboard.
+	// clipboard are the files on the clipboard, and image its image.
 	clipboard []string
+	image     []byte
 }
 
 func (h *fakeHost) openFolder(done func(string)) { done(h.folder) }
@@ -58,6 +59,7 @@ func (h *fakeHost) copyFiles(paths []string) error {
 	return nil
 }
 func (h *fakeHost) clipboardFiles() []string { return h.clipboard }
+func (h *fakeHost) clipboardImage() []byte   { return h.image }
 func (h *fakeHost) closeWindow()             { h.closed = true }
 func (h *fakeHost) setTheme(_, _ string)     {}
 func (h *fakeHost) showFolder(dir string) bool {

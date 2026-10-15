@@ -97,6 +97,7 @@ func (h *desktop) clipboardFiles() []string {
 	paths, _ := mygo.Clipboard.ReadFiles()
 	return paths
 }
+func (h *desktop) clipboardImage() []byte { return mygo.Clipboard.ReadImage() }
 
 // setTitle titles the window, while it shows the project.
 func (h *desktop) setTitle(title string) {

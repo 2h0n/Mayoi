@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -264,6 +265,18 @@ func (a *app) fileTree(c *ui.Context) {
 		if !isDir {
 			a.dragFile(row, &fileDrag{path: path})
 		}
+		// Files of the Finder dropped on a row copy into its folder, up to
+		// a host for a remote folder.
+		if paths := row.DroppedFiles(); paths != nil {
+			srcs, into := slices.Clone(paths), path
+			if !isDir {
+				into = filepath.Dir(path)
+			}
+			action = func() { a.copyPathsInto(srcs, into) }
+		}
+		if row.FileDragOver() {
+			row.Background(p.accent.Alpha(0.16)).Radius(4)
+		}
 		row.ContextMenu(func(m *ui.Menu) {
 			dir := path
 			if !isDir {
@@ -292,16 +305,13 @@ func (a *app) fileTree(c *ui.Context) {
 				}
 				m.Separator()
 			}
-			// The Finder's clipboard has files of this machine.
-			if a.conn == nil {
-				if m.Item("Copy").Chosen() {
-					action = func() { a.copyFiles(path) }
-				}
-				if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
-					action = func() { a.pasteFiles(dir) }
-				}
-				m.Separator()
+			if m.Item("Copy").Chosen() {
+				action = func() { a.copyFiles(path) }
 			}
+			if m.Item("Paste").Disabled(len(a.clipboardSources()) == 0).Chosen() {
+				action = func() { a.pasteFiles(dir) }
+			}
+			m.Separator()
 			if m.Item("Copy Path").Chosen() {
 				action = func() { a.services.WriteClipboard(hostPath(path)) }
 			}
@@ -361,6 +371,11 @@ func (a *app) fileTree(c *ui.Context) {
 		})
 	}).Grow(1).Padding(0, 6, 8, 6).Gap(0)
 	a.takeKeys(out, placeExplorer, a.explorerInput)
+	// Below the rows, into the workspace.
+	if paths := out.DroppedFiles(); paths != nil {
+		srcs := slices.Clone(paths)
+		action = func() { a.copyPathsInto(srcs, a.root) }
+	}
 	// The space below the files, while the last shows: a click there
 	// chooses none, so that new files go in the workspace, and its menu is
 	// the workspace's. The pointer is followed only then.
@@ -392,11 +407,9 @@ func (a *app) fileTree(c *ui.Context) {
 		if m.Item("Open in Terminal").Chosen() {
 			action = func() { a.newTerminalIn(a.root) }
 		}
-		if a.conn == nil {
-			m.Separator()
-			if m.Item("Paste").Disabled(len(a.host.clipboardFiles()) == 0).Chosen() {
-				action = func() { a.pasteFiles(a.root) }
-			}
+		m.Separator()
+		if m.Item("Paste").Disabled(len(a.clipboardSources()) == 0).Chosen() {
+			action = func() { a.pasteFiles(a.root) }
 		}
 	})
 	if a.files.List.Shortcut(c, 0, ui.KeyEscape) {

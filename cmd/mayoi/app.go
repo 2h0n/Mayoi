@@ -38,6 +38,8 @@ type host interface {
 	// and clipboardFiles are the local files the clipboard has.
 	copyFiles(paths []string) error
 	clipboardFiles() []string
+	// clipboardImage is the image the clipboard has, as PNG, or nil.
+	clipboardImage() []byte
 	setTitle(title string)
 	closeWindow()
 	// setTheme gives the windows a theme and an appearance of the
@@ -158,6 +160,8 @@ type app struct {
 	termFont terminal.Font
 	// termCopy is whether the terminals copy what is selected.
 	termCopy bool
+	// transfers are the copies to and from hosts running.
+	transfers []*transfer
 
 	panelMax    bool // the panel takes the editor's room
 	welcomeView ui.Handle

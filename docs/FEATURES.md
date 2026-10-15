@@ -353,8 +353,18 @@ not have it yet.
   banner says when it tries next, with **Reconnect Now**. A host that refuses the keys, or whose key is not trusted,
   is not tried again until asked. Reconnecting reads the tree, the open files and the status again; the terminals of
   the host end with the connection.
-- Reveal in Finder and copying files to and from the Finder are left out of a remote folder, and deleting a file
-  deletes it for good, after asking, as a remote folder has no trash.
+- Files copied in the Finder, or in the explorer of another window, paste into a folder of the host with ⌘V or
+  **Paste**, and files dropped from the Finder on a folder of the explorer copy into it: they go up as one tar stream
+  through the connection, land beside the folder, and take their names, as copies when a name is taken, once they all
+  arrived. A remote file copied in the explorer puts its path on the host on the clipboard, and pastes into another
+  folder of the host as a copy made there, into a folder of this machine as a download, and into a folder of another
+  host by way of this machine. The status bar shows each transfer and how far it got.
+- A terminal of the host pastes files of the Finder, of the explorer of a local folder, or dropped on it, as copies
+  uploaded to a temporary folder of the host, and types their paths there. An image alone on the clipboard, as a
+  screenshot, goes up as a PNG file of its own, so that Claude Code running on the host takes it as it does a
+  screenshot pasted on the Mac. A file of the host dragged to its terminal types its path on the host.
+- Reveal in Finder is left out of a remote folder, and deleting a file deletes it for good, after asking, as a remote
+  folder has no trash.
 - Recent folders, the windows and the tabs of a remote folder are kept as those of a local one, and a remote folder of
   the last session connects again as the app starts.
 

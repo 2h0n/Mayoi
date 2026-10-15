@@ -704,6 +704,9 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 	if busy := a.git.busy; busy != "" {
 		used += measure(busy, true)
 	}
+	if x := a.transferText(); x != "" {
+		used += measure(x, true)
+	}
 	if len(a.chord) > 0 {
 		used += measure("("+strings.Join(chordCaps(a.chord), " ")+") was pressed. Waiting for the next key…", true)
 	}
@@ -830,6 +833,7 @@ func (a *app) statusBar(c *ui.Context) {
 			})
 			bb.Menu(a.branchMenu)
 		}
+		a.transferStatus(c, text)
 		if busy := a.git.busy; busy != "" {
 			ui.Row(c.Key("status:busy")).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
 				// In a theme with a character, it hops for it instead.

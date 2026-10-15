@@ -89,6 +89,9 @@ func (a *app) startTerminal(dir string) *session {
 		OnTitle: func(title string) {
 			a.post(func() { s.title = title })
 		},
+		// A terminal of a host gets files and images pasted as copies
+		// uploaded to it.
+		OnPaste: func(text string) bool { return a.terminalPaste(s, text) },
 		// The shortcuts of keybindings.json, before the shell, and on
 		// Windows and Linux those of Mayoi's it leaves to Mayoi.
 		OnKey: func(mods ui.Modifiers, key ui.Key) bool {

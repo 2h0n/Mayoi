@@ -5,6 +5,15 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Remote SSH: files copied in the Finder paste into a folder of the host,
+  and files dropped from the Finder on the explorer copy into the folder
+  under the pointer. A remote file copied in the explorer pastes as a
+  copy on its host, or downloads into a folder of this machine. The
+  status bar shows each transfer and how far it got.
+- Remote SSH: a terminal of the host pastes files, and a screenshot alone
+  on the clipboard, as copies uploaded to the host, and types their paths
+  there, so Claude Code on the host takes a pasted screenshot. A remote
+  file dragged to a terminal types its path on the host, not Mayoi's.
 - Remote SSH: a connection that drops, as the network goes or the laptop
   sleeps, connects again by itself, after 2 seconds, then less often, up
   to every 30 seconds, and at once as the window comes back to the front.

@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 
+	"mayoi/internal/remote"
+
 	"github.com/egoist/mygo/ui"
 )
 
@@ -101,13 +103,28 @@ func (a *app) dropOnColumn(paths []string, col *column) {
 }
 
 // pastePaths types the paths into a terminal, quoted for the shell, as
-// the Terminal does.
+// the Terminal does. A terminal of a host gets the paths on the host:
+// those of its own files, and, for the others, of copies uploaded to it.
+// One of this machine gets a remote path as scp spells it, host:/path.
 func (a *app) pastePaths(s *session, paths []string) {
-	quoted := make([]string, len(paths))
-	for i, p := range paths {
-		quoted[i] = shellQuote(p)
+	c := sessionConn(s)
+	if c == nil {
+		shown := make([]string, len(paths))
+		for i, p := range paths {
+			shown[i] = remote.Display(p)
+		}
+		s.term.Paste(quotePaths(shown))
+		return
 	}
-	s.term.Paste(strings.Join(quoted, " ") + " ")
+	if slices.ContainsFunc(paths, func(p string) bool { return remote.HostOf(p) != c.Host }) {
+		a.uploadPaths(s, paths, nil)
+		return
+	}
+	rps := make([]string, len(paths))
+	for i, p := range paths {
+		rps[i] = hostPath(p)
+	}
+	s.term.Paste(quotePaths(rps))
 }
 
 // shellQuote quotes s for a POSIX shell, unless it needs no quotes.
