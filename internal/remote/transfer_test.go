@@ -16,12 +16,16 @@ import (
 // this machine.
 func connectFake(t *testing.T) *Conn {
 	t.Helper()
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSH), 0o755); err != nil {
-		t.Fatal(err)
+	host := os.Getenv("MAYOI_SSH_TEST_HOST")
+	if host == "" {
+		host = "fake.invalid"
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSH), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	c := For("fake.invalid")
+	c := For(host)
 	t.Cleanup(Shutdown)
 	c.Connect()
 	deadline := time.Now().Add(30 * time.Second)
@@ -144,12 +148,16 @@ done
 ` + fakeSSH
 
 func TestForward(t *testing.T) {
-	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSHW), 0o755); err != nil {
-		t.Fatal(err)
+	host := os.Getenv("MAYOI_SSH_TEST_HOST")
+	if host == "" {
+		host = "fake-forward.invalid"
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "ssh"), []byte(fakeSSHW), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-	c := For("fake-forward.invalid")
+	c := For(host)
 	t.Cleanup(Shutdown)
 	c.Connect()
 	for deadline := time.Now().Add(30 * time.Second); !c.Connected(); time.Sleep(20 * time.Millisecond) {

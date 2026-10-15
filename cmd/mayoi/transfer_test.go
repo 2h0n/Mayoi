@@ -234,11 +234,19 @@ func TestRemoteTerminalComesBack(t *testing.T) {
 		t.Fatal("no terminal of the host")
 	}
 	first := s.term
+	if os.Getenv("MAYOI_SSH_TEST_HOST") != "" {
+		hs.untilLong("the shell of the host", func() bool { return strings.TrimSpace(first.Text()) != "" })
+	}
 	first.Feed([]byte("MARKER\r\n"))
 	a.disconnect()
 	hs.untilLong("the disconnection", func() bool { return a.connState == remote.Offline })
-	// ssh ends as the connection does.
-	a.terminalExited(s, first, 255)
+	// ssh ends as the connection does: on a real host by itself, as its
+	// session went through the connection; the fake one's is a shell here.
+	if os.Getenv("MAYOI_SSH_TEST_HOST") != "" {
+		hs.untilLong("the terminal's ssh to end", func() bool { return s.lost })
+	} else {
+		a.terminalExited(s, first, 255)
+	}
 	if !s.lost || !slices.Contains(a.terms, s) || !strings.Contains(first.Text(), "was lost") {
 		t.Fatalf("lost %v, kept %v, text %q", s.lost, slices.Contains(a.terms, s), first.Text())
 	}
