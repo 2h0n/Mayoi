@@ -15,9 +15,10 @@ needs a `## <version>` section here, or its build fails.
   for a range, Cmd-click (Ctrl-click on Windows and Linux) for one more,
   and Cmd+A for all. Space, and a selected row's stage, unstage and
   discard buttons and menu items, act on all the files selected.
-- The Explorer draws indent guides down from each open folder, brighter
-  for the folder of the file shown, and a shadow under the folder's name
-  as the files scroll under it.
+- The Explorer, and Source Control as a tree, draw indent guides down
+  from each open folder, in the Explorer brighter for the folder of the
+  file shown, and a shadow under the folder's name as the files scroll
+  under it.
 - The Markdown preview draws a task's checkbox as a box, filled once
   done, and lists with softer bullets, rings for a list in a list.
 - A picture fitted to its tab leaves a margin around it, and a hairline

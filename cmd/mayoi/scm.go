@@ -761,6 +761,9 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 		indent = treeIndent(r.depth) + 16
 	}
 	row := ui.Row(c).Grow(1).Gap(6).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, indent)
+	if tree {
+		a.scmGuides(row, r.depth)
+	}
 	if a.scm.selection.Has(r.key) {
 		row.Background(p.active)
 	}
@@ -1240,12 +1243,28 @@ func shortAgo(t, now time.Time) string {
 // treeIndent is how far in a row of the tree depth folders deep starts.
 func treeIndent(depth int) float32 { return 4 + float32(depth)*14 }
 
+// scmGuides paints the indent guides of a row of the tree, depth folders
+// deep: a line down from the arrow of each folder above it, as the
+// Explorer draws them.
+func (a *app) scmGuides(row ui.Element, depth int) {
+	if depth == 0 {
+		return
+	}
+	col := a.pal.guide
+	row.Draw(func(pt *ui.Painter, r ui.Rect) {
+		for k := range depth {
+			pt.Fill(ui.Rect{X: r.X + treeIndent(k) + 6, Y: r.Y, W: 1, H: r.H}, col, 0)
+		}
+	})
+}
+
 // scmFolder is the row of a folder of the tree: a click opens or closes
 // it, and its buttons stage, unstage or discard every file in it.
 func (a *app) scmFolder(c *ui.Context, r scmRow, action *func()) {
 	p := a.pal
 	closed := a.scm.closedDirs[r.key]
 	row := ui.Row(c).Grow(1).Gap(4).AlignItems(ui.Center).Height(22).Padding(0, 0, 0, treeIndent(r.depth))
+	a.scmGuides(row, r.depth)
 	hovered, clicked := row.Hovered(), row.Clicked()
 	row.Children(func() {
 		chevron, folder := iconChevronDown, iconFolderOpen
