@@ -23,6 +23,8 @@ needs a `## <version>` section here, or its build fails.
   done, and lists with softer bullets, rings for a list in a list.
 - A picture fitted to its tab leaves a margin around it, and a hairline
   sets it off from the pane.
+- The editor does less work on every frame it paints: idle and scrolling
+  frames of a large file allocate about a quarter of what they did.
 
 ## 0.9.1
 
