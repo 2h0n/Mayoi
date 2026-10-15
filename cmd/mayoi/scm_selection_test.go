@@ -142,7 +142,11 @@ func TestScmToggleSelectionAndKeyboardNavigation(t *testing.T) {
 	hs.tt.ClickWith(ui.Cmd, "d.txt")
 	hs.settle()
 	expectScmSelection(t, hs, "b.txt")
+	// A plain click gives the diff the keyboard; a Shift-click keeps it in
+	// the list.
 	hs.tt.Click("b.txt")
+	hs.tt.ClickWith(ui.Shift, "b.txt")
+	expectScmSelection(t, hs, "b.txt")
 	hs.key(0, ui.KeyDown)
 	expectScmSelection(t, hs, "c.txt")
 	hs.key(ui.Shift, ui.KeyDown)
@@ -207,5 +211,32 @@ func TestScmSelectionUnstagesRenames(t *testing.T) {
 	hs.settleGit()
 	if es := hs.a.groupEntries()[groupStaged]; len(es) != 0 {
 		t.Fatalf("renamed file's original path remains staged: %v", es)
+	}
+}
+
+func TestScmSelectionDiscard(t *testing.T) {
+	hs := scmSelectionFixture(t, false)
+	hs.tt.Click("d.txt")
+	hs.tt.ClickWith(ui.Shift, "b.txt")
+	hs.settle()
+	hs.tt.RightClick("c.txt")
+	hs.settle()
+	if err := hs.tt.Click("Discard Changes…"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if hs.a.confirm == nil || hs.a.confirm.title != "Discard the changes of 3 files?" {
+		t.Fatalf("discard did not ask about the selection: %+v", hs.a.confirm)
+	}
+	hs.a.confirm = nil
+	// An unselected row's menu discards that file alone.
+	hs.tt.RightClick("a.txt")
+	hs.settle()
+	if err := hs.tt.Click("Discard Changes…"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if hs.a.confirm == nil || hs.a.confirm.title != "Move a.txt to "+trashName()+"?" {
+		t.Fatalf("discard of an unselected row: %+v", hs.a.confirm)
 	}
 }

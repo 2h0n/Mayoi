@@ -103,9 +103,10 @@ tree, with a count of them. Files are grouped as merge changes, staged changes, 
 
 - The branch at the top opens **Switch Branch…**. Beside it, fetch, pull and push, which show how many commits
   they would bring down or send up; a branch with no upstream gets **Publish Branch** instead.
-- Click a file to preview its changes while keeping the list focused; Enter focuses the diff.
-  Shift-click or Shift+Up/Down selects a range, and ⌘-click (Ctrl-click on Windows and Linux) toggles individual files.
-  Space, the stage/unstage row buttons and their context menu actions operate on the selected files.
+- Click a file, or press Enter, to see its changes with the diff focused, so its keys (`]` `[`, `.` `,`) work at once.
+  Shift-click or Shift+Up/Down selects a range of files, ⌘-click (Ctrl-click on Windows and Linux) adds or removes one,
+  and ⌘A selects them all. Space, and a selected row's stage, unstage and discard buttons and menu items, act on all the
+  files selected; on a row not selected they act on that file alone.
 - The buttons on a row open the file, discard its changes, and stage or unstage it. A group's header does the same for
   all its files. Discarding asks first, and moves untracked files to the Trash.
 - Write a message and press ⌘↵ or the commit button, which says what it will do: **Commit**, **Commit All** when nothing

@@ -5,11 +5,10 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
-- Source Control supports Shift-click and Shift+Up/Down range selection,
-  and Cmd/Ctrl-click to choose individual files. The selected files can
-  be staged or unstaged together with the row buttons, context menu or Space.
-- Clicking a file in Source Control previews its diff while keeping the
-  file list focused for selection; Enter moves the focus into the diff.
+- Source Control selects several files: Shift-click or Shift+Up/Down
+  for a range, Cmd-click (Ctrl-click on Windows and Linux) for one more,
+  and Cmd+A for all. Space, and a selected row's stage, unstage and
+  discard buttons and menu items, act on all the files selected.
 
 ## 0.9.1
 

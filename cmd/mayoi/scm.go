@@ -374,7 +374,6 @@ func (a *app) scmView(c *ui.Context) {
 	if out.Changed() {
 		if _, ok := chosen(); ok {
 			a.selectScmRow(s.row, 0)
-			a.openChange(rows[s.row], false)
 		} else {
 			s.selection.Clear()
 			s.anchor = ""
@@ -798,7 +797,7 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 				}
 			default:
 				if r.group != groupMerge && !e.Submodule() && a.smallButton(c, iconUndo, "Discard Changes…") {
-					*action = func() { a.discard(e) }
+					*action = func() { a.discardChosen(r) }
 				}
 				if a.smallButton(c, iconPlus, "Stage Changes") {
 					*action = func() { a.toggleStaged(r) }
@@ -818,7 +817,7 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 				}
 			}
 			if mods == 0 {
-				a.openChange(r, false)
+				a.openChange(r, true)
 			}
 		}
 	}
@@ -1307,7 +1306,7 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 			*action = func() { a.toggleStaged(r) }
 		}
 		if r.group != groupMerge && !e.Submodule() && m.Item("Discard Changes…").Chosen() {
-			*action = func() { a.discard(e) }
+			*action = func() { a.discardChosen(r) }
 		}
 	}
 	m.Separator()
@@ -1475,6 +1474,22 @@ func (a *app) scmActionEntries(r scmRow) []git.Entry {
 		}
 	}
 	return es
+}
+
+// discardChosen discards the changes of the chosen files not staged, or
+// of r alone when it is not chosen. Conflicts are left to be resolved.
+func (a *app) discardChosen(r scmRow) {
+	if !a.scm.selection.Has(r.key) {
+		a.discard(r.e)
+		return
+	}
+	var es []git.Entry
+	for _, row := range a.scmRows() {
+		if row.file() && a.scm.selection.Has(row.key) && row.group != groupStaged && row.group != groupMerge {
+			es = append(es, row.e)
+		}
+	}
+	a.discard(es...)
 }
 
 // toggleStaged stages the chosen files, or unstages those already staged.
