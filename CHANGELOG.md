@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.9.0
 
 - Remote SSH: **File → Remote SSH → Connect to Host…** opens a folder on
   another machine with the system's `ssh`, with nothing to install there.
