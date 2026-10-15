@@ -226,6 +226,18 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				}
 				buttons = a.fileButtons(c, v, v.files[rows[i].file], v.scroll.X+view.W, y)
 			}
+			// The cards of the notes in view.
+			noteX, noteW := diffNoteGeometry(view.W)
+			for i := first; i <= last; i++ {
+				if rows[i].kind != rowComment {
+					continue
+				}
+				if n := a.review.noteAt(rows[i].n); n != nil {
+					y := editorPadY + float32(v.tops[i])*lineH
+					card := a.noteCardBox(c, fmt.Sprintf("note:%p", n), v.scroll.X+noteX, y+3, noteW, float32(rows[i].h)*lineH-6)
+					card.Children(func() { a.noteCard(c, n, nil, v.built.noteCols) })
+				}
+			}
 			// The buttons of the run of changes under the pointer, or chosen.
 			for _, i := range []int{hovered, v.cursor} {
 				h := v.hunkHead(i)
@@ -239,8 +251,28 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				hunkButtons = a.hunkButtons(c, v, h, v.scroll.X+view.W, contentW, editorPadY+float32(v.tops[h])*lineH)
 			}
 		})
+		// Dragging from a row chooses the rows to the one under the pointer.
+		if box.Pressed() {
+			if _, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !onSticky(y) {
+				i := v.rowAt(y, lineH)
+				switch {
+				case v.press < 0:
+					v.press, v.dragged = i, false
+				case i != v.press || v.dragged:
+					if v.press < len(rows) && rows[v.press].kind == rowLine && i != v.cursor {
+						v.dragged = true
+						v.anchor = v.press
+						v.setCursor(i)
+						v.jumpRow(i, jumpReveal)
+					}
+				}
+			}
+		} else {
+			v.press = -1
+		}
 		// A click chooses a row, and opens a gap or folds a file; a double
 		// click opens the file at a line, unless its first click did that.
+		// Shift chooses the rows from the one chosen to it.
 		if clicked, double := box.Clicked(), box.DoubleClicked(); clicked || double {
 			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) && !cardRect.Contains(x, y) {
 				i := v.rowAt(y, lineH)
@@ -248,11 +280,27 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				if stuck {
 					i = sticky
 				}
+				shift := box.ClickModifiers()&ui.Shift != 0
+				dragged := v.dragged
+				v.dragged = false
 				a.post(func() {
-					v.pane.Focus()
-					if i >= len(v.rows) {
+					if i >= len(v.rows) || !stuck && v.rows[i].kind == rowComment {
 						return
 					}
+					v.pane.Focus()
+					if dragged {
+						return
+					}
+					if shift && !stuck && !double {
+						at := v.anchor
+						if at < 0 {
+							at = max(v.cursor, 0)
+						}
+						v.setCursor(i)
+						v.anchor = at
+						return
+					}
+					v.anchor = -1
 					if stuck {
 						// The file folds under its header, which shows at the top.
 						v.setCursor(i)
@@ -301,6 +349,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				switch row.kind {
 				case rowSpace:
 					continue
+				case rowComment:
+					rail(vx, y, h, neutral)
+					if i == v.cursor {
+						pt.Fill(ui.Rect{X: vx, Y: y, W: diffRailW, H: h}, p.accent, 0)
+					}
 				case rowCommit:
 					a.paintCommitCard(pt, full)
 				case rowFile:
@@ -431,7 +484,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 						txt(vx+diffRailW+2*l.numW+8, y, mark, tint)
 					}
 				}
-				if i == v.cursor {
+				if v.selected(i) && row.kind != rowComment {
+					pt.Fill(full, p.accent.Alpha(0.12), 0)
+					pt.Fill(ui.Rect{X: vx, Y: y, W: diffRailW, H: h}, p.accent.Alpha(0.6), 0)
+				}
+				if i == v.cursor && row.kind != rowComment {
 					col := p.text.Alpha(0.05)
 					if focused {
 						col = p.text.Alpha(0.09)

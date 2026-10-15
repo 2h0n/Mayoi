@@ -20,7 +20,7 @@ type paletteEntry struct {
 // commandGroups names the menus of the commands, by the prefix of their
 // ids.
 var commandGroups = map[string]string{
-	"file": "File", "edit": "Edit", "sel": "Selection", "go": "Go", "view": "View", "git": "Git",
+	"file": "File", "edit": "Edit", "sel": "Selection", "go": "Go", "view": "View", "git": "Git", "review": "Review",
 }
 
 // viewKeys are the keys of the commands that the editor or the view

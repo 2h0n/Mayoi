@@ -294,6 +294,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		d.git.Refresh(d.path, d.buf.Snapshot(), a.post)
 		marks := d.git.Lines
 		gitRuns := d.gitRuns()
+		noted := a.notedLines(d)
 		guideW := f.indentWidth(d.indent)
 		rows := a.overviewRows(d, snap, view.H)
 		spaces := a.selectedWhitespace(d, snap, first, last)
@@ -514,6 +515,12 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 						pt.Fill(ui.Rect{X: barX, Y: y - 2.5, W: 7, H: 5}, p.removed, 2.5)
 					case linediff.DeletedBelow:
 						pt.Fill(ui.Rect{X: barX, Y: y + h - 2.5, W: 7, H: 5}, p.removed, 2.5)
+					}
+				}
+				// A bar along the lines of each review comment.
+				for _, sp := range noted {
+					for i := max(sp.from, from); i < sp.to && i <= to; i++ {
+						pt.Fill(ui.Rect{X: x + 2, Y: lineY(r, i), W: 2, H: lineHeight(i)}, p.accent, 0)
 					}
 				}
 				// A number by the first row of each line.

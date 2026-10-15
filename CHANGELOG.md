@@ -5,6 +5,11 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Review comments: choose lines in a diff (Shift-click, a drag or
+  Shift+J/K) and press C, or select lines in a file and press ⇧⌘M, to
+  comment on them. **Send Review Comments to Terminal** pastes them all
+  into the terminal used last, for the agent there, each with its path,
+  line numbers and lines; ⌘C in a diff copies the lines chosen so.
 - Lock a column from its tab menu to keep it for terminals: Move to Locked
   Right Column puts a running terminal there in one step. Files opened from
   the Explorer, Search, Quick Open or Source Control go to an unlocked

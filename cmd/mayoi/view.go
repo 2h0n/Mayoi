@@ -452,6 +452,7 @@ func (a *app) columnView(c *ui.Context, col *column) {
 				default:
 					a.editorView(c, shown.ed)
 					a.hunkPeekView(c, shown.ed)
+					a.reviewBoxView(c, shown.ed)
 					if col == a.column() {
 						a.findView(c, shown.ed)
 					}
@@ -727,6 +728,9 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 	if x := a.transferText(); x != "" {
 		used += measure(x, true)
 	}
+	if k := len(a.review.notes); k > 0 {
+		used += measure(fmt.Sprint(k), true)
+	}
 	if len(a.chord) > 0 {
 		used += measure("("+strings.Join(chordCaps(a.chord), " ")+") was pressed. Waiting for the next key…", true)
 	}
@@ -874,6 +878,7 @@ func (a *app) statusBar(c *ui.Context) {
 				item("folder", filepath.Base(a.root), revealFolderLabel(shortenHome(a.root)), iconFolder, func() { a.host.reveal(a.root) })
 			}
 		}
+		a.reviewStatus(c, text)
 		ui.Spacer(c)
 		if v := a.activeViewer(); v != nil {
 			a.viewerStatus(c, v, item, text)

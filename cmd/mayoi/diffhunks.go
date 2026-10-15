@@ -52,7 +52,7 @@ func (v *diffView) hunkHead(i int) int {
 		switch v.rows[k].kind {
 		case rowHunk:
 			return k
-		case rowLine:
+		case rowLine, rowComment:
 		default:
 			return -1
 		}
@@ -73,7 +73,7 @@ func (v *diffView) hunksAt(i int) (*diffFile, []linediff.Hunk) {
 	case r.changed():
 		ks = []int{r.hunk}
 	case r.kind == rowHunk:
-		for k := i + 1; k < len(v.rows) && v.rows[k].kind == rowLine && v.rows[k].file == r.file; k++ {
+		for k := i + 1; k < len(v.rows) && (v.rows[k].kind == rowLine || v.rows[k].kind == rowComment) && v.rows[k].file == r.file; k++ {
 			if h := v.rows[k].hunk; h >= 0 && !slices.Contains(ks, h) {
 				ks = append(ks, h)
 			}

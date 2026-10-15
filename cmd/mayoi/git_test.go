@@ -437,7 +437,7 @@ func diffFileOf(v *diffView, path string, base diffBase) *diffFile {
 func kinds(v *diffView) string {
 	var s strings.Builder
 	for _, r := range v.rows {
-		s.WriteByte("LGHSFNsC"[r.kind])
+		s.WriteByte("LGHSFNsCc"[r.kind])
 	}
 	return s.String()
 }

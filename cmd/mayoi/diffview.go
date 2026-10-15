@@ -182,6 +182,11 @@ type diffView struct {
 	// chosen, -1 for none. jump is a row to scroll to in the next frame,
 	// -1 for none, as jumpTo says.
 	current, cursor int
+	// anchor is where the rows chosen start, the cursor where they end, -1
+	// for the cursor's row alone; press is the row the pointer was pressed
+	// on, -1 when it is not, and dragged is set once it dragged to another.
+	anchor, press int
+	dragged       bool
 	// acted is set when the last click opened a gap or folded a file.
 	acted        bool
 	jump         int
@@ -228,6 +233,9 @@ type diffBuild struct {
 	cols              [2]int
 	card              int // how many lines tall the card of a commit is
 	font              codeFont
+	// review is the generation of the notes, noteCols the columns of their
+	// cards, and draft how many rows the comment being typed takes.
+	review, noteCols, draft int
 }
 
 // jumpPlace is where a row jumped to shows.
@@ -240,7 +248,7 @@ const (
 )
 
 func newDiffView(layout diffLayout) *diffView {
-	return &diffView{layout: layout, current: -1, cursor: -1, jump: -1, near: [2]int{0, diffNear}}
+	return &diffView{layout: layout, current: -1, cursor: -1, anchor: -1, press: -1, jump: -1, near: [2]int{0, diffNear}}
 }
 
 // newCommitView makes the tab of a commit's changes, its message read
@@ -785,6 +793,11 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	if b.wrap {
 		b.cols = l.cols
 	}
+	_, noteW := diffNoteGeometry(l.viewW)
+	b.review, b.noteCols = a.review.gen, a.noteCols(noteW)
+	if a.review.draft != nil && a.review.ed == nil {
+		b.draft = len(commentRows(a.review.text, b.noteCols))
+	}
 	if b == v.built && v.tops != nil {
 		return
 	}
@@ -801,9 +814,12 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		anchor = v.anchorOf(top)
 		offset = editorPadY + float32(v.tops[top])*lineH - v.scroll.Y
 	}
-	chosen := diffAnchor{}
+	chosen, held := diffAnchor{}, diffAnchor{}
 	if v.cursor >= 0 && v.cursor < len(v.rows) && v.tops != nil {
 		chosen = v.anchorOf(v.cursor)
+	}
+	if v.anchor >= 0 && v.anchor < len(v.rows) && v.tops != nil {
+		held = v.anchorOf(v.anchor)
 	}
 	// The file to reveal shows its lines.
 	var target *diffFile
@@ -881,14 +897,21 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		if v.split {
 			all = f.pairs
 		}
+		start := len(v.rows)
 		v.rows = foldRows(v.rows, f, i, all, v.full)
+		a.noteRows(v, f, i, start, b.noteCols)
 	}
 	for i := range v.rows {
 		r := &v.rows[i]
-		if r.changed() && (i == 0 || v.rows[i-1].hunk != r.hunk || v.rows[i-1].file != r.file || !v.rows[i-1].changed()) {
+		// The cards of notes between the lines of a change are of it.
+		prev := i - 1
+		for prev >= 0 && v.rows[prev].kind == rowComment {
+			prev--
+		}
+		if r.changed() && (prev < 0 || v.rows[prev].hunk != r.hunk || v.rows[prev].file != r.file || !v.rows[prev].changed()) {
 			v.starts = append(v.starts, i)
 		}
-		if r.kind != rowCommit {
+		if r.kind != rowCommit && r.kind != rowComment {
 			r.h = 1
 		}
 		if b.wrap && r.kind == rowLine {
@@ -924,6 +947,15 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 				if a == chosen {
 					break
 				}
+			}
+		}
+	}
+	v.anchor = -1
+	if held.file != nil {
+		for i := range v.rows {
+			if v.anchorOf(i) == held {
+				v.anchor = i
+				break
 			}
 		}
 	}
@@ -965,6 +997,8 @@ func (v *diffView) anchorOf(i int) diffAnchor {
 		line = r.gap
 	case r.kind == rowLine && r.new < 0:
 		line = -1 - r.old
+	case r.kind == rowComment:
+		line = r.n
 	case r.kind != rowLine:
 		line = 0
 	}
@@ -1078,6 +1112,7 @@ func (v *diffView) stepHunk(step int) {
 	if len(v.starts) == 0 {
 		return
 	}
+	v.anchor = -1
 	if v.current < 0 && step < 0 {
 		v.current = 0
 	}
@@ -1114,6 +1149,7 @@ func (v *diffView) stepFile(step int) {
 	if k < 0 {
 		return
 	}
+	v.anchor = -1
 	v.cursor = v.heads[k]
 	v.jumpRow(v.cursor, jumpTop)
 }
@@ -1126,6 +1162,7 @@ func (v *diffView) jumpRow(i int, place jumpPlace) {
 // moveCursor moves the chosen row by step rows, past the room between
 // files, from the row at the top of the view when none is chosen.
 func (v *diffView) moveCursor(step int) {
+	v.anchor = -1
 	if len(v.rows) == 0 {
 		return
 	}
@@ -1193,6 +1230,10 @@ func (a *app) activateRow(v *diffView, i int, open bool) {
 			path, line := v.lineAt(i)
 			a.openFileAt(path, line, true)
 		}
+	case rowComment:
+		if n := a.review.noteAt(r.n); open && n != nil {
+			a.editNote(n, nil)
+		}
 	}
 }
 
@@ -1226,6 +1267,14 @@ func (a *app) toggleGap(v *diffView, i int) {
 // diffInput takes the keys of a diff that has the keyboard: those of a
 // pager, as Hunk has them.
 func (a *app) diffInput(v *diffView, ev ui.InputEvent) bool {
+	// The box of a note being written takes its keys.
+	if a.typingNote() {
+		return false
+	}
+	if ev.Kind == ui.InputCommand && ev.Text == "copy" {
+		a.copyExcerpt(v)
+		return true
+	}
 	if ev.Kind != ui.InputKeyDown || ev.Mods&^ui.Shift != 0 {
 		return false
 	}
@@ -1233,9 +1282,24 @@ func (a *app) diffInput(v *diffView, ev ui.InputEvent) bool {
 	page := max(v.viewH-a.font.lineH, a.font.lineH)
 	switch ev.Key {
 	case ui.KeyJ, ui.KeyDown:
-		v.moveCursor(1)
+		if shift {
+			v.extend(1)
+		} else {
+			v.moveCursor(1)
+		}
 	case ui.KeyK, ui.KeyUp:
-		v.moveCursor(-1)
+		if shift {
+			v.extend(-1)
+		} else {
+			v.moveCursor(-1)
+		}
+	case ui.KeyEscape:
+		if v.anchor < 0 {
+			return false
+		}
+		v.anchor = -1
+	case ui.KeyC:
+		a.commentDiff(v)
 	case ui.KeySpace:
 		if shift {
 			a.pageDiff(v, -page)

@@ -122,6 +122,10 @@ func (a *app) commands() []command {
 		{"git.pull", "Pull", "", a.pull},
 		{"git.push", "Push", "", a.push},
 		{"git.refresh", "Refresh Source Control", "", a.gitChanged},
+		{"review.comment", "Add Review Comment", "Shift+CmdOrCtrl+M", a.addReviewComment},
+		{"review.copy", "Copy Review Comments", "", a.copyReview},
+		{"review.send", "Send Review Comments to Terminal", "", a.sendReview},
+		{"review.clear", "Clear Review Comments", "", a.clearReview},
 		{"view.terminal", "Toggle Terminal", "Ctrl+`", a.togglePanel},
 		{"view.newTerminal", "New Terminal", "Ctrl+Shift+`", a.newTerminal},
 		{"view.terminalTab", "New Terminal in Editor Area", "", func() { a.newTerminalTab(a.column(), a.workDir(), true) }},
@@ -387,6 +391,12 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			help = append(help, updater.MenuItem())
 		}
 	}
+	// The items of the review comments, off while there are none.
+	reviewItem := func(id string) *mygo.MenuItem {
+		it := item(id)
+		it.Disabled = len(a.review.notes) == 0
+		return it
+	}
 	menus := []*mygo.MenuItem{
 		appMenu,
 		{Label: "File", Submenu: file},
@@ -429,7 +439,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("git.showChange"), item("git.revertChange"), item("git.stageChange"), mygo.Separator(),
 			item("git.stageFile"), item("git.unstageFile"), item("git.stageAll"), mygo.Separator(),
 			item("git.switchBranch"), item("git.createBranch"), item("git.fetch"), item("git.pull"), item("git.push"), mygo.Separator(),
-			checkbox("git.blame", a.settings.Blame), item("git.refresh"),
+			checkbox("git.blame", a.settings.Blame), item("git.refresh"), mygo.Separator(),
+			item("review.comment"), reviewItem("review.copy"), reviewItem("review.send"), reviewItem("review.clear"),
 		}},
 		{Role: mygo.RoleWindowMenu},
 	}

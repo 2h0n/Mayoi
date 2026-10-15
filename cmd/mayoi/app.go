@@ -145,6 +145,8 @@ type app struct {
 	docs []*document
 	cols []*column
 	col  int
+	// review is the comments on lines of the changes, to send to an agent.
+	review review
 	// fileCol caches the last unlocked column used for files. Removal clears
 	// it; column and activate refresh it. Use fileColumn to resolve a live,
 	// unlocked target before opening files, including during restoration.
