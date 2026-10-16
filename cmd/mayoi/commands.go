@@ -123,6 +123,8 @@ func (a *app) commands() []command {
 		{"git.push", "Push", "", a.push},
 		{"git.refresh", "Refresh Source Control", "", a.gitChanged},
 		{"review.comment", "Add Review Comment", "Shift+CmdOrCtrl+M", a.addReviewComment},
+		{"review.next", "Go to Next Review Comment", "", func() { a.stepNote(1) }},
+		{"review.previous", "Go to Previous Review Comment", "", func() { a.stepNote(-1) }},
 		{"review.copy", "Copy Review Comments", "", a.copyReview},
 		{"review.send", "Send Review Comments to Terminal", "", a.sendReview},
 		{"review.clear", "Clear Review Comments", "", a.clearReview},
@@ -440,7 +442,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 			item("git.stageFile"), item("git.unstageFile"), item("git.stageAll"), mygo.Separator(),
 			item("git.switchBranch"), item("git.createBranch"), item("git.fetch"), item("git.pull"), item("git.push"), mygo.Separator(),
 			checkbox("git.blame", a.settings.Blame), item("git.refresh"), mygo.Separator(),
-			item("review.comment"), reviewItem("review.copy"), reviewItem("review.send"), reviewItem("review.clear"),
+			item("review.comment"), reviewItem("review.next"), reviewItem("review.previous"),
+			reviewItem("review.copy"), reviewItem("review.send"), reviewItem("review.clear"),
 		}},
 		{Role: mygo.RoleWindowMenu},
 	}

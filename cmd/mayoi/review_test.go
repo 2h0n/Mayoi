@@ -60,12 +60,27 @@ func TestCommentRows(t *testing.T) {
 	if got := commentRows("short\n\nthe quick brown fox jumps", 10); !slices.Equal(got, []string{"short", "", "the quick ", "brown fox ", "jumps"}) {
 		t.Errorf("rows %q", got)
 	}
-	n := &reviewNote{text: "one\ntwo"}
-	if h := noteHeight(n, false, "", 40); h != 4 {
-		t.Errorf("height %d", h)
+}
+
+// A card grows with its comment, and the box a comment is typed in from
+// 3 lines to 10.
+func TestNoteHeight(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	one, two := &reviewNote{text: "one"}, &reviewNote{text: "one\ntwo"}
+	if h1, h2 := a.noteHeight(one, false, "", 300), a.noteHeight(two, false, "", 300); h2 <= h1 {
+		t.Errorf("heights %v, %v", h1, h2)
 	}
-	if h := noteHeight(n, true, "", 40); h != 6 {
-		t.Errorf("editing height %d", h)
+	long := strings.Repeat("word ", 200)
+	if h1, h2 := a.noteHeight(one, false, "", 300), a.noteHeight(&reviewNote{text: long}, false, "", 300); h2 < 4*h1 {
+		t.Errorf("a long comment does not wrap: %v, %v", h1, h2)
+	}
+	empty, tall := a.noteHeight(one, true, "", 300), a.noteHeight(one, true, strings.Repeat("x\n", 40), 300)
+	if a.noteHeight(one, true, "x\ny", 300) != empty || tall <= empty || tall != a.noteHeight(one, true, strings.Repeat("x\n", 80), 300) {
+		t.Errorf("box heights %v, %v", empty, tall)
+	}
+	if k := a.noteLines(one, false, "", 300); float32(k)*a.font.lineH < a.noteHeight(one, false, "", 300)+2*noteInset {
+		t.Errorf("%d lines do not hold the card", k)
 	}
 }
 
@@ -401,10 +416,13 @@ func TestReviewLineButton(t *testing.T) {
 	if len(v.cards) != 2 {
 		t.Fatalf("cards %v", v.cards)
 	}
-	noteX, noteW := diffNoteGeometry(v.viewW)
+	noteX, noteW := noteGeometry(a.diffGeometry(v, v.split, v.viewW), v.split, false)
 	card := v.cards[1]
-	y := pane.Y + editorPadY + float32(v.tops[card])*a.font.lineH - v.scroll.Y + 3 + a.font.lineH/2
-	tt.ClickAt(pane.X+noteX+noteW-20, y)
+	// The header of the card, its inside in the middle of it.
+	cardH := float32(v.rows[card].h)*a.font.lineH - 2*noteInset
+	inside := a.noteHeight(a.review.notes[1], false, "", noteTextW(noteW)) - 2*notePadY
+	y := pane.Y + editorPadY + float32(v.tops[card])*a.font.lineH - v.scroll.Y + noteInset + (cardH-inside)/2 + noteHeadH/2
+	tt.ClickAt(pane.X+noteX+noteW-notePadX-10, y)
 	hs.settle()
 	if len(a.review.notes) != 1 || a.review.notes[0] != first {
 		t.Errorf("deleted the wrong one: %d left", len(a.review.notes))
@@ -462,5 +480,185 @@ func TestReviewEditorHint(t *testing.T) {
 	hs.settle()
 	if n.from != 5 || n.outdated {
 		t.Errorf("moved to %d, outdated %v", n.from, n.outdated)
+	}
+}
+
+// The comments not sent are kept with the window's session, and the next
+// start shows them again, found where their lines moved to.
+func TestReviewKept(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	reviewRepo(hs)
+	a.openFile(hs.path("t.txt"), true)
+	hs.settle()
+	d := a.activeEditor()
+	at, _ := d.buf.Snapshot().LineRange(4)
+	hs.place(d, at, at)
+	a.run("review.comment")
+	hs.settle()
+	hs.tt.Type("Keep me")
+	hs.key(ui.Cmd, ui.KeyEnter)
+	if got := a.window.Review; len(got) != 1 || got[0].Text != "Keep me" || got[0].From != 4 || got[0].Path != hs.path("t.txt") {
+		t.Fatalf("kept %+v", got)
+	}
+	// Lines are added above it before the next start.
+	text, _ := os.ReadFile(hs.path("t.txt"))
+	os.WriteFile(hs.path("t.txt"), append([]byte("new\nnew\n"), text...), 0o644)
+	b := newApp(&fakeHost{folder: hs.root}, a.settings, a.window)
+	tt := ui.NewTester(b.view, 1200, 760)
+	tt.Frame()
+	tt.Frame()
+	if len(b.review.notes) != 1 {
+		t.Fatalf("notes %d", len(b.review.notes))
+	}
+	n := b.review.notes[0]
+	if b.followNote(n); n.from != 6 || n.outdated || n.text != "Keep me" {
+		t.Errorf("restored %+v", n)
+	}
+	b.clearReview()
+	if len(b.window.Review) != 0 {
+		t.Errorf("cleared, kept %d", len(b.window.Review))
+	}
+	// Its toast puts them back.
+	undo := b.notes[len(b.notes)-1]
+	if undo.label != "Undo" {
+		t.Fatalf("toast %+v", undo)
+	}
+	undo.action()
+	if len(b.review.notes) != 1 || b.review.notes[0] != n || len(b.window.Review) != 1 {
+		t.Errorf("undone: %d notes, %d kept", len(b.review.notes), len(b.window.Review))
+	}
+	b.deleteNote(n)
+	b.notes[len(b.notes)-1].action()
+	if len(b.review.notes) != 1 {
+		t.Errorf("delete undone: %d notes", len(b.review.notes))
+	}
+}
+
+// N goes from card to card in a diff, and the command from comment to
+// comment in files, round past the last.
+func TestReviewStep(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	reviewRepo(hs)
+	a.openFile(hs.path("t.txt"), true)
+	hs.settle()
+	d := a.activeEditor()
+	for _, l := range []int{20, 4} {
+		at, _ := d.buf.Snapshot().LineRange(l)
+		hs.place(d, at, at)
+		a.run("review.comment")
+		hs.settle()
+		hs.tt.Type(fmt.Sprint("on ", l))
+		hs.key(ui.Cmd, ui.KeyEnter)
+	}
+	hs.place(d, 0, 0)
+	line := func() int { return d.buf.Snapshot().LineAt(d.sel[1]) }
+	for _, want := range []int{4, 20, 4} {
+		a.run("review.next")
+		hs.settle()
+		if line() != want {
+			t.Errorf("next: line %d, want %d", line(), want)
+		}
+	}
+	a.run("review.previous")
+	hs.settle()
+	if line() != 20 {
+		t.Errorf("previous: line %d", line())
+	}
+	a.showChanges(diffTarget{path: hs.path("t.txt"), base: diffIndex}, true)
+	hs.settleGit()
+	v := a.activeTab().diff
+	a.setDiffLayout(v, layoutInline)
+	a.setDiffFull(v, true)
+	hs.settle()
+	if len(v.cards) != 2 {
+		t.Fatalf("cards %v", v.cards)
+	}
+	v.pane.Focus()
+	v.setCursor(0)
+	hs.settle()
+	for _, want := range []int{0, 1, 0} {
+		hs.key(0, ui.KeyN)
+		if v.cursor != v.cards[want] {
+			t.Errorf("N: cursor %d, want card %d at %d", v.cursor, want, v.cards[want])
+		}
+	}
+	hs.key(ui.Shift, ui.KeyN)
+	if v.cursor != v.cards[1] {
+		t.Errorf("Shift+N: cursor %d", v.cursor)
+	}
+}
+
+// Review comments of each kind: on lines removed, long, and outdated.
+func TestShotReviewStates(t *testing.T) {
+	if os.Getenv("SHOTS") == "" {
+		t.Skip()
+	}
+	for _, dark := range []bool{true, false} {
+		name := "review-states-light"
+		if dark {
+			name = "review-states-dark"
+		}
+		hs := newHarness(t, dark)
+		a := hs.a
+		_, changed := reviewRepo(hs)
+		a.showChanges(diffTarget{path: hs.path("t.txt"), base: diffIndex}, true)
+		hs.settleGit()
+		v := a.activeTab().diff
+		a.setDiffLayout(v, layoutInline)
+		hs.settle()
+		v.pane.Focus()
+		removed := slices.IndexFunc(v.rows, func(r diffRow) bool { return r.kind == rowLine && r.old == 25 && r.new < 0 })
+		v.setCursor(removed)
+		hs.key(0, ui.KeyC)
+		hs.tt.Type("Why was this removed?")
+		hs.key(ui.Cmd, ui.KeyEnter)
+		added := slices.IndexFunc(v.rows, func(r diffRow) bool { return r.kind == rowLine && r.new == 2 && r.old < 0 })
+		v.setCursor(added)
+		hs.key(0, ui.KeyC)
+		hs.tt.Type("Spell the numbers out everywhere, or nowhere.\n\nThe file mixes both, and the tests read only digits, so a word breaks them. Keep digits, and say so in a comment at the top of the file so the next change does not do this again.")
+		hs.key(ui.Cmd, ui.KeyEnter)
+		hs.settle()
+		hs.shot(name)
+		// The lines of the second comment change under it.
+		os.WriteFile(hs.path("t.txt"), []byte(strings.Replace(changed, "line two\n", "line 2\n", 1)), 0o644)
+		a.gitChanged()
+		hs.settleGit()
+		v = a.activeTab().diff
+		hs.settle()
+		hs.shot(name + "-outdated")
+	}
+}
+
+// Going to a comment on lines removed shows its card in the changes.
+func TestReviewGoToRemoved(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	reviewRepo(hs)
+	a.showChanges(diffTarget{path: hs.path("t.txt"), base: diffIndex}, true)
+	hs.settleGit()
+	v := a.activeTab().diff
+	a.setDiffLayout(v, layoutInline)
+	hs.settle()
+	v.pane.Focus()
+	v.setCursor(slices.IndexFunc(v.rows, func(r diffRow) bool { return r.kind == rowLine && r.old == 25 && r.new < 0 }))
+	hs.key(0, ui.KeyC)
+	hs.tt.Type("Why?")
+	hs.key(ui.Cmd, ui.KeyEnter)
+	n := a.review.notes[0]
+	if !n.oldSide {
+		t.Fatalf("note %+v", n)
+	}
+	a.openFile(hs.path("t.txt"), true)
+	hs.settle()
+	v.setCursor(0)
+	a.goToNote(n)
+	hs.settle()
+	if t2 := a.activeTab(); t2 == nil || t2.diff != v {
+		t.Fatal("the changes are not shown")
+	}
+	if c := v.cursor; c < 0 || v.rows[c].kind != rowComment || a.review.noteAt(v.rows[c].n) != n || v.revealNote != nil {
+		t.Errorf("cursor %d on %v", c, v.rows[max(c, 0)].kind)
 	}
 }

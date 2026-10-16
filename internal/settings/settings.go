@@ -158,6 +158,27 @@ type Session struct {
 	// Expanded are the explorer's folders showing their files, relative to
 	// the window's folder.
 	Expanded []string `json:"expanded,omitempty"`
+	// Review is the review comments not sent yet.
+	Review []ReviewNote `json:"review,omitempty"`
+}
+
+// ReviewNote is a review comment on lines of a file, as the settings keep
+// it: Commit is the commit whose changes it is on, "" for the work tree,
+// and Staged set for the changes staged. OldSide is set for lines removed,
+// From and To the lines of the side, To after the last. Snippet is what
+// the comment quotes, a diff when Diff is set, and Lines the lines as they
+// were, which the comment finds again as the file changes.
+type ReviewNote struct {
+	Path    string   `json:"path"`
+	Commit  string   `json:"commit,omitempty"`
+	Staged  bool     `json:"staged,omitempty"`
+	OldSide bool     `json:"oldSide,omitempty"`
+	From    int      `json:"from"`
+	To      int      `json:"to"`
+	Diff    bool     `json:"diff,omitempty"`
+	Snippet []string `json:"snippet,omitempty"`
+	Lines   []string `json:"lines,omitempty"`
+	Text    string   `json:"text"`
 }
 
 // Layout is how a window lays its folder out: what its sidebar shows,
@@ -415,7 +436,7 @@ func (s *Settings) Stash(w *Window) {
 	if !slices.Contains(s.Recent, dir) {
 		return
 	}
-	empty := len(w.Expanded) == 0
+	empty := len(w.Expanded) == 0 && len(w.Review) == 0
 	for _, c := range w.Columns {
 		empty = empty && len(c.Tabs) == 0
 	}

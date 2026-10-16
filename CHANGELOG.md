@@ -20,6 +20,18 @@ needs a `## <version>` section here, or its build fails.
 - Review comment cards are redrawn: a stripe of the accent down their
   edge, an **Outdated** badge when their lines changed, and a Comment
   button that stays off until there is something to say.
+- Review comments read in the window's font, wrapped to the card, on a
+  raised card; side by side, each shows under the side of its lines,
+  and an outdated one quotes the lines it was written on.
+- Review comments are kept with the folder's session, so they are there
+  again at the next start.
+- `n` and `N` in a diff, and **Go to Next Review Comment** and **Go to
+  Previous Review Comment**, go from comment to comment. The status bar's
+  menu lists them under their files, and going to one on lines removed,
+  staged or of a commit shows it in its diff.
+- Deleting a review comment, or clearing them all, can be undone from
+  its toast, and a comment being edited has a Delete button.
+- A review comment after its lines in a file shows on a tinted chip.
 - Lock a column from its tab menu to keep it for terminals: Move to Locked
   Right Column puts a running terminal there in one step. Files opened from
   the Explorer, Search, Quick Open or Source Control go to an unlocked

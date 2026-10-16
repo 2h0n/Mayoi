@@ -187,6 +187,7 @@ added and removed. With the diff focused, keys work as in a pager:
 | `s` | Stage the changes of the chosen line or run, or unstage them |
 | Shift+`j` `k`, Shift+↓ ↑ | Choose more rows, as do Shift-click and a drag |
 | `c` | Comment on the rows chosen, or edit the comment chosen |
+| `n` `N` | Go to the next or previous comment |
 | Delete | Delete the comment chosen |
 | ⌘C | Copy the lines chosen with their path and line numbers |
 | Escape | Choose one row again |
@@ -198,7 +199,12 @@ Review an agent's changes, then hand it the review in one paste. Choose lines in
 comment: ⌘Enter keeps it, Escape drops it. In a diff the comment shows under its lines, with buttons to edit or delete
 it, and a bar by the line numbers marks its lines. In a file the bar marks them too, and the comment shows after the
 last of them: click it, or run the command on its lines, to edit it. The scroll bar marks where each comment is.
-Comments work in the diff of a commit too. The status bar counts them, with a menu to go to each.
+Side by side, a comment shows under the side of its lines. While a comment is edited, **Delete** deletes it, and
+the toast that says a comment was deleted, or every comment cleared, has **Undo**. Comments work in the diff of a
+commit too. The status bar counts them, with a menu of them under their files to go to each. In a diff, `n` goes to
+the next comment and `N` to the one before; **Go to Next Review Comment** and **Go to Previous Review Comment** do so
+from anywhere, in the order of their files and lines. Going to a comment on lines removed, staged or of a commit shows
+it in its diff.
 
 **Send Review Comments to Terminal**, from the button in the diff's toolbar, that menu, the **Git** menu or the
 command palette, pastes every comment into the terminal used last, without pressing Enter, so you can add to it before
@@ -215,7 +221,8 @@ Not here, the check belongs in the section before.
 ````
 
 A comment follows its lines as the file changes. When they are no longer in the file, it says it is outdated, and
-keeps the lines as they were. Comments last until Mayoi quits.
+quotes the lines as they were. Comments not sent are kept with the folder's session, so they are there again at the
+next start.
 
 ### Branches and remotes
 

@@ -438,6 +438,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			}
 			for _, h := range hints {
 				y := lineY(r, h.line)
+				pt.Fill(ui.Rect{X: r.X + h.x - 4, Y: y + 2, W: h.w + 8, H: lineH - 4}, p.accent.Alpha(0.09), 4)
 				icon := size * 0.85
 				pt.Icon(iconComment, ui.Rect{X: r.X + h.x, Y: y + (lineH-icon)/2, W: icon, H: icon}, p.accent)
 				span := ui.Span{Text: h.text, Font: family, Size: size * 0.92, Color: p.muted}

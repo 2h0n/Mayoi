@@ -33,6 +33,7 @@ func (a *app) view(c *ui.Context) {
 	// The window's, which may be another than the frame before's as the
 	// project moves to another window.
 	a.setServices(c.Services())
+	a.review.ctx = c
 	if !a.started {
 		// Before what was posted meanwhile, as opening the file the app was
 		// started with: it opens in the columns of the last session.

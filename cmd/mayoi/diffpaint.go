@@ -227,15 +227,15 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				buttons = a.fileButtons(c, v, v.files[rows[i].file], v.scroll.X+view.W, y)
 			}
 			// The cards of the notes in view.
-			noteX, noteW := diffNoteGeometry(view.W)
 			for i := first; i <= last; i++ {
 				if rows[i].kind != rowComment {
 					continue
 				}
 				if n := a.review.noteAt(rows[i].n); n != nil {
 					y := editorPadY + float32(v.tops[i])*lineH
-					card := a.noteCardBox(c, fmt.Sprintf("note:%p", n), v.scroll.X+noteX, y+3, noteW, float32(rows[i].h)*lineH-6)
-					card.Children(func() { a.noteCard(c, n, nil, v.built.noteCols) })
+					noteX, noteW := noteGeometry(l, v.split, n.oldSide)
+					card := a.noteCardBox(c, fmt.Sprintf("note:%p", n), v.scroll.X+noteX, y+noteInset, noteW, float32(rows[i].h)*lineH-2*noteInset)
+					card.Children(func() { a.noteCard(c, n, nil, noteTextW(noteW)) })
 				}
 			}
 			// A button by the line under the pointer comments on it, unless
@@ -375,6 +375,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					rail(vx, y, h, neutral)
 					if i == v.cursor {
 						pt.Fill(ui.Rect{X: vx, Y: y, W: diffRailW, H: h}, p.accent, 0)
+					}
+					if v.split {
+						// The sides go on past the card, under one of them.
+						rail(vx+l.half, y, h, neutral)
+						pt.Fill(ui.Rect{X: vx + l.half - 0.5, Y: y, W: 1, H: h}, p.border, 0)
 					}
 				case rowCommit:
 					a.paintCommitCard(pt, full)

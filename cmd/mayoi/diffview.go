@@ -163,8 +163,10 @@ type diffView struct {
 	rows          []diffRow
 	tops          []int
 	starts, heads []int
-	// cards are the rows of the cards of notes.
-	cards []int
+	// cards are the rows of the cards of notes, and revealNote a note
+	// whose card to scroll to once it is laid out.
+	cards      []int
+	revealNote *reviewNote
 	// sections counts the files of the changes not staged, and of those
 	// staged, as the rows were laid out.
 	sections [2]int
@@ -235,9 +237,11 @@ type diffBuild struct {
 	cols              [2]int
 	card              int // how many lines tall the card of a commit is
 	font              codeFont
-	// review is the generation of the notes, noteCols the columns of their
-	// cards, and draft how many rows the comment being typed takes.
-	review, noteCols, draft int
+	// review is the generation of the notes, noteW how wide the comments
+	// of their cards are, and draft how many rows the comment being typed
+	// takes.
+	review, draft int
+	noteW         float32
 }
 
 // jumpPlace is where a row jumped to shows.
@@ -795,10 +799,11 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	if b.wrap {
 		b.cols = l.cols
 	}
-	_, noteW := diffNoteGeometry(l.viewW)
-	b.review, b.noteCols = a.review.gen, a.noteCols(noteW)
-	if a.review.draft != nil && a.review.ed == nil {
-		b.draft = len(commentRows(a.review.text, b.noteCols))
+	_, noteW := noteGeometry(l, v.split, false)
+	b.review, b.noteW = a.review.gen, noteTextW(noteW)
+	if r := &a.review; r.draft != nil && r.ed == nil {
+		_, w := noteGeometry(l, v.split, r.draft.oldSide)
+		b.draft = a.noteLines(r.draft, true, r.text, noteTextW(w))
 	}
 	if b == v.built && v.tops != nil {
 		return
@@ -901,7 +906,7 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		}
 		start := len(v.rows)
 		v.rows = foldRows(v.rows, f, i, all, v.full)
-		a.noteRows(v, f, i, start, b.noteCols)
+		a.noteRows(v, l, f, i, start)
 	}
 	for i := range v.rows {
 		r := &v.rows[i]
@@ -972,6 +977,16 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		for i := range v.rows {
 			if v.anchorOf(i) == anchor {
 				v.scroll.Y = max(0, editorPadY+float32(v.tops[i])*lineH-offset)
+				break
+			}
+		}
+	}
+	// A note gone to is chosen, once its card is laid out.
+	if n := v.revealNote; n != nil {
+		for _, i := range v.cards {
+			if a.review.noteAt(v.rows[i].n) == n {
+				v.revealNote, v.anchor, v.cursor = nil, -1, i
+				v.jumpRow(i, jumpThird)
 				break
 			}
 		}
@@ -1305,6 +1320,12 @@ func (a *app) diffInput(v *diffView, ev ui.InputEvent) bool {
 		v.anchor = -1
 	case ui.KeyC:
 		a.commentDiff(v)
+	case ui.KeyN:
+		// The next card of a note, or with Shift the one before.
+		if len(v.cards) == 0 {
+			return false
+		}
+		a.stepNote(1 - 2*btoi(shift))
 	case ui.KeyBackspace, ui.KeyDelete:
 		// On the card of a note, it deletes the note.
 		c := v.cursor

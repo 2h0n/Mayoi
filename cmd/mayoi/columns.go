@@ -756,6 +756,7 @@ func (a *app) rememberTabs() {
 		slices.Sort(open)
 		a.window.Expanded = open
 	}
+	a.window.Review = a.keptReview()
 	a.settings.Changed()
 }
 
@@ -833,6 +834,7 @@ func (a *app) restoreEditor(ed *editor, ts settings.Tab) {
 func (a *app) restoreTabs() {
 	saved, focused, fileFocused := a.window.Columns, a.window.Column, a.window.FileColumn
 	a.restoreExpanded(a.window.Expanded)
+	a.restoreReview(a.window.Review)
 	// Allocate each saved column before opening tabs. Empty locked columns
 	// and the file workspace beside them are part of the saved layout too.
 	restored := make([]*column, len(saved))
