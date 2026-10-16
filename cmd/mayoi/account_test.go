@@ -115,6 +115,9 @@ func TestSyncStatus(t *testing.T) {
 		if hs.tt.HasText(locales.SyncPanelLabel("Ada Lovelace")) {
 			t.Fatal("signed out, the status bar has settings sync")
 		}
+		if err := hs.tt.Click(locales.CmdAccountSignIn()); err != nil || hs.h.signIns != 1 {
+			t.Fatalf("the welcome page does not sign in: %v", err)
+		}
 		hs.h.signedIn = "Ada Lovelace"
 		hs.h.sync = syncInfo{email: "ada@example.com", syncedAt: time.Now().Add(-3 * time.Minute)}
 		hs.settle()
@@ -122,6 +125,9 @@ func TestSyncStatus(t *testing.T) {
 			t.Fatal(err)
 		}
 		hs.settle()
+		if hs.tt.HasText(locales.CmdAccountSignIn()) {
+			t.Error("signed in, the welcome page offers to sign in")
+		}
 		if !hs.a.syncOpen || !hs.tt.HasText("ada@example.com") || !hs.tt.HasText(locales.SyncUpToDateTitle()) ||
 			!hs.tt.HasText(locales.SyncSyncedAgo(locales.AgoMinutes(3))) {
 			t.Fatal("the panel does not show the account and the last sync")

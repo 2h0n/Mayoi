@@ -14,7 +14,8 @@ needs a `## <version>` section here, or its build fails.
   status bar opens the account's panel, with your name and picture, when
   the machine last synced, **Sync Now**, and **Manage Account** and **Sign
   Out**. The sign-in dialog walks through the steps, shows the code in large
-  tiles and counts down until it expires.
+  tiles and counts down until it expires. The welcome page offers to sign
+  in.
 - Settings sync keeps what you choose on one machine: switches in the
   account's panel, or `syncIgnored` in `settings.json`, as
   `["fontSize", "keybindings.json"]`.
