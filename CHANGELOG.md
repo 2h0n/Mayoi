@@ -99,6 +99,9 @@ needs a `## <version>` section here, or its build fails.
 - **File → New Window** (⇧⌘N) opens a window that shows nothing, which
   the welcome page fills, and on macOS the Dock icon's menu has it above
   the recent folders.
+- macOS: files and folders dropped on the Dock icon open, as `mayoi
+  <path>` opens them, and Mayoi is in the Finder's **Open With** menu
+  for any file (#28).
 
 ## 0.9.1
 

@@ -284,6 +284,7 @@ Terminal**. Locks, widths and the last file column come back with each project's
 Files dragged from the Finder open where you drop them: in a column after the tab shown, on its tab strip where the
 marker shows, or on the edge of a column in a new column there. Dropped elsewhere, as on the explorer, they open in the
 file workspace, avoiding locked columns. A dropped folder opens as `mayoi <dir>` opens it.
+On macOS, files and folders dropped on Mayoi's Dock icon open the same way as `mayoi <path>`.
 
 Files dragged from the explorer, from source control's changes or from the search results open in the same places. A
 search match opens with the match selected.

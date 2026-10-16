@@ -5,7 +5,23 @@
   "main": "./cmd/mayoi",
   "out": "build",
   "macos": {
-    "minimumSystemVersion": "13.0"
+    "minimumSystemVersion": "13.0",
+    "infoPlist": {
+      "CFBundleDocumentTypes": [
+        {
+          "CFBundleTypeName": "Document",
+          "CFBundleTypeRole": "Editor",
+          "LSHandlerRank": "Alternate",
+          "LSItemContentTypes": ["public.data"]
+        },
+        {
+          "CFBundleTypeName": "Folder",
+          "CFBundleTypeRole": "Editor",
+          "LSHandlerRank": "Alternate",
+          "LSItemContentTypes": ["public.folder"]
+        }
+      ]
+    }
   },
   "linux": {
     "command": "mayoi",
