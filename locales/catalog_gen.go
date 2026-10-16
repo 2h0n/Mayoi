@@ -887,6 +887,36 @@ func (msgs Messages) CloseOtherProjects() string {
 	return Catalog.Format(msgs.locale, "closeOtherProjects", nil)
 }
 
+// CmdAccountSignIn says "Sign In to Sync Settings…"
+// in the language the app shows.
+func CmdAccountSignIn() string { return In(i18n.Locale()).CmdAccountSignIn() }
+
+// CmdAccountSignIn says "Sign In to Sync Settings…"
+// in the language of msgs.
+func (msgs Messages) CmdAccountSignIn() string {
+	return Catalog.Format(msgs.locale, "cmdAccountSignIn", nil)
+}
+
+// CmdAccountSignOut says "Sign Out of Settings Sync"
+// in the language the app shows.
+func CmdAccountSignOut() string { return In(i18n.Locale()).CmdAccountSignOut() }
+
+// CmdAccountSignOut says "Sign Out of Settings Sync"
+// in the language of msgs.
+func (msgs Messages) CmdAccountSignOut() string {
+	return Catalog.Format(msgs.locale, "cmdAccountSignOut", nil)
+}
+
+// CmdAccountSyncNow says "Sync Settings Now"
+// in the language the app shows.
+func CmdAccountSyncNow() string { return In(i18n.Locale()).CmdAccountSyncNow() }
+
+// CmdAccountSyncNow says "Sync Settings Now"
+// in the language of msgs.
+func (msgs Messages) CmdAccountSyncNow() string {
+	return Catalog.Format(msgs.locale, "cmdAccountSyncNow", nil)
+}
+
 // CmdEditFind says "Find"
 // in the language the app shows.
 func CmdEditFind() string { return In(i18n.Locale()).CmdEditFind() }
@@ -3745,6 +3775,16 @@ func (msgs Messages) LockedColumn() string {
 	return Catalog.Format(msgs.locale, "lockedColumn", nil)
 }
 
+// MenuAccount says "Account"
+// in the language the app shows.
+func MenuAccount() string { return In(i18n.Locale()).MenuAccount() }
+
+// MenuAccount says "Account"
+// in the language of msgs.
+func (msgs Messages) MenuAccount() string {
+	return Catalog.Format(msgs.locale, "menuAccount", nil)
+}
+
 // MenuEdit says "Edit"
 // in the language the app shows.
 func MenuEdit() string { return In(i18n.Locale()).MenuEdit() }
@@ -3863,6 +3903,16 @@ func MenuSelection() string { return In(i18n.Locale()).MenuSelection() }
 // in the language of msgs.
 func (msgs Messages) MenuSelection() string {
 	return Catalog.Format(msgs.locale, "menuSelection", nil)
+}
+
+// MenuSyncingAs says "Syncing Settings as {name}"
+// in the language the app shows.
+func MenuSyncingAs(name string) string { return In(i18n.Locale()).MenuSyncingAs(name) }
+
+// MenuSyncingAs says "Syncing Settings as {name}"
+// in the language of msgs.
+func (msgs Messages) MenuSyncingAs(name string) string {
+	return Catalog.Format(msgs.locale, "menuSyncingAs", map[string]any{"name": name})
 }
 
 // MenuTheme says "Theme"
@@ -7623,6 +7673,206 @@ func SymbolPlaceholder() string { return In(i18n.Locale()).SymbolPlaceholder() }
 // in the language of msgs.
 func (msgs Messages) SymbolPlaceholder() string {
 	return Catalog.Format(msgs.locale, "symbolPlaceholder", nil)
+}
+
+// SyncChooseMessage says "Keep which? From then on, changes made on each machine merge."
+// in the language the app shows.
+func SyncChooseMessage() string { return In(i18n.Locale()).SyncChooseMessage() }
+
+// SyncChooseMessage says "Keep which? From then on, changes made on each machine merge."
+// in the language of msgs.
+func (msgs Messages) SyncChooseMessage() string {
+	return Catalog.Format(msgs.locale, "syncChooseMessage", nil)
+}
+
+// SyncChooseTitle says "Your account and this machine both have settings"
+// in the language the app shows.
+func SyncChooseTitle() string { return In(i18n.Locale()).SyncChooseTitle() }
+
+// SyncChooseTitle says "Your account and this machine both have settings"
+// in the language of msgs.
+func (msgs Messages) SyncChooseTitle() string {
+	return Catalog.Format(msgs.locale, "syncChooseTitle", nil)
+}
+
+// SyncCodeCopied says "Copied the code"
+// in the language the app shows.
+func SyncCodeCopied() string { return In(i18n.Locale()).SyncCodeCopied() }
+
+// SyncCodeCopied says "Copied the code"
+// in the language of msgs.
+func (msgs Messages) SyncCodeCopied() string {
+	return Catalog.Format(msgs.locale, "syncCodeCopied", nil)
+}
+
+// SyncCopyCode says "Copy Code"
+// in the language the app shows.
+func SyncCopyCode() string { return In(i18n.Locale()).SyncCopyCode() }
+
+// SyncCopyCode says "Copy Code"
+// in the language of msgs.
+func (msgs Messages) SyncCopyCode() string {
+	return Catalog.Format(msgs.locale, "syncCopyCode", nil)
+}
+
+// SyncDeclined says "The sign-in was declined"
+// in the language the app shows.
+func SyncDeclined() string { return In(i18n.Locale()).SyncDeclined() }
+
+// SyncDeclined says "The sign-in was declined"
+// in the language of msgs.
+func (msgs Messages) SyncDeclined() string {
+	return Catalog.Format(msgs.locale, "syncDeclined", nil)
+}
+
+// SyncExpired says "The sign-in code expired. Try again."
+// in the language the app shows.
+func SyncExpired() string { return In(i18n.Locale()).SyncExpired() }
+
+// SyncExpired says "The sign-in code expired. Try again."
+// in the language of msgs.
+func (msgs Messages) SyncExpired() string {
+	return Catalog.Format(msgs.locale, "syncExpired", nil)
+}
+
+// SyncFailed says "Couldn't sync settings: {error}"
+// in the language the app shows.
+func SyncFailed(error string) string { return In(i18n.Locale()).SyncFailed(error) }
+
+// SyncFailed says "Couldn't sync settings: {error}"
+// in the language of msgs.
+func (msgs Messages) SyncFailed(error string) string {
+	return Catalog.Format(msgs.locale, "syncFailed", map[string]any{"error": error})
+}
+
+// SyncKeybindingsConflict says "keybindings.json changed here and on another machine: this one stays, and the other is in keybindings.sync-conflict.json"
+// in the language the app shows.
+func SyncKeybindingsConflict() string { return In(i18n.Locale()).SyncKeybindingsConflict() }
+
+// SyncKeybindingsConflict says "keybindings.json changed here and on another machine: this one stays, and the other is in keybindings.sync-conflict.json"
+// in the language of msgs.
+func (msgs Messages) SyncKeybindingsConflict() string {
+	return Catalog.Format(msgs.locale, "syncKeybindingsConflict", nil)
+}
+
+// SyncNoKeyring says "Settings sync needs a keyring to keep its sign-in, as GNOME Keyring or KWallet"
+// in the language the app shows.
+func SyncNoKeyring() string { return In(i18n.Locale()).SyncNoKeyring() }
+
+// SyncNoKeyring says "Settings sync needs a keyring to keep its sign-in, as GNOME Keyring or KWallet"
+// in the language of msgs.
+func (msgs Messages) SyncNoKeyring() string {
+	return Catalog.Format(msgs.locale, "syncNoKeyring", nil)
+}
+
+// SyncOpenBrowser says "Open Browser"
+// in the language the app shows.
+func SyncOpenBrowser() string { return In(i18n.Locale()).SyncOpenBrowser() }
+
+// SyncOpenBrowser says "Open Browser"
+// in the language of msgs.
+func (msgs Messages) SyncOpenBrowser() string {
+	return Catalog.Format(msgs.locale, "syncOpenBrowser", nil)
+}
+
+// SyncSessionEnded says "Settings sync was signed out. Sign in again to keep syncing."
+// in the language the app shows.
+func SyncSessionEnded() string { return In(i18n.Locale()).SyncSessionEnded() }
+
+// SyncSessionEnded says "Settings sync was signed out. Sign in again to keep syncing."
+// in the language of msgs.
+func (msgs Messages) SyncSessionEnded() string {
+	return Catalog.Format(msgs.locale, "syncSessionEnded", nil)
+}
+
+// SyncSignInFailed says "Couldn't sign in: {error}"
+// in the language the app shows.
+func SyncSignInFailed(error string) string { return In(i18n.Locale()).SyncSignInFailed(error) }
+
+// SyncSignInFailed says "Couldn't sign in: {error}"
+// in the language of msgs.
+func (msgs Messages) SyncSignInFailed(error string) string {
+	return Catalog.Format(msgs.locale, "syncSignInFailed", map[string]any{"error": error})
+}
+
+// SyncSignInHint says "Approve this code on {host}, which Mayoi opened in your browser. Your settings and keyboard shortcuts then sync betwe…"
+// in the language the app shows.
+func SyncSignInHint(host string) string { return In(i18n.Locale()).SyncSignInHint(host) }
+
+// SyncSignInHint says "Approve this code on {host}, which Mayoi opened in your browser. Your settings and keyboard shortcuts then sync betwe…"
+// in the language of msgs.
+func (msgs Messages) SyncSignInHint(host string) string {
+	return Catalog.Format(msgs.locale, "syncSignInHint", map[string]any{"host": host})
+}
+
+// SyncSignInTitle says "Sign In to Sync Settings"
+// in the language the app shows.
+func SyncSignInTitle() string { return In(i18n.Locale()).SyncSignInTitle() }
+
+// SyncSignInTitle says "Sign In to Sync Settings"
+// in the language of msgs.
+func (msgs Messages) SyncSignInTitle() string {
+	return Catalog.Format(msgs.locale, "syncSignInTitle", nil)
+}
+
+// SyncSignedIn says "Signed in as {name}: settings and shortcuts sync"
+// in the language the app shows.
+func SyncSignedIn(name string) string { return In(i18n.Locale()).SyncSignedIn(name) }
+
+// SyncSignedIn says "Signed in as {name}: settings and shortcuts sync"
+// in the language of msgs.
+func (msgs Messages) SyncSignedIn(name string) string {
+	return Catalog.Format(msgs.locale, "syncSignedIn", map[string]any{"name": name})
+}
+
+// SyncSignedOut says "Signed out of settings sync"
+// in the language the app shows.
+func SyncSignedOut() string { return In(i18n.Locale()).SyncSignedOut() }
+
+// SyncSignedOut says "Signed out of settings sync"
+// in the language of msgs.
+func (msgs Messages) SyncSignedOut() string {
+	return Catalog.Format(msgs.locale, "syncSignedOut", nil)
+}
+
+// SyncUpToDate says "Settings are up to date"
+// in the language the app shows.
+func SyncUpToDate() string { return In(i18n.Locale()).SyncUpToDate() }
+
+// SyncUpToDate says "Settings are up to date"
+// in the language of msgs.
+func (msgs Messages) SyncUpToDate() string {
+	return Catalog.Format(msgs.locale, "syncUpToDate", nil)
+}
+
+// SyncUseAccount says "Use Account's"
+// in the language the app shows.
+func SyncUseAccount() string { return In(i18n.Locale()).SyncUseAccount() }
+
+// SyncUseAccount says "Use Account's"
+// in the language of msgs.
+func (msgs Messages) SyncUseAccount() string {
+	return Catalog.Format(msgs.locale, "syncUseAccount", nil)
+}
+
+// SyncUseLocal says "Use This Machine's"
+// in the language the app shows.
+func SyncUseLocal() string { return In(i18n.Locale()).SyncUseLocal() }
+
+// SyncUseLocal says "Use This Machine's"
+// in the language of msgs.
+func (msgs Messages) SyncUseLocal() string {
+	return Catalog.Format(msgs.locale, "syncUseLocal", nil)
+}
+
+// SyncWaiting says "Waiting for approval…"
+// in the language the app shows.
+func SyncWaiting() string { return In(i18n.Locale()).SyncWaiting() }
+
+// SyncWaiting says "Waiting for approval…"
+// in the language of msgs.
+func (msgs Messages) SyncWaiting() string {
+	return Catalog.Format(msgs.locale, "syncWaiting", nil)
 }
 
 // TabClose says "Close"

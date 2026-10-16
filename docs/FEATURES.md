@@ -515,6 +515,14 @@ Some commands are only in the command palette: **Copy Path of Active File**, **C
 Ascending**, **Sort Lines Descending** and **Transform to Camel Case** work on the lines selected, or every line, and on
 the words selected, or the caret's.
 
+## Settings sync
+
+**Mayoi → Sign In to Sync Settings…** (**Help** on Linux and Windows, and the command palette's **Account** commands)
+signs in to your [Mon](https://mon.sorrycc.dev) account, with GitHub or Google. Mayoi shows a short code and opens the
+browser to approve it. Your preferences and `keybindings.json` then sync between your machines: a change saves to the
+account a couple of seconds after you make it, and Mayoi gets the account's changes as it starts and as it comes to the
+front. Changes made on two machines merge setting by setting. See [SETTINGS.md](SETTINGS.md#settings-sync).
+
 ## Updates
 
 Release builds check GitHub Releases for a new version once a day, 10 seconds after launch when a check is due, and

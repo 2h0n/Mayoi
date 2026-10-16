@@ -5,6 +5,11 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- **Settings sync:** **Mayoi → Sign In to Sync Settings…** (**Help** on
+  Windows and Linux) signs in to a mon.sorrycc.dev account with GitHub or
+  Google, and syncs `settings.json` and `keybindings.json` between your
+  machines. Changes merge setting by setting; `keybindings.json` changed on
+  two machines keeps this one's and saves the other's beside it.
 - Mayoi speaks Simplified Chinese and Japanese as well as English (#33):
   the menus, the command palette, the panels, the dialogs and the messages
   follow the system's languages, and **View → Language**, the command

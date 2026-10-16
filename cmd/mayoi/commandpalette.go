@@ -45,6 +45,8 @@ func commandGroup(t locales.Messages, id string) string {
 		return t.MenuGit()
 	case "review":
 		return t.MenuReview()
+	case "account":
+		return t.MenuAccount()
 	}
 	return ""
 }

@@ -58,6 +58,9 @@ type mayoi struct {
 	// menuKey is the key (menuKey) of the menu last set, which is set
 	// again only when it changes.
 	menuKey string
+	// cloud syncs the settings with the person's account, nil without a
+	// settings file.
+	cloud *cloud
 }
 
 func (h *desktop) openFolder(done func(string)) {
@@ -305,19 +308,20 @@ func main() {
 			applyLocale(m.s.Locale)
 		}
 		mygo.App.OnLocaleChanged(func(string) { m.localeChanged() })
-		if stop, err := m.s.Watch(func(p settings.Prefs) { mygo.RunOnMain(func() { m.reload(p) }) }); err == nil {
+		if stop, err := m.s.Watch(func(p settings.Prefs) { mygo.RunOnMain(func() { m.reload(p); m.cloud.changed() }) }); err == nil {
 			mygo.App.OnQuit(stop)
 		}
 		keysPath := keymap.Path(m.s.Path())
 		keys, keysErr := keymap.Load(keysPath)
 		m.keys = keys
-		if stop, err := keymap.Watch(keysPath, func(km *keymap.Map, err error) { mygo.RunOnMain(func() { m.reloadKeys(km, err) }) }); err == nil {
+		if stop, err := keymap.Watch(keysPath, func(km *keymap.Map, err error) { mygo.RunOnMain(func() { m.reloadKeys(km, err); m.cloud.changed() }) }); err == nil {
 			mygo.App.OnQuit(stop)
 		}
 		wd, _ := os.Getwd()
 		m.ready = true
 		m.launch(append(m.pending, argPaths(os.Args[1:], wd)...))
 		m.pending = nil
+		m.startCloud()
 		if len(m.wins) == 0 {
 			return
 		}

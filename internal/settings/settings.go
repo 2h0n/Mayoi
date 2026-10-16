@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -34,6 +35,9 @@ type Settings struct {
 	// stateWritten what they last wrote to the state's.
 	written      []byte
 	stateWritten []byte
+	// prefsWritten is called, on a goroutine of its own, each time the
+	// settings write a change of the preferences to their file.
+	prefsWritten func()
 }
 
 // State is what Mayoi keeps itself, not what a person chooses: the
@@ -532,6 +536,12 @@ func (s *Settings) write(prefs, state []byte) {
 	s.mu.Unlock()
 	if !samePrefs {
 		writeFile(s.path, prefs)
+		s.mu.Lock()
+		fn := s.prefsWritten
+		s.mu.Unlock()
+		if fn != nil {
+			fn()
+		}
 	}
 	if !sameState && s.statePath != "" {
 		writeFile(s.statePath, state)
@@ -663,4 +673,78 @@ func (s *Settings) edited() (Prefs, bool) {
 	}
 	f.normalize()
 	return f.Prefs, true
+}
+
+// OnPrefsWritten calls fn, on a goroutine of its own, each time the
+// settings write a change of the preferences to their file, as a menu
+// changing one, though not as the person saves the file: Watch tells of
+// that.
+func (s *Settings) OnPrefsWritten(fn func()) {
+	s.mu.Lock()
+	s.prefsWritten = fn
+	s.mu.Unlock()
+}
+
+// unsynced are the preferences that stay on each machine: what the
+// windows remember of source control's panels rather than what a person
+// chooses.
+var unsynced = []string{"scmRepositoryOpen", "scmRemotes"}
+
+// PrefKeys are the keys of the preferences in the settings' file.
+var PrefKeys = func() []string {
+	var keys []string
+	t := reflect.TypeFor[Prefs]()
+	for f := range t.Fields() {
+		name, _, _ := strings.Cut(f.Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			keys = append(keys, name)
+		}
+	}
+	return keys
+}()
+
+// Synced returns the preferences that sync between machines, by their
+// keys in the settings' file. Keys at their zero value with omitempty are
+// left out, as the file leaves them out.
+func (p Prefs) Synced() map[string]json.RawMessage {
+	data, _ := json.Marshal(p)
+	var m map[string]json.RawMessage
+	json.Unmarshal(data, &m)
+	for _, k := range unsynced {
+		delete(m, k)
+	}
+	return m
+}
+
+// WithSynced returns the preferences of synced, by their keys in the
+// settings' file, the defaults where it has none, and p's of those that
+// do not sync.
+func (p Prefs) WithSynced(synced map[string]json.RawMessage) (Prefs, error) {
+	f := Default()
+	data, err := json.Marshal(synced)
+	if err != nil {
+		return p, err
+	}
+	if err := json.Unmarshal(data, &f.Prefs); err != nil {
+		return p, err
+	}
+	f.ScmRepositoryOpen, f.ScmRemotes = p.ScmRepositoryOpen, p.ScmRemotes
+	f.normalize()
+	return f.Prefs, nil
+}
+
+// IsDefault reports whether the preferences that sync are those of a
+// first launch.
+func (p Prefs) IsDefault() bool {
+	d := Default().Prefs.Synced()
+	m := p.Synced()
+	if len(d) != len(m) {
+		return false
+	}
+	for k, v := range m {
+		if !bytes.Equal(d[k], v) {
+			return false
+		}
+	}
+	return true
 }

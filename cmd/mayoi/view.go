@@ -161,6 +161,7 @@ func (a *app) view(c *ui.Context) {
 	a.remotePickerView(c)
 	a.promptView(c)
 	a.confirmView(c)
+	a.signinView(c)
 	if !a.dialogBuilt {
 		a.dialog = ""
 	}

@@ -17,14 +17,18 @@ import (
 
 // fakeHost answers the app's dialogs as a test says.
 type fakeHost struct {
-	folder  string
-	saveTo  string
-	choice  int
-	asked   []string
-	title   string
-	locale  string // the language setLocale chose
-	closed  bool
-	trashed []string
+	folder string
+	// signedIn is the name settings sync syncs for, and signIns, syncs
+	// and signOuts count the commands of settings sync.
+	signedIn                 string
+	signIns, syncs, signOuts int
+	saveTo                   string
+	choice                   int
+	asked                    []string
+	title                    string
+	locale                   string // the language setLocale chose
+	closed                   bool
+	trashed                  []string
 	// revealed are the paths asked to show in the Finder.
 	revealed []string
 	// others are the folders other windows have open, and windows those
@@ -84,6 +88,10 @@ func (h *fakeHost) recentChanged()            { h.recentChanges++ }
 func (h *fakeHost) fontChanged()              {}
 func (h *fakeHost) installCLI()               {}
 func (h *fakeHost) uninstallCLI()             {}
+func (h *fakeHost) account() string           { return h.signedIn }
+func (h *fakeHost) signIn()                   { h.signIns++ }
+func (h *fakeHost) signOut()                  { h.signOuts++ }
+func (h *fakeHost) syncNow()                  { h.syncs++ }
 func (h *fakeHost) stepProject(int)           {}
 func (h *fakeHost) showProject(int)           {}
 func (h *fakeHost) closeProject()             {}

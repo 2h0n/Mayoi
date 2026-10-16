@@ -73,6 +73,13 @@ type host interface {
 	// path, and take it away, saying how it went.
 	installCLI()
 	uninstallCLI()
+	// account is the name of the person settings sync syncs for, "" when
+	// signed out. signIn signs in, showing the code to approve in the
+	// window, signOut signs out, and syncNow syncs at once.
+	account() string
+	signIn()
+	signOut()
+	syncNow()
 	// With project tabs, stepProject shows the project by steps along the
 	// rail, showProject the one at i, the last for -1, and closeProject
 	// closes the window's, as the window closes when it is its only one.
@@ -210,6 +217,7 @@ type app struct {
 	inFiles    searchState // search in the files, of the sidebar
 	prompt     *prompt
 	confirm    *confirm
+	signin     *signin
 	// dialog is the dialog shown, which came in as it showed, and
 	// dialogBuilt says a build of the view built one.
 	dialog      string

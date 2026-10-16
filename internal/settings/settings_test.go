@@ -332,3 +332,54 @@ func TestScmRepositoryPreferencesRoundTrip(t *testing.T) {
 		t.Fatal("repository panel preferences were not saved")
 	}
 }
+
+func TestSyncedPrefs(t *testing.T) {
+	p := Default().Prefs
+	if !p.IsDefault() {
+		t.Error("the defaults are not default")
+	}
+	p.FontSize, p.Theme, p.ScmRemotes, p.ScmRepositoryOpen = 15, "claude", true, true
+	if p.IsDefault() {
+		t.Error("changed preferences are default")
+	}
+	m := p.Synced()
+	if _, ok := m["scmRemotes"]; ok {
+		t.Error("scmRemotes syncs")
+	}
+	if string(m["fontSize"]) != "15" || string(m["theme"]) != `"claude"` {
+		t.Errorf("synced = %s", m)
+	}
+	// Another machine's: the font size is out of range, and the panels of
+	// source control stay as this machine has them.
+	m["fontSize"] = json.RawMessage("40")
+	delete(m, "theme")
+	q, err := p.WithSynced(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.FontSize != 28 || q.Theme != "" || !q.ScmRemotes || !q.ScmRepositoryOpen || !q.AutoSave {
+		t.Errorf("prefs = %+v", q)
+	}
+	if !slices.Contains(PrefKeys, "fontSize") || !slices.Contains(PrefKeys, "locale") {
+		t.Errorf("PrefKeys = %v", PrefKeys)
+	}
+}
+
+func TestOnPrefsWritten(t *testing.T) {
+	s := Load(filepath.Join(t.TempDir(), "settings.json"))
+	written := make(chan struct{}, 4)
+	s.OnPrefsWritten(func() { written <- struct{}{} })
+	s.Flush()
+	<-written
+	// The state only.
+	s.AddRecent("/tmp")
+	s.Flush()
+	s.Vim = true
+	s.Flush()
+	<-written
+	select {
+	case <-written:
+		t.Error("a change of the state told of the preferences")
+	default:
+	}
+}

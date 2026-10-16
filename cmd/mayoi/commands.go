@@ -60,6 +60,13 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		{"file.reopenClosed", t.CmdFileReopenClosed(), "Shift+CmdOrCtrl+T", a.reopenClosed},
 		{"file.closeFolder", t.CmdFileCloseFolder(), "", a.closeFolder},
 		{"file.closeProject", t.CmdFileCloseProject(), "", func() { a.host.closeProject() }},
+		{"account.signIn", t.CmdAccountSignIn(), "", func() { a.host.signIn() }},
+		{"account.syncNow", t.CmdAccountSyncNow(), "", a.syncNow},
+		{"account.signOut", t.CmdAccountSignOut(), "", func() {
+			if a.host.account() != "" {
+				a.host.signOut()
+			}
+		}},
 		{"file.installCLI", t.CmdFileInstallCLI(), "", func() { a.host.installCLI() }},
 		{"file.uninstallCLI", t.CmdFileUninstallCLI(), "", func() { a.host.uninstallCLI() }},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
@@ -319,6 +326,16 @@ func (a *app) localeOn(tag string) bool {
 	return i18n.Match([]string{a.settings.Locale}, mygo.App.Languages()) == tag
 }
 
+// syncNow syncs the settings with the account at once, or signs in to
+// sync them.
+func (a *app) syncNow() {
+	if a.host.account() == "" {
+		a.host.signIn()
+		return
+	}
+	a.host.syncNow()
+}
+
 // openSettings opens the settings file in a tab, as they are now. The
 // preferences in it apply as it is saved.
 func (a *app) openSettings() {
@@ -419,21 +436,34 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	if cli {
 		file = append(file, mygo.Separator(), item("file.installCLI"), item("file.uninstallCLI"))
 	}
-	// The app menu of macOS, as RoleAppMenu makes it, with room for
-	// "Check for Updates…" after About.
-	appMenu := &mygo.MenuItem{Role: mygo.RoleAppMenu}
-	var help []*mygo.MenuItem
-	if mygo.Updater.Enabled() {
-		if runtime.GOOS == "darwin" {
-			appMenu = &mygo.MenuItem{Label: mygo.App.Name(), Submenu: []*mygo.MenuItem{
-				{Role: mygo.RoleAbout}, updater.MenuItem(), mygo.Separator(),
-				{Role: mygo.RoleServices}, mygo.Separator(),
-				{Role: mygo.RoleHide}, {Role: mygo.RoleHideOthers}, {Role: mygo.RoleUnhide}, mygo.Separator(),
-				{Role: mygo.RoleQuit},
-			}}
-		} else {
-			help = append(help, updater.MenuItem())
+	// Settings sync: who it syncs for, or signing in.
+	var account []*mygo.MenuItem
+	if name := a.host.account(); name != "" {
+		account = []*mygo.MenuItem{
+			{Label: locales.MenuSyncingAs(name), Disabled: true}, item("account.syncNow"), item("account.signOut"),
 		}
+	} else {
+		account = []*mygo.MenuItem{item("account.signIn")}
+	}
+	// The app menu of macOS, as RoleAppMenu makes it, with room for
+	// "Check for Updates…" after About and for settings sync, and the Help
+	// menu elsewhere with them.
+	var help []*mygo.MenuItem
+	about := []*mygo.MenuItem{{Role: mygo.RoleAbout}}
+	if mygo.Updater.Enabled() {
+		about = append(about, updater.MenuItem())
+		help = append(help, updater.MenuItem(), mygo.Separator())
+	}
+	help = append(help, account...)
+	appMenu := &mygo.MenuItem{Role: mygo.RoleAppMenu}
+	if runtime.GOOS == "darwin" {
+		help = nil
+		appMenu = &mygo.MenuItem{Label: mygo.App.Name(), Submenu: slices.Concat(about, []*mygo.MenuItem{mygo.Separator()}, account, []*mygo.MenuItem{
+			mygo.Separator(),
+			{Role: mygo.RoleServices}, mygo.Separator(),
+			{Role: mygo.RoleHide}, {Role: mygo.RoleHideOthers}, {Role: mygo.RoleUnhide}, mygo.Separator(),
+			{Role: mygo.RoleQuit},
+		})}
 	}
 	// The items of the review comments, off while there are none.
 	reviewItem := func(id string) *mygo.MenuItem {
