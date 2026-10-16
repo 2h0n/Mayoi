@@ -5,6 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Selecting a file anywhere in its Explorer row switches to its editor,
+  including clicks in the space beside its name, and moving through the
+  Explorer with the arrow keys previews each file in turn.
 - Review comments: choose lines in a diff (Shift-click, a drag or
   Shift+J/K) and press C, or select lines in a file and press ⇧⌘M, to
   comment on them. **Send Review Comments to Terminal** pastes them all
