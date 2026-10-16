@@ -5,6 +5,8 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Linux: Mayoi no longer sometimes crashes as it starts on machines that
+  draw with the GPU (#24).
 - Selecting a file anywhere in its Explorer row switches to its editor,
   including clicks in the space beside its name, and moving through the
   Explorer with the arrow keys previews each file in turn.
