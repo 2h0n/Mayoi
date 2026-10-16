@@ -42,7 +42,7 @@ func railFixture(t testing.TB, dirs ...string) (*frame, []*desktop, *ui.Tester) 
 	f.active = hs[0]
 	m.wins = slices.Clone(hs)
 	tt := ui.NewTester(f.view, 1200, 760)
-	tt.Frame()
+	step(tt)
 	return f, hs, tt
 }
 
@@ -67,7 +67,7 @@ func TestRailShowsTheProjects(t *testing.T) {
 	}
 	tt.CloseMenu()
 	f.tabs = f.tabs[:1]
-	tt.Frame()
+	step(tt)
 	if _, ok := tt.Find(filepath.Base(other)); ok {
 		t.Error("a window of one project has a rail")
 	}
@@ -82,28 +82,28 @@ func TestProjectKeepsItsPlace(t *testing.T) {
 	f, hs, tt := railFixture(t, root, other)
 	a := hs[0].a
 	a.openFile(path, true)
-	tt.Frame()
+	step(tt)
 	ed := a.activeEditor()
 	if ed == nil {
 		t.Fatal("no editor")
 	}
 	at := strings.Index(ed.buf.String(), "line 200")
 	ed.pending = &[2]int{at, at}
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	sel, y := ed.sel, ed.vscroll.Y
 	if sel != [2]int{at, at} || y <= 0 {
 		t.Fatalf("before: sel %v, scrolled %v", sel, y)
 	}
 	f.active = hs[1]
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if !ed.hidden {
 		t.Fatal("the editor out of sight is not parked")
 	}
 	f.active = hs[0]
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if ed.sel != sel || ed.vscroll.Y != y {
 		t.Fatalf("back: sel %v (was %v), scrolled %v (was %v)", ed.sel, sel, ed.vscroll.Y, y)
 	}
@@ -114,12 +114,12 @@ func TestHiddenProjectRunsItsPosts(t *testing.T) {
 	root, other := workspaceFixture(t), workspaceFixture(t)
 	f, hs, tt := railFixture(t, root, other)
 	f.active = hs[1]
-	tt.Frame()
+	step(tt)
 	f.active = hs[0]
-	tt.Frame()
+	step(tt)
 	ran := false
 	hs[1].a.post(func() { ran = true })
-	tt.Frame()
+	step(tt)
 	if !ran {
 		t.Error("a hidden project's post never ran")
 	}
@@ -134,20 +134,20 @@ func TestProjectKeepsItsLayout(t *testing.T) {
 	a, b := hs[0].a, hs[1].a
 	a.showSourceControl()
 	a.window.SidebarWidth, a.window.PanelHeight = 320, 400
-	tt.Frame()
+	step(tt)
 	if !tt.HasText("SOURCE CONTROL") {
 		t.Fatalf("A's sidebar: %v", tt.Texts())
 	}
 	f.active = hs[1]
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if tt.HasText("SOURCE CONTROL") || !tt.HasText("EXPLORER") || b.window.SidebarWidth == 320 || b.window.PanelHeight == 400 {
 		t.Fatalf("B's sidebar: %+v, %v", b.window.Layout, tt.Texts())
 	}
 	b.toggleSidebar()
 	f.active = hs[0]
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if !tt.HasText("SOURCE CONTROL") || a.window.SidebarClosed || a.window.SidebarWidth != 320 || a.window.PanelHeight != 400 {
 		t.Fatalf("A's sidebar again: %+v, %v", a.window.Layout, tt.Texts())
 	}
@@ -245,16 +245,16 @@ func TestShotRail(t *testing.T) {
 		a := hs[0].a
 		a.openFile(filepath.Join(dirs[0], "main.go"), true)
 		for range 10 {
-			tt.Frame()
+			step(tt)
 		}
 		a.focusColumn()
-		tt.Frame()
+		step(tt)
 		tt.Type("// ")
 		hs[3].a.alert = "Bell from zsh"
 		r, _ := tt.Find("webServer")
 		tt.Move(r.X+r.W/2, r.Y+r.H/2)
 		for range 30 {
-			tt.Frame()
+			step(tt)
 			time.Sleep(10 * time.Millisecond)
 		}
 		name := "rail-light"
@@ -308,7 +308,7 @@ func TestRailMenu(t *testing.T) {
 	if err := tt.ChooseMenuItem("Copy Path"); err != nil {
 		t.Fatal(err)
 	}
-	tt.Frame()
+	step(tt)
 	if got := tt.Clipboard(); got != other {
 		t.Errorf("copied %q, want %q", got, other)
 	}
@@ -323,11 +323,11 @@ func BenchmarkRailFrame(b *testing.B) {
 	}
 	_, _, tt := railFixture(b, dirs...)
 	for range 30 {
-		tt.Frame()
+		step(tt)
 	}
 	b.ResetTimer()
 	for range b.N {
-		tt.Frame()
+		step(tt)
 	}
 }
 
@@ -346,14 +346,14 @@ func BenchmarkProjectSwitch(b *testing.B) {
 		f.active = h
 		h.a.openFile(filepath.Join(dirs[i], "editor.go"), true)
 		for range 30 {
-			tt.Frame()
+			step(tt)
 			time.Sleep(5 * time.Millisecond)
 		}
 	}
 	b.ResetTimer()
 	for i := range b.N {
 		f.active = hs[i%2]
-		tt.Frame()
+		step(tt)
 	}
 }
 
@@ -364,25 +364,22 @@ func TestRailMarksAttention(t *testing.T) {
 	f, hs, tt := railFixture(t, root, other)
 	// Shown once, as a project with a terminal was.
 	f.active = hs[1]
-	tt.Frame()
+	step(tt)
 	f.active = hs[0]
-	tt.Frame()
+	step(tt)
 	hs[1].a.post(func() { hs[1].a.alert = "Bell from zsh" })
-	tt.Frame()
+	step(tt)
 	if hs[1].a.alert == "" {
 		t.Fatal("the mark of a project out of sight went")
 	}
 	r, _ := tt.Find(filepath.Base(other))
 	tt.Move(r.X+r.W/2, r.Y+r.H/2)
-	for range 5 {
-		tt.Frame()
-		time.Sleep(150 * time.Millisecond)
-	}
+	tt.Advance(time.Second)
 	if !tt.HasText("Bell from zsh") {
 		t.Errorf("the tip does not say why: %v", tt.Texts())
 	}
 	f.active = hs[1]
-	tt.Frame()
+	step(tt)
 	if hs[1].a.alert != "" {
 		t.Error("the mark stays as the project shows")
 	}
@@ -854,7 +851,7 @@ func TestRailShowsProjectLogo(t *testing.T) {
 	f.m.s.ProjectIcons = true
 	hs[0].logoDone, hs[0].logoDir = true, root
 	hs[0].logoSrc = loadProjectLogo(root)
-	tt.Frame()
+	step(tt)
 	if _, ok := tt.Find(filepath.Base(root)); !ok {
 		t.Fatalf("no square for %s on the rail: %v", root, tt.Texts())
 	}
@@ -1088,7 +1085,7 @@ func TestRailScansProjectsNotShown(t *testing.T) {
 		t.Fatal("the second project started")
 	}
 	f.m.s.ProjectIcons = true
-	tt.Frame()
+	step(tt)
 	if !hs[1].logoDone || hs[1].logoDir != other {
 		t.Fatal("no scan for a project not shown")
 	}
@@ -1096,6 +1093,6 @@ func TestRailScansProjectsNotShown(t *testing.T) {
 		if time.Now().After(end) {
 			t.Fatal("the logo of a project not shown never came")
 		}
-		tt.Frame()
+		step(tt)
 	}
 }

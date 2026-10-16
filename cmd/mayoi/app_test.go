@@ -129,14 +129,22 @@ func newHarness(t testing.TB, dark bool) *harness {
 	return hs
 }
 
+// step draws a frame of a test a frame's time, 16 ms, after the last:
+// the tester's clock stands still otherwise, and the app counts its frames
+// by the time they are drawn at.
+func step(tt *ui.Tester) {
+	tt.Advance(16 * time.Millisecond)
+	tt.Frame()
+}
+
 // settle draws frames until the background work (reading directories,
 // highlighting, indexing) is done.
 func (hs *harness) settle() {
 	for range 30 {
-		hs.tt.Frame()
+		step(hs.tt)
 		time.Sleep(5 * time.Millisecond)
 	}
-	hs.tt.Frame()
+	step(hs.tt)
 }
 
 func (hs *harness) shot(name string) {
@@ -487,20 +495,20 @@ func TestLargeFileStaysQuick(t *testing.T) {
 	os.WriteFile(big, []byte(b.String()), 0o644)
 	start := time.Now()
 	a.openFile(big, true)
-	tt.Frame()
+	step(tt)
 	t.Logf("open 100k lines: %v", time.Since(start))
 	hs.settle()
 	start = time.Now()
 	const n = 100
 	for range n {
 		tt.Scroll(700, 400, 0, 120)
-		tt.Frame()
+		step(tt)
 	}
 	t.Logf("scroll: %.2f ms/frame", float64(time.Since(start).Microseconds())/1000/n)
 	start = time.Now()
 	for range n {
 		tt.Type("a")
-		tt.Frame()
+		step(tt)
 	}
 	t.Logf("type: %.2f ms/frame", float64(time.Since(start).Microseconds())/1000/n)
 	hs.settle()
@@ -589,8 +597,8 @@ func TestRestoresTheActiveTab(t *testing.T) {
 	s := settings.Load(path)
 	a := newApp(&fakeHost{folder: root}, s, s.Windows[0])
 	tt := ui.NewTester(a.view, 1200, 760)
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if d := a.activeEditor(); d == nil || d.path != files[1] {
 		t.Fatalf("active %v, want README.md", d)
 	}

@@ -142,7 +142,7 @@ func TestExplorerPreviewTab(t *testing.T) {
 	b := newApp(hs.h, a.settings, a.window)
 	tb := ui.NewTester(b.view, 1200, 760)
 	for range 5 {
-		tb.Frame()
+		step(tb)
 	}
 	var got []string
 	for _, t := range b.column().tabs {
@@ -235,7 +235,7 @@ func TestCommitPreviewTab(t *testing.T) {
 	b := newApp(hs.h, a.settings, a.window)
 	tb := ui.NewTester(b.view, 1200, 760)
 	for range 5 {
-		tb.Frame()
+		step(tb)
 	}
 	if tabs := b.column().tabs; len(tabs) != 2 || tabs[0].transient || tabs[1].diff == nil || !tabs[1].transient {
 		t.Errorf("restored %+v", tabs)

@@ -506,8 +506,8 @@ func TestReviewKept(t *testing.T) {
 	os.WriteFile(hs.path("t.txt"), append([]byte("new\nnew\n"), text...), 0o644)
 	b := newApp(&fakeHost{folder: hs.root}, a.settings, a.window)
 	tt := ui.NewTester(b.view, 1200, 760)
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if len(b.review.notes) != 1 {
 		t.Fatalf("notes %d", len(b.review.notes))
 	}

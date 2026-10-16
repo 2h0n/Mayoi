@@ -283,7 +283,7 @@ func TestBranchesAndBlame(t *testing.T) {
 	d.selectRange(2, 2, false)
 	hs.settle()
 	hs.until("the line is blamed", func() bool {
-		hs.tt.Frame()
+		step(hs.tt)
 		return d.blame.done
 	})
 	if !strings.HasPrefix(d.blame.text, "t, just now · first") {
@@ -294,7 +294,7 @@ func TestBranchesAndBlame(t *testing.T) {
 	a.queueEdit(d, func(d *editor) { d.edit(d.sel, textEdit{0, 0, "new\n"}) })
 	hs.settle()
 	hs.until("the new line is blamed", func() bool {
-		hs.tt.Frame()
+		step(hs.tt)
 		return d.blame.done
 	})
 	if d.blame.text != "" {
@@ -367,7 +367,7 @@ func TestPushPullFetch(t *testing.T) {
 			break
 		}
 	}
-	hs.tt.Frame()
+	step(hs.tt)
 	if !slices.ContainsFunc(hs.tt.Texts(), func(s string) bool { return strings.Contains(s, "nonexistent") }) {
 		t.Errorf("no toast: %q", hs.tt.Texts())
 	}

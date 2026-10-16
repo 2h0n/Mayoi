@@ -210,8 +210,8 @@ func TestLockedColumnSessionRoundTrip(t *testing.T) {
 	}
 	b := newApp(hs.h, a.settings, w)
 	tb := ui.NewTester(b.view, 1200, 760)
-	tb.Frame()
-	tb.Frame()
+	step(tb)
+	step(tb)
 	if len(b.cols) != 3 || !b.cols[2].locked || b.cols[2].tab().path() != hs.path("README.md") || b.cols[2].weight != 3 {
 		t.Fatalf("restored locked layout: %+v", w.Columns)
 	}
@@ -241,8 +241,8 @@ func TestLockedColumnRestoresEmptyWorkspace(t *testing.T) {
 		w.Column = 1
 		b := newApp(hs.h, a.settings, w)
 		tb := ui.NewTester(b.view, 1200, 760)
-		tb.Frame()
-		tb.Frame()
+		step(tb)
+		step(tb)
 		if len(b.cols) != 2 || b.cols[0].tab() != nil || b.cols[0].weight != 2 || !b.cols[1].locked || b.cols[1].weight != 3 {
 			t.Fatalf("empty layout collapsed: %+v", w.Columns)
 		}
@@ -264,8 +264,8 @@ func TestLockedColumnRestoresFileTargetAfterCleanup(t *testing.T) {
 			w.Column, w.FileColumn = 2, savedTarget
 			a := newApp(&fakeHost{}, s, w)
 			tt := ui.NewTester(a.view, 1200, 760)
-			tt.Frame()
-			tt.Frame()
+			step(tt)
+			step(tt)
 			if len(a.cols) != 2 || a.column() != a.cols[1] || a.fileCol != a.cols[0] || a.fileCol.locked {
 				t.Fatalf("saved target %d did not resolve to a surviving file column", savedTarget)
 			}
@@ -335,15 +335,15 @@ func TestLockedColumnProjectLayout(t *testing.T) {
 	left.weight, right.weight = 2, 3
 	a.rememberTabs()
 	f.active = hs[1]
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if len(b.cols) != 1 || b.cols[0].locked {
 		t.Fatal("the second project inherited the column lock")
 	}
 	b.openFile(filepath.Join(other, "README.md"), true)
 	f.active = hs[0]
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if len(a.cols) != 2 || !right.locked || left.weight != 2 || right.weight != 3 {
 		t.Fatal("switching projects lost the locked layout")
 	}

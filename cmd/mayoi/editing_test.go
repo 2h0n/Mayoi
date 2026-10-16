@@ -424,14 +424,14 @@ func TestSwipeSidewaysAlongItsAxis(t *testing.T) {
 	for i := range 30 {
 		x, y := d.hscroll.X, d.vscroll.Y
 		hs.tt.Scroll(400, 300, 6, float32(i%2))
-		hs.tt.Frame()
+		step(hs.tt)
 		if d.hscroll.X != x+6 || d.vscroll.Y != y {
 			t.Fatalf("swipe %d: at %v, %v from %v, %v", i, d.hscroll.X, d.vscroll.Y, x, y)
 		}
 	}
 	// Mostly down, it scrolls down.
 	hs.tt.Scroll(400, 300, 1, 20)
-	hs.tt.Frame()
+	step(hs.tt)
 	if d.vscroll.Y == 0 {
 		t.Fatal("did not scroll down")
 	}

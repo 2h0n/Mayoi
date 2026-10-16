@@ -56,6 +56,10 @@ needs a `## <version>` section here, or its build fails.
   longer open a console window of their own, which reached the desktop as
   a terminal window that flashed open and closed around every command the
   editor ran.
+- MyGo 0.5.5: a double click is counted by the system's double-click
+  settings, and programs in the terminal that read the clipboard can take
+  pasted images. Mayoi still builds on a fork of it, with one change to
+  draw long files with less work until it is released upstream.
 
 ## 0.9.1
 

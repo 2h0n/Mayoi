@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo/plugins/terminal"
+	mtransfer "github.com/egoist/mygo/transfer"
 	"github.com/egoist/mygo/ui"
 )
 
@@ -106,13 +107,16 @@ func (a *app) spawnTerminal(s *session, dir string) (*terminal.Terminal, error) 
 		DarkTheme: dark,
 		Cursor:    terminal.CursorBar,
 		// Selecting copies, as in Ghostty and iTerm2.
-		CopyOnSelect: a.settings.TerminalCopyOnSelect,
+		CopyOnSelect: copyOnSelect(a.settings.TerminalCopyOnSelect),
 		OnTitle: func(title string) {
 			a.post(func() { s.title = title })
 		},
 		// A terminal of a host gets files and images pasted as copies
 		// uploaded to it.
-		OnPaste: func(text string) bool { return a.terminalPaste(s, text) },
+		OnPaste: func(d mtransfer.Data) bool {
+			text, _ := d.Read(mtransfer.Text)
+			return a.terminalPaste(s, string(text))
+		},
 		// A link to a port of the host opens the port forwarded to it.
 		OpenLink: func(link string) bool { return a.terminalLink(s, link) },
 		// The shortcuts of keybindings.json, before the shell, and on
@@ -465,8 +469,17 @@ func (a *app) copyTerminals() {
 	}
 	a.termCopy = on
 	for _, s := range a.terms {
-		s.term.SetCopyOnSelect(on)
+		s.term.SetCopyOnSelect(copyOnSelect(on))
 	}
+}
+
+// copyOnSelect is where the terminal copies a selection when the setting
+// is on or off.
+func copyOnSelect(on bool) terminal.CopyOnSelect {
+	if on {
+		return terminal.CopyOnSelectClipboard
+	}
+	return terminal.CopyOnSelectNone
 }
 
 func sameTermFont(a, b terminal.Font) bool {

@@ -33,7 +33,7 @@ func BenchmarkScmIdleFrame(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for range b.N {
-		hs.tt.Frame()
+		step(hs.tt)
 	}
 }
 
@@ -47,7 +47,7 @@ func BenchmarkScmScrollFrame(b *testing.B) {
 			dy = -60
 		}
 		hs.tt.Scroll(700, 400, 0, dy)
-		hs.tt.Frame()
+		step(hs.tt)
 	}
 }
 
@@ -61,7 +61,7 @@ func BenchmarkScmStatusFrame(b *testing.B) {
 	for range b.N {
 		cp := st
 		hs.a.setStatus(&cp)
-		hs.tt.Frame()
+		step(hs.tt)
 	}
 }
 
@@ -86,7 +86,7 @@ func BenchmarkReviewScrollFrame(b *testing.B) {
 			dy = -60
 		}
 		hs.tt.Scroll(700, 400, 0, dy)
-		hs.tt.Frame()
+		step(hs.tt)
 	}
 }
 
@@ -106,7 +106,7 @@ func BenchmarkReviewLayout(b *testing.B) {
 	b.ResetTimer()
 	for range b.N {
 		hs.a.review.gen++
-		hs.tt.Frame()
+		step(hs.tt)
 	}
 	b.StopTimer()
 	if v := hs.a.activeTab().diff; v == nil || v.built.review != hs.a.review.gen || len(v.cards) == 0 {

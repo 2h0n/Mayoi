@@ -18,7 +18,7 @@ func vimHarness(t *testing.T, name, text string) (*harness, *editor) {
 
 func (hs *harness) frames() {
 	for range 4 {
-		hs.tt.Frame()
+		step(hs.tt)
 	}
 }
 

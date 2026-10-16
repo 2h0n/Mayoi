@@ -91,7 +91,7 @@ func TestOtherColumnStaysWhereItIsScrolled(t *testing.T) {
 	for _, text := range []string{"x", "\n", "y"} {
 		tt.Type(text)
 		for range 4 {
-			tt.Frame()
+			step(tt)
 			if left.vscroll.Y != 6000 {
 				t.Fatalf("typing %q in the right column scrolled the left to %v", text, left.vscroll.Y)
 			}
@@ -148,7 +148,7 @@ func TestHiddenTabComesBackInPlace(t *testing.T) {
 	hs.settle()
 	a.activate(a.column(), 0, true)
 	for range 3 {
-		tt.Frame()
+		step(tt)
 		if d.vscroll.Y == 6000 {
 			return
 		}
@@ -301,8 +301,8 @@ func TestRestoresColumns(t *testing.T) {
 	w.Column = 2
 	a := newApp(&fakeHost{folder: root}, s, w)
 	tt := ui.NewTester(a.view, 1200, 760)
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if len(a.cols) != 2 || a.col != 1 || len(a.docs) != 3 {
 		t.Fatalf("%d columns, keyboard in %d, %d documents", len(a.cols), a.col, len(a.docs))
 	}
@@ -330,8 +330,8 @@ func TestFileGivenAtStartJoinsTheSession(t *testing.T) {
 	tt := ui.NewTester(a.view, 1200, 760)
 	a.post(func() { a.openFile(file("main.go"), true) })
 	a.post(func() { a.openFile(file("README.md"), true) })
-	tt.Frame()
-	tt.Frame()
+	step(tt)
+	step(tt)
 	if len(a.cols) != 2 || len(a.cols[0].tabs) != 2 || len(a.cols[1].tabs) != 1 || a.activeEditor().name() != "README.md" {
 		t.Fatalf("%d columns, of %d tabs first", len(a.cols), len(a.cols[0].tabs))
 	}
@@ -342,13 +342,13 @@ func TestFileGivenAtStartJoinsTheSession(t *testing.T) {
 func (hs *harness) drag(x0, y0, x1, y1 float32) {
 	tt := hs.tt
 	tt.Press(x0, y0)
-	tt.Frame()
+	step(tt)
 	for i := 1; i <= 4; i++ {
 		f := float32(i) / 4
 		tt.Move(x0+(x1-x0)*f, y0+(y1-y0)*f)
-		tt.Frame()
+		step(tt)
 	}
-	tt.Frame()
+	step(tt)
 	tt.Release(x1, y1)
 	hs.settle()
 }
