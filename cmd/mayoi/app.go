@@ -80,6 +80,12 @@ type host interface {
 	signIn()
 	signOut()
 	syncNow()
+	// syncInfo is how settings sync is, and syncPicture the person's
+	// picture, nil until it is fetched. syncConflictResolved says the
+	// account's keybindings.json kept beside this machine's may be gone.
+	syncInfo() syncInfo
+	syncPicture() *ui.Bitmap
+	syncConflictResolved()
 	// With project tabs, stepProject shows the project by steps along the
 	// rail, showProject the one at i, the last for -1, and closeProject
 	// closes the window's, as the window closes when it is its only one.
@@ -218,6 +224,10 @@ type app struct {
 	prompt     *prompt
 	confirm    *confirm
 	signin     *signin
+	// syncOpen shows the account's panel above its part of the status
+	// bar, and tickAt is when a countdown shown repaints next.
+	syncOpen bool
+	tickAt   time.Time
 	// dialog is the dialog shown, which came in as it showed, and
 	// dialogBuilt says a build of the view built one.
 	dialog      string

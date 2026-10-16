@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"mayoi/internal/mon"
 )
@@ -87,6 +88,9 @@ type fakeLocal struct {
 	s        Snapshot
 	conflict string
 	applies  int
+	// keep and keepKeys are what stays on the machine.
+	keep     []string
+	keepKeys bool
 }
 
 func (l *fakeLocal) Read() (Snapshot, error) {
@@ -96,6 +100,15 @@ func (l *fakeLocal) Read() (Snapshot, error) {
 }
 
 func (l *fakeLocal) Apply(s Snapshot, conflict string) error {
+	for _, k := range l.keep {
+		delete(s.Settings, k)
+		if v, ok := l.s.Settings[k]; ok {
+			s.Settings[k] = v
+		}
+	}
+	if l.keepKeys {
+		s.Keybindings = l.s.Keybindings
+	}
 	l.s, l.conflict = s, conflict
 	l.applies++
 	return nil
@@ -103,6 +116,7 @@ func (l *fakeLocal) Apply(s Snapshot, conflict string) error {
 
 func (l *fakeLocal) IsDefault(s Snapshot) bool { return len(s.Settings) == 0 && s.Keybindings == "" }
 func (l *fakeLocal) Known(key string) bool     { return key != "future" }
+func (l *fakeLocal) Kept() ([]string, bool)    { return l.keep, l.keepKeys }
 
 func settingsOf(kv ...string) map[string]json.RawMessage {
 	m := map[string]json.RawMessage{}
@@ -334,5 +348,65 @@ func TestStateLastsBetweenLaunches(t *testing.T) {
 	again := New(e.Client, l, e.path)
 	if st := again.State(); st.UserID != "u1" || st.Name != "Ada" || st.Version != 1 || st.Base == nil || !st.Base.Equal(l.s) {
 		t.Errorf("state = %+v", st)
+	}
+}
+
+func TestKeptPreferencesStayOnEachMachine(t *testing.T) {
+	f := &fakeMon{}
+	f.save(Snapshot{Settings: settingsOf("fontSize", "13", "theme", `"claude"`), Keybindings: "[account]"})
+	l := &fakeLocal{s: Snapshot{Settings: settingsOf("fontSize", "18", "theme", `"claude"`), Keybindings: "[mine]"}, keep: []string{"fontSize"}, keepKeys: true}
+	e := newEngine(t, f, l)
+	ctx := context.Background()
+	res, err := e.Sync(ctx, UseAccount)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Applied || res.Pushed {
+		t.Errorf("first sync: %+v", res)
+	}
+	// Changing what stays here neither saves to the account nor asks.
+	l.s.Settings["fontSize"] = json.RawMessage("20")
+	l.s.Keybindings = "[mine, changed]"
+	f.revoked = true
+	if _, err := e.Push(ctx); err != nil {
+		t.Fatalf("push of what stays here: %v", err)
+	}
+	f.revoked = false
+	// Another machine's change of them does not come here either.
+	f.save(Snapshot{Settings: settingsOf("fontSize", "11", "theme", `"qoder"`), Keybindings: "[other]"})
+	if res, err = e.Sync(ctx, Ask); err != nil {
+		t.Fatal(err)
+	}
+	if got := l.s.Settings; !sameJSON(got["fontSize"], json.RawMessage("20")) || !sameJSON(got["theme"], json.RawMessage(`"qoder"`)) || l.s.Keybindings != "[mine, changed]" {
+		t.Errorf("local = %s, %q", got, l.s.Keybindings)
+	}
+	if got := f.snapshot(t); !sameJSON(got.Settings["fontSize"], json.RawMessage("11")) || got.Keybindings != "[other]" {
+		t.Errorf("account = %s, %q", got.Settings, got.Keybindings)
+	}
+	if res.Pushed || res.KeybindingsConflict != "" {
+		t.Errorf("result = %+v", res)
+	}
+	// Up to date, a sync applies nothing.
+	if res, err = e.Sync(ctx, Ask); err != nil || res.Applied || res.Pushed {
+		t.Errorf("sync again: %+v, %v", res, err)
+	}
+}
+
+func TestSyncedAt(t *testing.T) {
+	f := &fakeMon{}
+	l := &fakeLocal{s: Snapshot{Settings: settingsOf("fontSize", "15")}}
+	e := newEngine(t, f, l)
+	if !e.State().SyncedAt.IsZero() {
+		t.Fatal("synced before a sync")
+	}
+	before := time.Now()
+	if _, err := e.Sync(context.Background(), Ask); err != nil {
+		t.Fatal(err)
+	}
+	if at := e.State().SyncedAt; at.Before(before) {
+		t.Errorf("synced at %v, before %v", at, before)
+	}
+	if at := New(e.Client, l, e.path).State().SyncedAt; at.IsZero() {
+		t.Error("sync.json did not keep the time")
 	}
 }

@@ -10,6 +10,19 @@ needs a `## <version>` section here, or its build fails.
   Google, and syncs `settings.json` and `keybindings.json` between your
   machines. Changes merge setting by setting; `keybindings.json` changed on
   two machines keeps this one's and saves the other's beside it.
+- **Settings sync** shows how it's going: a cloud at the right of the
+  status bar opens the account's panel, with your name and picture, when
+  the machine last synced, **Sync Now**, and **Manage Account** and **Sign
+  Out**. The sign-in dialog walks through the steps, shows the code in large
+  tiles and counts down until it expires.
+- Settings sync keeps what you choose on one machine: switches in the
+  account's panel, or `syncIgnored` in `settings.json`, as
+  `["fontSize", "keybindings.json"]`.
+- Settings sync tries again by itself when it can't reach the account, says
+  why in plain words, and saves a change made just before you quit.
+- `keybindings.json` changed on two machines opens side by side with the
+  other's to merge, from the toast or the account's panel, or **Keep Mine**
+  drops the other's. **Sign Out of Settings Sync…** asks first.
 - Mayoi speaks Simplified Chinese and Japanese as well as English (#33):
   the menus, the command palette, the panels, the dialogs and the messages
   follow the system's languages, and **View → Language**, the command

@@ -63,6 +63,7 @@ takes its default.
 | `diffLayout`           | `""`          | `""` (side by side when wide enough), `"split"`, `"inline"` | A diff's **Layout** button                     |
 | `scmTree`              | `false`       | `true`, `false`                                             | **View as Tree** in Source Control's menu      |
 | `scmAllBranches`       | `false`       | `true`, `false`                                             | **Show All Branches** in Source Control's menu |
+| `syncIgnored`          | none          | Keys, `"settings.json"`, `"keybindings.json"`               | The [settings sync](#settings-sync) panel      |
 
 ### Language
 
@@ -154,29 +155,62 @@ it starts.
 
 **Mayoi → Sign In to Sync Settings…** (**Help → Sign In to Sync Settings…** on Windows and Linux, or **Account: Sign In
 to Sync Settings…** in the command palette) signs in to your account at [mon.sorrycc.dev](https://mon.sorrycc.dev).
-Mayoi shows a code and opens it in the browser: sign in there with GitHub or Google, check the code and approve it.
+Mayoi shows a code and opens it in the browser: sign in there with GitHub or Google, check that the page shows the same
+code and approve it. The dialog counts down until the code expires.
 
 What syncs:
 
 - **`settings.json`**: every preference, except `scmRepositoryOpen` and `scmRemotes`, which remember Source Control's
-  panels on each machine. When two machines change different preferences, both changes stay. When they change the same
-  one, the machine that syncs last wins.
+  panels on each machine, and `syncIgnored`. When two machines change different preferences, both changes stay. When
+  they change the same one, the machine that syncs last wins.
 - **`keybindings.json`**, as text, comments and all. When it changed on this machine and on another since they last
-  synced, this machine's stays and the other's is saved beside it as `keybindings.sync-conflict.json`, for you to
-  merge by hand.
+  synced, this machine's stays and the other's is saved beside it as `keybindings.sync-conflict.json`. A toast and the
+  account's panel offer **Compare**, which opens the two side by side to merge by hand, and **Keep Mine**, which
+  deletes the other's.
 
 The windows, tabs and recent folders (`state.json`), window positions and update choices stay on each machine.
 
-When it syncs: a change saves to the account about two seconds after you make it, whether from a menu or by saving the
-file, and Mayoi fetches the account's changes as it starts, as it comes to the front, and with **Sync Settings Now**.
-Without a connection, nothing is lost: the next sync merges what changed.
+### The account's panel
+
+Signed in, a cloud at the right of the status bar shows how settings sync is going: a check once it is up to date, a
+spinner while it syncs, a crossed-out cloud when it couldn't reach the account, and a warning while a
+`keybindings.sync-conflict.json` waits to be merged. Click it, or run **Account: Show Settings Sync**, for the
+account's panel. The panel shows:
+
+- who you are signed in as;
+- when this machine last synced, or why it couldn't and when it tries again, with a button to sync now;
+- a switch each for **Settings** and **Keyboard Shortcuts**, to keep them on this machine;
+- **Manage Account**, which opens mon.sorrycc.dev, and **Sign Out**.
+
+### Keeping settings on one machine
+
+`syncIgnored` lists what stays on this machine, which the switches of the account's panel set too:
+
+```jsonc
+{
+  // This laptop keeps its own font size and keyboard shortcuts.
+  "syncIgnored": ["fontSize", "keybindings.json"]
+}
+```
+
+An entry is the key of a preference, `"settings.json"` for every preference, or `"keybindings.json"` for the keyboard
+shortcuts. What a machine keeps stays as it has it there, and the account keeps its own for the other machines. Take an
+entry out, and the machine's value syncs from its next change. `syncIgnored` itself doesn't sync, so each machine has
+its own.
+
+### When it syncs
+
+A change saves to the account about two seconds after you make it, whether from a menu or by saving the file. A change
+made just before you quit saves as Mayoi quits, waiting three seconds at most. Mayoi fetches the account's changes as it
+starts, as it comes to the front, and with **Sync Settings Now**. Without a connection, nothing is lost: Mayoi tries
+again after 10 seconds, then waits longer each time, up to five minutes, and the next sync merges what changed.
 
 The first time a machine signs in, a machine with Mayoi's default settings takes the account's, and an account with
 none takes the machine's. When both have settings of their own, Mayoi asks once which to keep.
 
-**Sign Out of Settings Sync** stops syncing and signs the machine out. The settings stay as they are on the machine and
-in the account. Each machine signed in shows on your account page at mon.sorrycc.dev, where you can sign one out or
-delete the settings saved there.
+**Sign Out of Settings Sync…** asks first, then stops syncing and signs the machine out. The settings stay as they are
+on the machine and in the account. Each machine signed in shows on your account page at mon.sorrycc.dev, where you can
+sign one out or delete the settings saved there.
 
 The sign-in is kept in the system's credential store: the Keychain on macOS, the Credential Manager on Windows, and the
 Secret Service on Linux (GNOME Keyring, KWallet and others). On Linux without one, settings sync is not available.

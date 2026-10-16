@@ -22,13 +22,17 @@ type fakeHost struct {
 	// and signOuts count the commands of settings sync.
 	signedIn                 string
 	signIns, syncs, signOuts int
-	saveTo                   string
-	choice                   int
-	asked                    []string
-	title                    string
-	locale                   string // the language setLocale chose
-	closed                   bool
-	trashed                  []string
+	// sync is how settings sync shows, but for the name, and resolved
+	// counts the conflicts said to be resolved.
+	sync     syncInfo
+	resolved int
+	saveTo   string
+	choice   int
+	asked    []string
+	title    string
+	locale   string // the language setLocale chose
+	closed   bool
+	trashed  []string
 	// revealed are the paths asked to show in the Finder.
 	revealed []string
 	// others are the folders other windows have open, and windows those
@@ -92,10 +96,20 @@ func (h *fakeHost) account() string           { return h.signedIn }
 func (h *fakeHost) signIn()                   { h.signIns++ }
 func (h *fakeHost) signOut()                  { h.signOuts++ }
 func (h *fakeHost) syncNow()                  { h.syncs++ }
-func (h *fakeHost) stepProject(int)           {}
-func (h *fakeHost) showProject(int)           {}
-func (h *fakeHost) closeProject()             {}
-func (h *fakeHost) projectTabsChanged()       {}
+func (h *fakeHost) syncInfo() syncInfo {
+	if h.signedIn == "" {
+		return syncInfo{}
+	}
+	si := h.sync
+	si.name = h.signedIn
+	return si
+}
+func (h *fakeHost) syncPicture() *ui.Bitmap { return nil }
+func (h *fakeHost) syncConflictResolved()   { h.resolved++ }
+func (h *fakeHost) stepProject(int)         {}
+func (h *fakeHost) showProject(int)         {}
+func (h *fakeHost) closeProject()           {}
+func (h *fakeHost) projectTabsChanged()     {}
 
 // workspaceFixture makes a folder of a few files.
 func workspaceFixture(t testing.TB) string {

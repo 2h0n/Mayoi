@@ -61,12 +61,11 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		{"file.closeFolder", t.CmdFileCloseFolder(), "", a.closeFolder},
 		{"file.closeProject", t.CmdFileCloseProject(), "", func() { a.host.closeProject() }},
 		{"account.signIn", t.CmdAccountSignIn(), "", func() { a.host.signIn() }},
+		{"account.show", t.CmdAccountShow(), "", a.showSync},
 		{"account.syncNow", t.CmdAccountSyncNow(), "", a.syncNow},
-		{"account.signOut", t.CmdAccountSignOut(), "", func() {
-			if a.host.account() != "" {
-				a.host.signOut()
-			}
-		}},
+		{"account.compareKeybindings", t.CmdAccountCompareKeybindings(), "", a.compareKeybindings},
+		{"account.manage", t.CmdAccountManage(), "", func() { a.services.OpenURL(monURL()) }},
+		{"account.signOut", t.CmdAccountSignOut(), "", a.confirmSignOut},
 		{"file.installCLI", t.CmdFileInstallCLI(), "", func() { a.host.installCLI() }},
 		{"file.uninstallCLI", t.CmdFileUninstallCLI(), "", func() { a.host.uninstallCLI() }},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
@@ -440,7 +439,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	var account []*mygo.MenuItem
 	if name := a.host.account(); name != "" {
 		account = []*mygo.MenuItem{
-			{Label: locales.MenuSyncingAs(name), Disabled: true}, item("account.syncNow"), item("account.signOut"),
+			{Label: locales.MenuSyncingAs(name), Disabled: true}, item("account.syncNow"), item("account.manage"), item("account.signOut"),
 		}
 	} else {
 		account = []*mygo.MenuItem{item("account.signIn")}

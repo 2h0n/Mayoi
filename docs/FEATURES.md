@@ -521,7 +521,12 @@ the words selected, or the caret's.
 signs in to your [Mon](https://mon.sorrycc.dev) account, with GitHub or Google. Mayoi shows a short code and opens the
 browser to approve it. Your preferences and `keybindings.json` then sync between your machines: a change saves to the
 account a couple of seconds after you make it, and Mayoi gets the account's changes as it starts and as it comes to the
-front. Changes made on two machines merge setting by setting. See [SETTINGS.md](SETTINGS.md#settings-sync).
+front. Changes made on two machines merge setting by setting.
+
+A cloud at the right of the status bar shows whether the last sync went through, and opens the account's panel: when
+the machine last synced, **Sync Now**, switches to keep the settings or the keyboard shortcuts on this machine, and
+**Sign Out**. A sync that couldn't reach the account tries again by itself, and `keybindings.json` changed on two
+machines opens side by side to merge. See [SETTINGS.md](SETTINGS.md#settings-sync).
 
 ## Updates
 

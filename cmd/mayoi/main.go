@@ -296,6 +296,8 @@ func main() {
 	})
 	mygo.App.OnQuit(func() {
 		m.s.Flush()
+		// A change made a moment ago, which would sync at the next launch.
+		m.cloud.flush()
 		// The ssh masters, which would outlive the app.
 		remote.Shutdown()
 	})

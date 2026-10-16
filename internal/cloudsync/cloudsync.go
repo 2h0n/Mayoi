@@ -18,7 +18,9 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
+	"time"
 
 	"mayoi/internal/mon"
 )
@@ -105,17 +107,25 @@ type Local interface {
 	// key: one it does not have, of a newer Mayoi's, it keeps as the
 	// account has it.
 	Known(key string) bool
+	// Kept returns what stays on this machine, as the person chose: the
+	// keys of the preferences, and keybindings set for keybindings.json.
+	// The account keeps its own of them, and Apply leaves this machine's.
+	Kept() (keys []string, keybindings bool)
 }
 
 // State is what the engine keeps between launches, in sync.json: the
 // account, and the version of the account's document and the snapshot of
 // the last sync. Base is nil until the first sync.
 type State struct {
-	UserID  string    `json:"userId"`
-	Name    string    `json:"name,omitempty"`
-	Email   string    `json:"email,omitempty"`
+	UserID string `json:"userId"`
+	Name   string `json:"name,omitempty"`
+	Email  string `json:"email,omitempty"`
+	// Avatar is the URL of the person's picture.
+	Avatar  string    `json:"avatar,omitempty"`
 	Version int64     `json:"version"`
 	Base    *Snapshot `json:"base,omitempty"`
+	// SyncedAt is when this machine and the account last agreed.
+	SyncedAt time.Time `json:"syncedAt,omitzero"`
 }
 
 // Choice is how a first sync goes, where both this machine and the
@@ -178,7 +188,20 @@ func (e *Engine) State() State {
 // SignedIn starts syncing for the person u, whose token the client has,
 // with a first sync to come.
 func (e *Engine) SignedIn(u *mon.User) error {
-	return e.setState(State{UserID: u.ID, Name: u.Name, Email: u.Email})
+	return e.setState(State{UserID: u.ID, Name: u.Name, Email: u.Email, Avatar: u.AvatarURL})
+}
+
+// Refreshed takes the person's name, email and picture as the account
+// has them now, keeping the rest.
+func (e *Engine) Refreshed(u *mon.User) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	st := e.State()
+	if st.UserID != u.ID || st.Name == u.Name && st.Email == u.Email && st.Avatar == u.AvatarURL {
+		return nil
+	}
+	st.Name, st.Email, st.Avatar = u.Name, u.Email, u.AvatarURL
+	return e.setState(st)
 }
 
 // Forget forgets the account and the last sync, as the person signs out.
@@ -218,7 +241,7 @@ func (e *Engine) Push(ctx context.Context) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if e.withUnknown(*st.Base, local).Equal(*st.Base) {
+	if e.withKept(e.withUnknown(*st.Base, local), *st.Base).Equal(*st.Base) {
 		return Result{}, nil
 	}
 	return e.sync(ctx, Ask)
@@ -263,21 +286,28 @@ func (e *Engine) sync(ctx context.Context, choice Choice) (Result, error) {
 		}
 	}
 	// This machine's changes are those of local since base, which merge
-	// with each version of the account's this sync gets.
+	// with each version of the account's this sync gets. What stays on
+	// this machine is the account's, as though unchanged here.
 	mine := e.withUnknown(base, local)
 	var res Result
+	var applied *Snapshot
 	for {
-		merged, conflict := Merge(base, mine, remote)
-		if !merged.Equal(local) || conflict != "" && conflict != res.KeybindingsConflict {
+		ours := e.withKept(mine, remote)
+		merged, conflict := Merge(base, ours, remote)
+		now := ours
+		if applied != nil {
+			now = *applied
+		}
+		if !merged.Equal(now) || conflict != "" && conflict != res.KeybindingsConflict {
 			if err := e.Local.Apply(merged.clone(), conflict); err != nil {
 				return res, err
 			}
 			res.Applied = true
 			res.KeybindingsConflict = conflict
-			local = merged
+			applied = &merged
 		}
 		if merged.Equal(remote) && version > 0 {
-			st.Version, st.Base = version, &merged
+			st.Version, st.Base, st.SyncedAt = version, &merged, time.Now()
 			return res, e.setState(st)
 		}
 		saved, err := e.Client.PutSettings(ctx, App, version, merged)
@@ -295,7 +325,7 @@ func (e *Engine) sync(ctx context.Context, choice Choice) (Result, error) {
 			return res, e.signedOut(err)
 		}
 		res.Pushed = true
-		st.Version, st.Base = saved.Version, &merged
+		st.Version, st.Base, st.SyncedAt = saved.Version, &merged, time.Now()
 		return res, e.setState(st)
 	}
 }
@@ -312,6 +342,34 @@ func (e *Engine) withUnknown(base, local Snapshot) Snapshot {
 		if _, ok := out.Settings[k]; !ok && !e.Local.Known(k) {
 			out.Settings[k] = v
 		}
+	}
+	return out
+}
+
+// withKept returns local with what stays on this machine as of has it,
+// so that it neither changes the account's nor takes it.
+func (e *Engine) withKept(local, of Snapshot) Snapshot {
+	keys, keybindings := e.Local.Kept()
+	if len(keys) == 0 && !keybindings {
+		return local
+	}
+	out := local
+	out.Settings = maps.Clone(local.Settings)
+	if out.Settings == nil {
+		out.Settings = map[string]json.RawMessage{}
+	}
+	for k := range out.Settings {
+		if slices.Contains(keys, k) {
+			delete(out.Settings, k)
+		}
+	}
+	for _, k := range keys {
+		if v, ok := of.Settings[k]; ok {
+			out.Settings[k] = v
+		}
+	}
+	if keybindings {
+		out.Keybindings = of.Keybindings
 	}
 	return out
 }

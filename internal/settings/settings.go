@@ -149,6 +149,42 @@ type Prefs struct {
 	// Locale is the language Mayoi shows, as "en", "zh-Hans" or "ja", or ""
 	// for the one the system's languages prefer.
 	Locale string `json:"locale,omitempty"`
+	// SyncIgnored is what settings sync leaves on this machine: keys of
+	// the preferences, "settings.json" for all of them, and
+	// "keybindings.json" for the keyboard shortcuts.
+	SyncIgnored []string `json:"syncIgnored,omitempty"`
+}
+
+// SyncIgnored's names of all the preferences, and of the keyboard
+// shortcuts.
+const (
+	SyncSettings    = "settings.json"
+	SyncKeybindings = "keybindings.json"
+)
+
+// SyncKept returns the keys of the preferences settings sync leaves on
+// this machine, and whether it leaves the keyboard shortcuts.
+func (p Prefs) SyncKept() (keys []string, keybindings bool) {
+	all := slices.Contains(p.SyncIgnored, SyncSettings)
+	for _, k := range PrefKeys {
+		if all && !slices.Contains(unsynced, k) || slices.Contains(p.SyncIgnored, k) {
+			keys = append(keys, k)
+		}
+	}
+	return keys, slices.Contains(p.SyncIgnored, SyncKeybindings)
+}
+
+// SyncIgnoring returns SyncIgnored with name, a key or SyncSettings or
+// SyncKeybindings, in it or out of it.
+func (p Prefs) SyncIgnoring(name string, ignore bool) []string {
+	out := slices.DeleteFunc(slices.Clone(p.SyncIgnored), func(k string) bool { return k == name })
+	if ignore {
+		out = append(out, name)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // Window is a window as the settings keep it: its folder, and its
@@ -687,8 +723,8 @@ func (s *Settings) OnPrefsWritten(fn func()) {
 
 // unsynced are the preferences that stay on each machine: what the
 // windows remember of source control's panels rather than what a person
-// chooses.
-var unsynced = []string{"scmRepositoryOpen", "scmRemotes"}
+// chooses, and what the person keeps on the machine.
+var unsynced = []string{"scmRepositoryOpen", "scmRemotes", "syncIgnored"}
 
 // PrefKeys are the keys of the preferences in the settings' file.
 var PrefKeys = func() []string {
@@ -718,17 +754,32 @@ func (p Prefs) Synced() map[string]json.RawMessage {
 
 // WithSynced returns the preferences of synced, by their keys in the
 // settings' file, the defaults where it has none, and p's of those that
-// do not sync.
+// do not sync or that it leaves on this machine.
 func (p Prefs) WithSynced(synced map[string]json.RawMessage) (Prefs, error) {
+	keep, _ := p.SyncKept()
+	keep = append(keep, unsynced...)
+	mine, _ := json.Marshal(p)
+	var own map[string]json.RawMessage
+	json.Unmarshal(mine, &own)
+	m := make(map[string]json.RawMessage, len(synced)+len(keep))
+	for k, v := range synced {
+		if !slices.Contains(keep, k) {
+			m[k] = v
+		}
+	}
+	for _, k := range keep {
+		if v, ok := own[k]; ok {
+			m[k] = v
+		}
+	}
 	f := Default()
-	data, err := json.Marshal(synced)
+	data, err := json.Marshal(m)
 	if err != nil {
 		return p, err
 	}
 	if err := json.Unmarshal(data, &f.Prefs); err != nil {
 		return p, err
 	}
-	f.ScmRepositoryOpen, f.ScmRemotes = p.ScmRepositoryOpen, p.ScmRemotes
 	f.normalize()
 	return f.Prefs, nil
 }

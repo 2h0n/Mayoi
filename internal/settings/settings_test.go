@@ -365,6 +365,37 @@ func TestSyncedPrefs(t *testing.T) {
 	}
 }
 
+// TestSyncIgnoredPrefs: what the person keeps on the machine stays as it
+// has it, and syncIgnored itself does not sync.
+func TestSyncIgnoredPrefs(t *testing.T) {
+	p := Default().Prefs
+	p.FontSize, p.Vim, p.SyncIgnored = 18, true, []string{"fontSize", "vim", "keybindings.json", "nonsense"}
+	keys, keybindings := p.SyncKept()
+	if !slices.Equal(keys, []string{"fontSize", "vim"}) || !keybindings {
+		t.Errorf("kept %v, keybindings %v", keys, keybindings)
+	}
+	all := Prefs{SyncIgnored: []string{SyncSettings}}
+	if keys, keybindings := all.SyncKept(); len(keys) < 10 || slices.Contains(keys, "scmRemotes") || keybindings {
+		t.Errorf("settings.json keeps %v, keybindings %v", keys, keybindings)
+	}
+	if got := all.SyncIgnoring(SyncKeybindings, true); !slices.Equal(got, []string{SyncSettings, SyncKeybindings}) {
+		t.Errorf("ignoring = %v", got)
+	}
+	if got := all.SyncIgnoring(SyncSettings, false); got != nil {
+		t.Errorf("not ignoring = %v", got)
+	}
+	if _, ok := p.Synced()["syncIgnored"]; ok {
+		t.Error("syncIgnored syncs")
+	}
+	q, err := p.WithSynced(map[string]json.RawMessage{"fontSize": json.RawMessage("12"), "theme": json.RawMessage(`"qoder"`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if q.FontSize != 18 || !q.Vim || q.Theme != "qoder" || len(q.SyncIgnored) != 4 {
+		t.Errorf("prefs = %+v", q)
+	}
+}
+
 func TestOnPrefsWritten(t *testing.T) {
 	s := Load(filepath.Join(t.TempDir(), "settings.json"))
 	written := make(chan struct{}, 4)

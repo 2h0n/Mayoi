@@ -869,6 +869,9 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 		add(&v.indent, measure(d.indent.String(), false))
 		add(&v.language, measure(highlight.DisplayName(d.hl.Lexer()), false))
 	}
+	if a.host.account() != "" {
+		used += syncStatusW
+	}
 	if a.branch() != "" {
 		used += 2*6 + 12 + 2 // its icon, which stays
 		add(&v.branchLabel, measure(a.branchLabel(), false)-2*6-2+5)
@@ -980,6 +983,8 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		a.reviewStatus(c, text)
 		ui.Spacer(c)
+		// Settings sync is last, at the right, whatever shows before it.
+		defer a.syncStatus(c)
 		if v := a.activeViewer(); v != nil {
 			a.viewerStatus(c, v, item, text)
 			return

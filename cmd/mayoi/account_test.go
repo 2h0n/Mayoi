@@ -1,36 +1,51 @@
 package main
 
 import (
+	"errors"
+	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/cloudsync"
 	"mayoi/internal/keymap"
+	"mayoi/internal/mon"
 	"mayoi/internal/settings"
 	"mayoi/locales"
 )
 
 // TestSigninDialog: the code shows until the sign-in is cancelled, by its
-// button or Escape.
+// button or Escape, and the dialog waits for one at first.
 func TestSigninDialog(t *testing.T) {
 	hs := newHarness(t, true)
 	cancelled := 0
-	hs.a.signin = &signin{code: "NNCD-QHTC", url: "https://mon.sorrycc.dev/device?code=NNCD-QHTC", cancel: func() { cancelled++ }}
+	hs.a.signin = &signin{cancel: func() { cancelled++ }}
 	hs.settle()
-	if !hs.tt.HasText("NNCD-QHTC") || !hs.tt.HasText(locales.SyncWaiting()) {
-		t.Fatal("the code does not show")
+	if !hs.tt.HasText(locales.SyncGettingCode()) {
+		t.Fatal("the dialog does not say it gets a code")
+	}
+	hs.a.signin = &signin{code: "NNCD-QHTC", url: "https://mon.sorrycc.dev/device?code=NNCD-QHTC",
+		expires: time.Now().Add(14*time.Minute + 30*time.Second), cancel: func() { cancelled++ }}
+	hs.settle()
+	for _, r := range "NNCDQHTC" {
+		if !hs.tt.HasText(string(r)) {
+			t.Fatalf("the code's %c does not show", r)
+		}
+	}
+	if !hs.tt.HasText(locales.SyncWaitingExpires("14:30")) && !hs.tt.HasText(locales.SyncWaitingExpires("14:29")) {
+		t.Fatal("the dialog does not count down")
 	}
 	hs.shot("signin")
 	if err := hs.tt.Click(locales.ButtonCancel()); err != nil {
 		t.Fatal(err)
 	}
 	hs.settle()
-	if hs.a.signin != nil || cancelled != 1 || hs.tt.HasText("NNCD-QHTC") {
+	if hs.a.signin != nil || cancelled != 1 || hs.tt.HasText(locales.SyncSignInTitle()) {
 		t.Fatalf("Cancel: dialog %v, cancelled %d", hs.a.signin, cancelled)
 	}
 	hs.a.signin = &signin{code: "ABCD-EFGH", url: "https://mon.sorrycc.dev/device", cancel: func() { cancelled++ }}
@@ -43,7 +58,8 @@ func TestSigninDialog(t *testing.T) {
 }
 
 // TestAccountCommands: the menu offers to sign in, or names the account
-// with Sync Now and Sign Out, and Sync Now signs in when signed out.
+// with Sync Now and Sign Out, Sync Now signs in when signed out, and
+// Sign Out asks first.
 func TestAccountCommands(t *testing.T) {
 	hs := newHarness(t, true)
 	labels := func() []string {
@@ -63,7 +79,8 @@ func TestAccountCommands(t *testing.T) {
 	}
 	hs.a.run("account.syncNow")
 	hs.a.run("account.signOut")
-	if hs.h.signIns != 1 || hs.h.syncs != 0 || hs.h.signOuts != 0 {
+	hs.a.run("account.show")
+	if hs.h.signIns != 2 || hs.h.syncs != 0 || hs.h.signOuts != 0 || hs.a.confirm != nil {
 		t.Errorf("signed out: %d sign-ins, %d syncs, %d sign-outs", hs.h.signIns, hs.h.syncs, hs.h.signOuts)
 	}
 	hs.h.signedIn = "Ada"
@@ -73,8 +90,123 @@ func TestAccountCommands(t *testing.T) {
 	}
 	hs.a.run("account.syncNow")
 	hs.a.run("account.signOut")
-	if hs.h.syncs != 1 || hs.h.signOuts != 1 {
-		t.Errorf("signed in: %d syncs, %d sign-outs", hs.h.syncs, hs.h.signOuts)
+	hs.settle()
+	if hs.h.syncs != 1 || hs.h.signOuts != 0 || !hs.tt.HasText(locales.SyncSignOutTitle("Ada")) {
+		t.Fatalf("signed in: %d syncs, %d sign-outs, asked %v", hs.h.syncs, hs.h.signOuts, hs.a.confirm != nil)
+	}
+	hs.shot("signout")
+	if err := hs.tt.Click(locales.SyncSignOut()); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if hs.h.signOuts != 1 {
+		t.Errorf("Sign Out: %d sign-outs", hs.h.signOuts)
+	}
+}
+
+// TestSyncStatus: signed in, the status bar has a cloud that opens the
+// account's panel, which tells how the last sync went and what syncs,
+// and turns the keyboard shortcuts' sync off and on.
+func TestSyncStatus(t *testing.T) {
+	for _, dark := range []bool{true, false} {
+		hs := newHarness(t, dark)
+		hs.a.settings = settings.Load(filepath.Join(t.TempDir(), "settings.json"))
+		hs.settle()
+		if hs.tt.HasText(locales.SyncPanelLabel("Ada Lovelace")) {
+			t.Fatal("signed out, the status bar has settings sync")
+		}
+		hs.h.signedIn = "Ada Lovelace"
+		hs.h.sync = syncInfo{email: "ada@example.com", syncedAt: time.Now().Add(-3 * time.Minute)}
+		hs.settle()
+		if err := hs.tt.Click(locales.SyncPanelLabel("Ada Lovelace")); err != nil {
+			t.Fatal(err)
+		}
+		hs.settle()
+		if !hs.a.syncOpen || !hs.tt.HasText("ada@example.com") || !hs.tt.HasText(locales.SyncUpToDateTitle()) ||
+			!hs.tt.HasText(locales.SyncSyncedAgo(locales.AgoMinutes(3))) {
+			t.Fatal("the panel does not show the account and the last sync")
+		}
+		hs.shot(map[bool]string{true: "sync-panel-dark", false: "sync-panel-light"}[dark])
+		// The keyboard shortcuts stay on this machine, and sync again.
+		hs.tt.Click(locales.SyncShortcuts())
+		hs.settle()
+		if !slices.Equal(hs.a.settings.SyncIgnored, []string{settings.SyncKeybindings}) {
+			t.Fatalf("syncIgnored = %v", hs.a.settings.SyncIgnored)
+		}
+		// The switch itself.
+		r, _ := hs.tt.Find(locales.SyncShortcuts())
+		hs.tt.ClickAt(r.X+r.W-24, r.Y+r.H/2)
+		hs.settle()
+		if len(hs.a.settings.SyncIgnored) != 0 {
+			t.Fatalf("syncIgnored = %v", hs.a.settings.SyncIgnored)
+		}
+		if err := hs.tt.Click(locales.CmdAccountSyncNow()); err != nil {
+			t.Fatal(err)
+		}
+		if hs.h.syncs != 1 {
+			t.Errorf("%d syncs", hs.h.syncs)
+		}
+		// Failing, it says why and when it tries again; with a conflict, it
+		// offers to compare.
+		hs.h.sync = syncInfo{failure: locales.SyncOffline("mon.sorrycc.dev"), retryAt: time.Now().Add(25 * time.Second), conflict: true}
+		hs.settle()
+		if !hs.tt.HasText(locales.SyncCouldNot()) || !hs.tt.HasText(locales.SyncCompare()) {
+			t.Fatal("the panel does not tell of the failure and the conflict")
+		}
+		hs.shot(map[bool]string{true: "sync-failed-dark", false: "sync-failed-light"}[dark])
+		hs.tt.Key(0, ui.KeyEscape)
+		hs.settle()
+		if hs.a.syncOpen {
+			t.Error("Escape left the panel open")
+		}
+		// Signing out elsewhere closes it.
+		hs.a.syncOpen = true
+		hs.h.signedIn = ""
+		hs.settle()
+		if hs.a.syncOpen {
+			t.Error("the panel stayed open signed out")
+		}
+	}
+}
+
+// TestCompareKeybindings: the account's keybindings.json shows beside
+// this machine's, and Keep Mine drops it.
+func TestCompareKeybindings(t *testing.T) {
+	hs := newHarness(t, true)
+	dir := t.TempDir()
+	hs.a.settings = settings.Load(filepath.Join(dir, "settings.json"))
+	hs.a.compareKeybindings()
+	if len(hs.a.cols) != 1 || hs.h.resolved != 1 {
+		t.Fatalf("without a conflict: %d columns, %d resolved", len(hs.a.cols), hs.h.resolved)
+	}
+	other := filepath.Join(dir, conflictFile)
+	os.WriteFile(other, []byte("[2]"), 0o644)
+	hs.a.compareKeybindings()
+	hs.settle()
+	if len(hs.a.cols) != 2 || hs.a.activeFile() != other {
+		t.Fatalf("%d columns, showing %q", len(hs.a.cols), hs.a.activeFile())
+	}
+	if hs.a.cols[0].tab().path() != keymap.Path(hs.a.settings.Path()) {
+		t.Errorf("the first column shows %q", hs.a.cols[0].tab().path())
+	}
+	hs.a.keepMyKeybindings()
+	if _, err := os.Stat(other); !os.IsNotExist(err) || hs.h.resolved != 2 {
+		t.Errorf("Keep Mine: %v, %d resolved", err, hs.h.resolved)
+	}
+}
+
+func TestSyncError(t *testing.T) {
+	if got := syncError(&mon.Error{Status: 503}); got != locales.SyncServerTrouble(monHost()) {
+		t.Errorf("503: %q", got)
+	}
+	if got := syncError(&net.OpError{Op: "dial", Err: errors.New("refused")}); got != locales.SyncOffline(monHost()) {
+		t.Errorf("offline: %q", got)
+	}
+	if got := countdown(65*time.Second + 300*time.Millisecond); got != "1:06" {
+		t.Errorf("countdown = %q", got)
+	}
+	if syncRetryDelay(0) >= syncRetryDelay(3) || syncRetryDelay(99) != 5*time.Minute {
+		t.Error("the retries do not back off")
 	}
 }
 
