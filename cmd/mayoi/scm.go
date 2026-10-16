@@ -1241,7 +1241,7 @@ func shortAgo(t, now time.Time) string {
 }
 
 // treeIndent is how far in a row of the tree depth folders deep starts.
-func treeIndent(depth int) float32 { return 4 + float32(depth)*14 }
+func treeIndent(depth int) float32 { return 4 + float32(depth)*treeStep }
 
 // scmGuides paints the indent guides of a row of the tree, depth folders
 // deep: a line down from the arrow of each folder above it, as the

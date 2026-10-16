@@ -5,6 +5,8 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- The Explorer and the Source Control tree indent each folder level less,
+  as VS Code does, so deeply nested files keep room for their names.
 - Linux: Mayoi no longer sometimes crashes as it starts on machines that
   draw with the GPU (#24).
 - Linux: text shows dark and crisp again where the desktop antialiases text

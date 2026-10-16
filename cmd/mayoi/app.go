@@ -366,7 +366,7 @@ func (a *app) openFolder(dir string) {
 	a.tree.OnChange = a.diskChanged
 	a.tree.IsOpen = a.files.Open.Has
 	a.tree.Load(dir)
-	a.files = ui.OutlineState[string]{}
+	a.files = ui.OutlineState[string]{Indent: treeStep}
 	a.fileRow = -1
 	a.files.List.Selected = &a.fileRow
 	a.index, a.indexStale = nil, true

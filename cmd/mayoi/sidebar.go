@@ -131,10 +131,13 @@ func (a *app) emptyFolder(c *ui.Context) {
 	})
 }
 
-// titleSpacing is the letter spacing of the sidebar's title.
+// titleSpacing is the letter spacing of the sidebar's title; treeStep is
+// how far each level of a tree indents, the Explorer's and Source
+// Control's, as tight as VS Code's.
 const (
 	titleSpacing = 0.6
 	explorerRowH = 21
+	treeStep     = 8
 )
 
 // fitTitle returns the sidebar's title, or its short form when the title
@@ -510,17 +513,12 @@ func treeDepth(root, path string) int {
 // it, as VS Code draws them, brighter for the folder of the document shown.
 func (a *app) treeGuides(pt *ui.Painter, r ui.Rect, path string, depth int, activeDir string) {
 	p, th := a.pal, pt.Theme()
-	step, gap := th.Space(4), th.Space(1)
-	// Where a row of the top level starts its content: the arrow, then the
-	// gap, before it; deeper rows have their indentation and a gap more.
-	base := r.X - float32(depth)*step - gap
+	x0 := treeGuideX(r.X, depth, th.Space(4), th.Space(1))
+	gap := th.Space(1)
 	y, h := r.Y-gap, r.H+2*gap
 	dir := filepath.Dir(path)
 	for k := depth - 1; k >= 0; k-- {
-		x := base - gap - step/2
-		if k > 0 {
-			x += float32(k)*step + gap
-		}
+		x := x0[k]
 		col := p.guide
 		if dir == activeDir {
 			col = p.guideNow
@@ -528,6 +526,25 @@ func (a *app) treeGuides(pt *ui.Painter, r ui.Rect, path string, depth int, acti
 		pt.Fill(ui.Rect{X: x, Y: y, W: 1, H: h}, col, 0)
 		dir = filepath.Dir(dir)
 	}
+}
+
+// treeGuideX returns where the guides of a row depth deep, whose content
+// starts at x, go: the middle of the arrow of the folder k levels down, for
+// each k under depth. Before the content are the arrow and a gap, and on
+// deeper rows their indentation and a gap more.
+func treeGuideX(x float32, depth int, arrow, gap float32) []float32 {
+	start := x - arrow - gap
+	if depth > 0 {
+		start -= float32(depth)*treeStep + gap
+	}
+	xs := make([]float32, depth)
+	for k := range xs {
+		xs[k] = start + arrow/2
+		if k > 0 {
+			xs[k] += float32(k)*treeStep + gap
+		}
+	}
+	return xs
 }
 
 // targetDir is where new files go: the folder chosen in the tree, or the
