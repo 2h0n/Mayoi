@@ -13,6 +13,7 @@ import (
 	"mayoi/internal/git"
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
+	"mayoi/locales"
 )
 
 // reviewNote is a comment on lines of a file, as a review of the changes
@@ -154,12 +155,12 @@ func (n *reviewNote) found(at int, ok bool) {
 
 // where names a note's lines, as its card says.
 func (n *reviewNote) where() string {
-	s := fmt.Sprintf("Line %d", n.from+1)
+	s := locales.ReviewLine(n.from + 1)
 	if n.to-n.from > 1 {
-		s = fmt.Sprintf("Lines %d–%d", n.from+1, n.to)
+		s = locales.ReviewLines(n.from+1, n.to)
 	}
 	if n.oldSide {
-		s += " (removed)"
+		s = locales.ReviewRemoved(s)
 	}
 	return s
 }
@@ -567,7 +568,7 @@ func (a *app) addReviewComment() {
 	}
 	n := editorExcerpt(d)
 	if n == nil {
-		a.tell(note{message: "Save the file to comment on it."})
+		a.tell(note{message: locales.ReviewSaveFirst()})
 		return
 	}
 	for _, o := range a.review.notes {
@@ -595,7 +596,7 @@ func (a *app) commentDiff(v *diffView) {
 	}
 	ns := v.excerpts(lo, hi)
 	if len(ns) == 0 {
-		a.tell(note{message: "Choose the lines to comment on."})
+		a.tell(note{message: locales.ReviewChooseLines()})
 		return
 	}
 	// Of the file of the cursor, when the rows are of more than one.
@@ -684,7 +685,7 @@ func (a *app) deleteNote(n *reviewNote) {
 	if at < 0 {
 		return
 	}
-	a.tell(note{message: "Deleted the comment on " + n.ref(a.relPath), label: "Undo", action: func() {
+	a.tell(note{message: locales.ReviewDeleted(n.ref(a.relPath)), label: locales.ButtonUndo(), action: func() {
 		a.restoreNotes(map[int]*reviewNote{at: n})
 	}})
 }
@@ -714,11 +715,11 @@ func (a *app) reviewText() string {
 func (a *app) copyReview() {
 	k := len(a.review.notes)
 	if k == 0 {
-		a.tell(note{message: "No review comments to copy."})
+		a.tell(note{message: locales.ReviewNoneToCopy()})
 		return
 	}
 	a.services.WriteClipboard(a.reviewText())
-	a.tell(note{message: "Copied " + plural(k, "review comment")})
+	a.tell(note{message: locales.ReviewCopied(k)})
 }
 
 // sendReview pastes the notes into the terminal used last, as a message
@@ -727,19 +728,19 @@ func (a *app) copyReview() {
 func (a *app) sendReview() {
 	k := len(a.review.notes)
 	if k == 0 {
-		a.tell(note{message: "No review comments to send."})
+		a.tell(note{message: locales.ReviewNoneToSend()})
 		return
 	}
 	s := a.reviewTerminal()
 	if s == nil {
 		a.services.WriteClipboard(a.reviewText())
-		a.tell(note{message: "No terminal is open: copied " + plural(k, "review comment") + " instead"})
+		a.tell(note{message: locales.ReviewNoTerminal(k)})
 		return
 	}
 	s.term.Paste(a.reviewText() + "\n")
 	a.dropReview()
 	a.showTerminal(s)
-	a.tell(note{message: "Sent " + plural(k, "review comment") + " to the terminal"})
+	a.tell(note{message: locales.ReviewSent(k)})
 }
 
 // clearReview drops every note, which the toast that says so puts back.
@@ -750,7 +751,7 @@ func (a *app) clearReview() {
 	}
 	a.dropReview()
 	if len(gone) > 0 {
-		a.tell(note{message: "Cleared " + plural(len(gone), "review comment"), label: "Undo", action: func() { a.restoreNotes(gone) }})
+		a.tell(note{message: locales.ReviewCleared(len(gone)), label: locales.ButtonUndo(), action: func() { a.restoreNotes(gone) }})
 	}
 }
 
@@ -844,7 +845,7 @@ func (a *app) copyExcerpt(v *diffView) {
 	for i, n := range ns {
 		refs[i] = n.ref(a.relPath)
 	}
-	a.tell(note{message: "Copied " + strings.Join(refs, ", ")})
+	a.tell(note{message: locales.CopiedText(strings.Join(refs, ", "))})
 }
 
 // goToNote shows a note: the file at its lines, or the card of one on
@@ -877,7 +878,7 @@ func (a *app) goToNote(n *reviewNote) {
 func (a *app) stepNote(step int) {
 	r := &a.review
 	if len(r.notes) == 0 {
-		a.tell(note{message: "No review comments."})
+		a.tell(note{message: locales.ReviewNone()})
 		return
 	}
 	if t := a.activeTab(); t != nil && t.diff != nil && len(t.diff.cards) > 0 {
@@ -956,13 +957,13 @@ func (a *app) reviewMenu(m *ui.Menu) {
 		}
 	}
 	m.Separator()
-	if m.Item("Send Review Comments to Terminal").Chosen() {
+	if m.Item(locales.CmdReviewSend()).Chosen() {
 		a.sendReview()
 	}
-	if m.Item("Copy Review Comments").Chosen() {
+	if m.Item(locales.CmdReviewCopy()).Chosen() {
 		a.copyReview()
 	}
-	if m.Item("Clear Review Comments").Chosen() {
+	if m.Item(locales.CmdReviewClear()).Chosen() {
 		a.clearReview()
 	}
 }
@@ -1031,19 +1032,19 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, w float32) {
 			Children(func() { ui.Icon(c, iconComment).FontSize(11).TextColor(col) })
 		ui.Text(c, n.where()).FontSize(12).FontWeight(600).TextColor(p.text).SingleLine().Shrink(0)
 		if editing && !kept {
-			ui.Text(c, "New comment").FontSize(12).TextColor(p.muted).SingleLine().Shrink(1).MinWidth(0)
+			ui.Text(c, locales.ReviewNewComment()).FontSize(12).TextColor(p.muted).SingleLine().Shrink(1).MinWidth(0)
 		}
 		if n.outdated {
-			notePill(c, "Outdated", "The lines have changed since the comment", p.modified)
+			notePill(c, locales.ReviewOutdated(), locales.ReviewOutdatedTip(), p.modified)
 		}
 		ui.Spacer(c)
 		if editing {
 			return
 		}
-		if a.smallButton(c, iconPencil, "Edit Comment") {
+		if a.smallButton(c, iconPencil, locales.ReviewEditComment()) {
 			a.post(func() { a.editNote(n, ed) })
 		}
-		if a.smallButton(c, iconTrash, "Delete Comment") {
+		if a.smallButton(c, iconTrash, locales.ReviewDeleteComment()) {
 			a.post(func() { a.deleteNote(n) })
 		}
 	})
@@ -1057,7 +1058,7 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, w float32) {
 	}
 	in := a.textKeys(ui.TextArea(c.Key("review-text"), &r.text)).AutoFocus().FontSize(noteFontSize).
 		Width(w).Height(a.noteFieldH(r.text, w)).Shrink(0).Padding(noteFieldPad, noteFieldPad+2).
-		Placeholder("Leave a comment for the agent…").Label("Review Comment")
+		Placeholder(locales.ReviewPlaceholder()).Label(locales.ReviewCommentLabel())
 	if in.Focused() {
 		r.typed = a.frame
 	}
@@ -1071,7 +1072,7 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, w float32) {
 	ui.Row(c).Height(noteFootH).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 		if kept {
 			b := ui.ButtonBase(c.Key("note:delete")).Height(24).Padding(0, 8).Gap(5).Radius(5).AlignItems(ui.Center).Shrink(0).
-				Label("Delete Comment")
+				Label(locales.ReviewDeleteComment())
 			fg := p.muted
 			if b.Hovered() {
 				b.Background(p.removed.Alpha(0.12))
@@ -1079,21 +1080,21 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, w float32) {
 			}
 			b.Children(func() {
 				ui.Icon(c, iconTrash).FontSize(12).TextColor(fg)
-				ui.Text(c, "Delete").FontSize(12).FontWeight(500).TextColor(fg).SingleLine()
+				ui.Text(c, locales.ButtonDelete()).FontSize(12).FontWeight(500).TextColor(fg).SingleLine()
 			})
 			if b.Clicked() {
 				a.post(func() { a.deleteNote(n); a.focusColumn() })
 			}
 		}
-		ui.Text(c, keyText("CmdOrCtrl+Enter")+" to save · Esc to cancel").FontSize(11).TextColor(p.faint).SingleLine().
+		ui.Text(c, locales.ReviewSaveHint(keyText("CmdOrCtrl+Enter"))).FontSize(11).TextColor(p.faint).SingleLine().
 			Shrink(1).MinWidth(0)
 		ui.Spacer(c)
-		if a.noteButton(c, "Cancel", false, false) {
+		if a.noteButton(c, locales.ButtonCancel(), false, false) {
 			a.post(a.endDraft)
 		}
-		label := "Comment"
+		label := locales.ReviewComment()
 		if kept {
-			label = "Save"
+			label = locales.ButtonSave()
 		}
 		if a.noteButton(c, label, true, empty) {
 			a.post(a.saveDraft)
@@ -1107,7 +1108,7 @@ func (a *app) noteQuote(c *ui.Context, n *reviewNote, lines []string, w float32)
 	p, f := a.pal, a.font
 	lineH := a.quoteLineH()
 	ui.Column(c).Width(w).Height(a.quoteH(len(lines))).Padding(noteQuotePad, 8).Radius(5).Shrink(0).Clip().
-		Background(p.text.Alpha(0.045)).Margin(0, 0, noteQuoteGap, 0).Tooltip("The lines as they were when commented on").
+		Background(p.text.Alpha(0.045)).Margin(0, 0, noteQuoteGap, 0).Tooltip(locales.ReviewQuoteTip()).
 		Children(func() {
 			for _, l := range lines {
 				col := p.muted
@@ -1213,7 +1214,7 @@ const lineCommentSize = 18
 // takes.
 func (a *app) lineCommentButton(c *ui.Context, v *diffView, i int, x, y float32) ui.Rect {
 	p := a.pal
-	label := "Add Comment (C)"
+	label := locales.ReviewAddComment()
 	ui.Box(c.Key("line-comment")).Absolute().Left(x).Top(y).Children(func() {
 		b := ui.ButtonBase(c).Size(lineCommentSize, lineCommentSize).Radius(4).Justify(ui.Center).AlignItems(ui.Center).
 			Label(label).Tooltip(label)
@@ -1358,9 +1359,9 @@ func (a *app) reviewBoxView(c *ui.Context, d *editor) {
 			if x < d.gutterW || y < 0 || y > view.H {
 				continue
 			}
-			tip := "Edit Comment: " + strings.TrimSpace(h.n.text)
+			tip := locales.ReviewEditTip(strings.TrimSpace(h.n.text))
 			b := ui.ButtonBase(c.Key(fmt.Sprintf("hint:%p", h.n))).Absolute().Left(x-4).Top(y+2).Size(h.w+8, a.font.lineH-4).
-				Radius(4).Label("Edit Comment").Tooltip(tip)
+				Radius(4).Label(locales.ReviewEditComment()).Tooltip(tip)
 			if b.Hovered() {
 				b.Background(a.pal.accent.Alpha(0.12))
 			}
@@ -1380,7 +1381,7 @@ func (a *app) reviewBoxView(c *ui.Context, d *editor) {
 	y := editorPadY + g.top(min(n.to, count)) - d.vscroll.Y
 	// It stays in view, as its lines scroll away.
 	y = clamp(y+2, 0, max(0, view.H-h))
-	box := a.floating(c, a.noteCardBox(c, "review-box", left, y, w, h), false).Transition(popIn).Label("Review Comment")
+	box := a.floating(c, a.noteCardBox(c, "review-box", left, y, w, h), false).Transition(popIn).Label(locales.ReviewCommentLabel())
 	box.Children(func() { a.noteCard(c, n, d, noteTextW(w)) })
 }
 
@@ -1393,7 +1394,7 @@ func (a *app) reviewSendButton(c *ui.Context) {
 		return
 	}
 	p := a.pal
-	tip := "Send " + plural(k, "Review Comment") + " to Terminal"
+	tip := locales.ReviewSendTip(k)
 	b := ui.ButtonBase(c.Key("review-send")).Height(crumbsH-6).Padding(0, 8).Gap(5).Radius(5).Shrink(0).
 		AlignItems(ui.Center).Label(tip).Tooltip(tip).Margin(0, 6, 0, 0)
 	switch {
@@ -1406,7 +1407,7 @@ func (a *app) reviewSendButton(c *ui.Context) {
 	}
 	b.Children(func() {
 		ui.Icon(c, iconSend).FontSize(12).TextColor(p.fillText)
-		ui.Text(c, "Send "+plural(k, "Comment")).FontSize(11.5).FontWeight(600).TextColor(p.fillText).SingleLine()
+		ui.Text(c, locales.ReviewSendButton(k)).FontSize(11.5).FontWeight(600).TextColor(p.fillText).SingleLine()
 	})
 	if b.Clicked() {
 		a.post(a.sendReview)
@@ -1421,7 +1422,7 @@ func (a *app) reviewStatus(c *ui.Context, text func(string) ui.Element) {
 		return
 	}
 	p := a.pal
-	tip := plural(k, "review comment") + ": copy, or send to the terminal"
+	tip := locales.ReviewStatusTip(k)
 	b := ui.ButtonBase(c.Key("status:review")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
 		AlignItems(ui.Center).Label(tip).Tooltip(tip)
 	if b.Hovered() {

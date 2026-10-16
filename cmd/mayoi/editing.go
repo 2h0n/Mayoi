@@ -8,6 +8,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/highlight"
+	"mayoi/locales"
 )
 
 // indentStyle is how a document indents: with tabs, or with size spaces.
@@ -34,9 +35,9 @@ func (s indentStyle) cols() int {
 
 func (s indentStyle) String() string {
 	if s.tabs {
-		return "Tabs"
+		return locales.IndentTabs()
 	}
-	return "Spaces: " + string(rune('0'+s.size))
+	return locales.IndentSpaces(s.size)
 }
 
 // detectIndent finds how a document indents from its first lines, or,

@@ -2,10 +2,10 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"mayoi/internal/git"
 	"mayoi/internal/remote"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 	"os"
 )
 
@@ -20,13 +20,13 @@ func (a *app) askOpenWorktree(branch, path string) {
 		if a.git.repo != r {
 			return
 		}
-		a.gitDo("Opening worktree…", func(_ *git.Repo) error {
+		a.gitDo(locales.BusyOpeningWorktree(), func(_ *git.Repo) error {
 			info, err := vfs.Stat(path)
 			if err != nil {
 				return err
 			}
 			if !info.IsDir() {
-				return fmt.Errorf("worktree is not a folder: %s", path)
+				return errors.New(locales.ErrWorktreeNotFolder(path))
 			}
 			return nil
 		}, func() {
@@ -38,13 +38,13 @@ func (a *app) askOpenWorktree(branch, path string) {
 		})
 	}
 	a.confirm = &confirm{
-		title:          "Open Existing Worktree?",
-		message:        fmt.Sprintf("The branch %q is already checked out in:\n\n%s\n\nChoose where to open this worktree.", branch, shortenHome(path)),
-		ok:             "Open in Current Window",
-		okShort:        "Current Window",
+		title:          locales.WorktreeOpenTitle(),
+		message:        locales.WorktreeOpenDetail(branch, shortenHome(path)),
+		ok:             locales.WorktreeOpenCurrent(),
+		okShort:        locales.WorktreeCurrentWindow(),
 		run:            func() { open(false) },
-		alternate:      "Open in New Window",
-		alternateShort: "New Window",
+		alternate:      locales.WorktreeOpenNew(),
+		alternateShort: locales.WorktreeNewWindow(),
 		runAlternate:   func() { open(true) },
 	}
 }
@@ -54,21 +54,21 @@ func (a *app) askOpenWorktree(branch, path string) {
 func (a *app) askPruneWorktree(branch, path string) {
 	r := a.git.repo
 	a.confirm = &confirm{
-		title:   "Worktree Folder Missing",
-		message: fmt.Sprintf("The branch %q is checked out in a worktree whose folder is gone:\n\n%s\n\nPrune the missing worktree and switch to the branch here?", branch, shortenHome(path)),
-		ok:      "Prune and Switch",
+		title:   locales.WorktreeMissingTitle(),
+		message: locales.WorktreeMissingDetail(branch, shortenHome(path)),
+		ok:      locales.WorktreePruneSwitch(),
 		run: func() {
 			if a.git.repo != r {
 				return
 			}
-			a.gitDo("Switching to "+branch+"…", func(r *git.Repo) error {
+			a.gitDo(locales.BusySwitchingTo(branch), func(r *git.Repo) error {
 				if err := r.PruneWorktrees(); err != nil {
 					return err
 				}
 				err := r.Switch(branch, false)
 				if occupied, ok := errors.AsType[*git.WorktreeInUse](err); ok {
 					// Pruning keeps a locked worktree.
-					return fmt.Errorf("the worktree at %s is locked; unlock it with git worktree unlock", occupied.Path)
+					return errors.New(locales.ErrWorktreeLocked(occupied.Path))
 				}
 				return err
 			}, nil)

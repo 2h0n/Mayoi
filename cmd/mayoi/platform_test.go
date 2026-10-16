@@ -13,9 +13,13 @@ import (
 
 // TestMain runs the tests with macOS's keys and names, which they are
 // written for, on any system: those of Windows and Linux ask for theirs
-// with onOS.
+// with onOS. They read English, whatever languages the system prefers,
+// unless MYGO_LOCALE asks for another, as for shots of a translation.
 func TestMain(m *testing.M) {
 	hostOS = "darwin"
+	if os.Getenv("MYGO_LOCALE") == "" {
+		os.Setenv("MYGO_LOCALE", "en")
+	}
 	os.Exit(m.Run())
 }
 

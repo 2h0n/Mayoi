@@ -16,6 +16,7 @@ import (
 	"mayoi/internal/highlight"
 	"mayoi/internal/remote"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 
 	"github.com/alecthomas/chroma/v2"
 	"github.com/alecthomas/chroma/v2/lexers"
@@ -661,7 +662,7 @@ func (a *app) markdownLink(c *ui.Context, dest, root, path string, image bool) u
 	} else {
 		e = ui.Link(c, "", "")
 	}
-	e = e.Label("Open link " + dest)
+	e = e.Label(locales.OpenLink(dest))
 	if remote {
 		return e.OnClick(func() { c.OpenURL(dest) })
 	}
@@ -695,7 +696,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 		m.measure, _ = ui.ShapeText(strings.Repeat("0", 80), font, 0).Size()
 	}
 	width := m.measure
-	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label("Preview "+name).Padding(editorPadY, textPadR).Rows(func(row ui.ListRow) {
+	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label(locales.PreviewLabel(name)).Padding(editorPadY, textPadR).Rows(func(row ui.ListRow) {
 		c := row.Context
 		b := m.blocks[row.Index]
 		top, bottom := a.markdownSpacing(b)

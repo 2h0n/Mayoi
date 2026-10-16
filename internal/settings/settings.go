@@ -142,6 +142,9 @@ type Prefs struct {
 	// ProjectIcons shows each project's favicon or logo on the rail,
 	// rather than its initials.
 	ProjectIcons bool `json:"projectIcons,omitempty"`
+	// Locale is the language Mayoi shows, as "en", "zh-Hans" or "ja", or ""
+	// for the one the system's languages prefer.
+	Locale string `json:"locale,omitempty"`
 }
 
 // Window is a window as the settings keep it: its folder, and its

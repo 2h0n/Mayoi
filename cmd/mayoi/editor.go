@@ -10,6 +10,7 @@ import (
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
 	"mayoi/internal/settings"
+	"mayoi/locales"
 )
 
 const (
@@ -159,7 +160,7 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			Font(f.family).FontSize(f.size).FontWeight(f.weight).FontFeatures(f.featureList()...).FixedLineHeight(f.lineH).TextColor(p.text).
 			FillHeight().
 			Padding(editorPadY, textPadR, editorPadY, textX).
-			Label("Editor " + d.name()).
+			Label(locales.EditorLabel(d.name())).
 			ReadOnly(vimKeys || a.chording() || d.locked())
 		a.takeKeys(area, placeEditor, func(ev ui.InputEvent) bool { return a.editorKey(d, ev) })
 		if wrap {

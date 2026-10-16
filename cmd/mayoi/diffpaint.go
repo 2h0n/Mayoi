@@ -15,6 +15,7 @@ import (
 	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
+	"mayoi/locales"
 )
 
 // diffGeometry is where a diff's columns are, for its width.
@@ -72,8 +73,8 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			ui.Box(c).Size(52, 52).Radius(26).Background(p.added.Alpha(0.13)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, iconCheck).FontSize(24).TextColor(p.added)
 			})
-			ui.Text(c, "No Changes").FontSize(14).FontWeight(600).TextColor(p.text).Margin(8, 0, 0, 0)
-			ui.Text(c, "The working tree matches the last commit.").FontSize(12.5).TextColor(p.muted)
+			ui.Text(c, locales.DiffNoChanges()).FontSize(14).FontWeight(600).TextColor(p.text).Margin(8, 0, 0, 0)
+			ui.Text(c, locales.DiffTreeMatches()).FontSize(12.5).TextColor(p.muted)
 		})
 	}
 	if cm := v.commit; cm != nil && len(v.files) == 0 {
@@ -83,16 +84,16 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		case cm.err != "":
 			message(cm.err)
 		case cm.from != "":
-			message("No differences between " + git.ShortHash(cm.from) + " and " + git.ShortHash(cm.hash) + ".")
+			message(locales.NoDifferencesBetween(git.ShortHash(cm.from), git.ShortHash(cm.hash)))
 		default:
-			message("The commit changes no files.")
+			message(locales.DiffCommitNoFiles())
 		}
 		return
 	}
 	if len(v.files) == 0 {
 		switch {
 		case a.git.looked && a.git.repo == nil:
-			message("The folder is not in a Git repository.")
+			message(locales.DiffNotRepo())
 		case a.git.status != nil:
 			clean()
 		default:
@@ -198,7 +199,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	sticky, stickyY := v.stickyHeader(lineH)
 	focused := v.pane.FocusWithin(c)
 	pane := ui.ScrollBoth(c.Key("diff")).TrackScroll(&v.scroll).Bind(&v.pane).Fill().Background(p.editor).
-		Focusable().FocusRing(false).Label("Diff of the Changes")
+		Focusable().FocusRing(false).Label(locales.DiffPaneLabel())
 	a.takeKeys(pane, placeDiff, func(ev ui.InputEvent) bool { return a.diffInput(v, ev) }).Children(func() {
 		box := ui.Box(c).Width(contentW).Height(contentH)
 		// The buttons of the file's header under the pointer, or chosen.
@@ -415,7 +416,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					}
 					at := vx + diffRailW + 10
 					pt.Icon(iconUnfold, ui.Rect{X: at, Y: y + h/2 - 6, W: 12, H: 12}, col)
-					uiText(pt, at+18, y, h, "Show "+plural(row.n, "unchanged line"), headerFontSize, 400, col)
+					uiText(pt, at+18, y, h, locales.DiffShowUnchanged(row.n), headerFontSize, 400, col)
 				case rowLine:
 					if v.split {
 						for side := range 2 {
@@ -577,19 +578,19 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 func statusWord(letter byte) string {
 	switch letter {
 	case 'M':
-		return "Modified"
+		return locales.StatusModified()
 	case 'A':
-		return "Added"
+		return locales.StatusAdded()
 	case 'D':
-		return "Deleted"
+		return locales.StatusDeleted()
 	case 'R':
-		return "Renamed"
+		return locales.StatusRenamed()
 	case 'C':
-		return "Conflict"
+		return locales.StatusConflict()
 	case 'T':
-		return "Type Changed"
+		return locales.StatusTypeChanged()
 	case 'U':
-		return "Untracked"
+		return locales.StatusUntracked()
 	}
 	return ""
 }
@@ -769,7 +770,7 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 	}
 	subject := info.Subject
 	if cm.from != "" {
-		subject = "Changes from " + a.revisionLabel(cm.from) + " to " + a.revisionLabel(cm.hash)
+		subject = locales.ChangesFromTo(a.revisionLabel(cm.from), a.revisionLabel(cm.hash))
 	}
 	k.subject = ui.Span{Text: subject, Size: 15, Weight: 600, Color: p.text}
 	_, k.subjectH = c.MeasureText(w, k.subject)
@@ -793,7 +794,7 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 		hash := ui.Span{Text: git.ShortHash(h), Font: a.font.family, Size: a.font.size - 1, Color: p.accent}
 		return cardPiece{w: measure(hash) + 12, dot: dot, show: func() {
 			b := ui.ButtonBase(c.Key("card-hash:"+h)).Height(18).Padding(0, 6).Radius(5).AlignItems(ui.Center).
-				Background(p.accent.Alpha(0.1)).Label("Copy Commit Hash").Tooltip("Copy Commit Hash")
+				Background(p.accent.Alpha(0.1)).Label(locales.CopyCommitHash()).Tooltip(locales.CopyCommitHash())
 			if b.Hovered() {
 				b.Background(p.accent.Alpha(0.2))
 			}
@@ -807,7 +808,7 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 	if cm.from != "" {
 		// A comparison: its two commits, and what changed between them.
 		pieces = append(pieces, hashChip(cm.from, false), text(label("→", 400, p.muted), false), hashChip(cm.hash, false),
-			text(label(plural(len(v.files), "file")+" changed", 400, p.muted), true))
+			text(label(locales.CardFilesChanged(len(v.files)), 400, p.muted), true))
 		return a.finishCommitCard(c, v, k, w, pieces)
 	}
 	author := label(info.Author, 600, p.text)
@@ -822,7 +823,7 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 		})
 	}})
 	if !info.Time.IsZero() {
-		when := "committed " + ago(info.Time, time.Now()) + " · " + info.Time.Format("Jan 2, 2006 15:04")
+		when := locales.CardCommitted(ago(info.Time, time.Now())) + " · " + dateTime(info.Time)
 		pieces = append(pieces, text(label(when, 400, p.muted), false))
 	}
 	pieces = append(pieces, hashChip(cm.hash, true))
@@ -850,9 +851,9 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 		}})
 	}
 	if len(info.Parents) > 1 {
-		pieces = append(pieces, text(label("merge of "+plural(len(info.Parents), "parent"), 400, p.muted), true))
+		pieces = append(pieces, text(label(locales.CardMergeOf(len(info.Parents)), 400, p.muted), true))
 	}
-	pieces = append(pieces, text(label(plural(len(v.files), "file")+" changed", 400, p.muted), true))
+	pieces = append(pieces, text(label(locales.CardFilesChanged(len(v.files)), 400, p.muted), true))
 	return a.finishCommitCard(c, v, k, w, pieces)
 }
 
@@ -916,7 +917,7 @@ func (a *app) revisionLabel(hash string) string {
 // copyCommitHash puts the hash of a commit on the clipboard.
 func (a *app) copyCommitHash(hash string) {
 	a.services.WriteClipboard(hash)
-	a.tell(note{message: "Copied " + git.ShortHash(hash)})
+	a.tell(note{message: locales.CopiedText(git.ShortHash(hash))})
 }
 
 // commitCardUI shows the card at the top of a commit's diff at (x, y), w
@@ -954,9 +955,9 @@ func (a *app) commitCardUI(c *ui.Context, v *diffView, k *commitCard, x, y, w, h
 		if !k.folds {
 			return
 		}
-		label := "Show More"
+		label := locales.ShowMore()
 		if cm.unfolded {
-			label = "Show Less"
+			label = locales.ShowLess()
 		}
 		b := ui.ButtonBase(c.Key("card-more")).Height(cardMoreH).AlignItems(ui.Center).Shrink(0).Label(label)
 		col := p.accent
@@ -1183,12 +1184,12 @@ func (a *app) fileButtons(c *ui.Context, v *diffView, f *diffFile, right, y floa
 	switch {
 	case f.base == diffCommit:
 	case f.base == diffStaged:
-		bs = append(bs, button{iconMinus, "Unstage Changes", func() { a.unstage(entryPaths(e, true)...) }})
+		bs = append(bs, button{iconMinus, locales.UnstageChanges(), func() { a.unstage(entryPaths(e, true)...) }})
 	default:
 		if !e.Submodule() {
-			bs = append(bs, button{iconUndo, "Discard Changes…", func() { a.discard(e) }})
+			bs = append(bs, button{iconUndo, locales.DiscardChangesEllipsis(), func() { a.discard(e) }})
 		}
-		bs = append(bs, button{iconPlus, "Stage Changes", func() { a.stage(e.Path) }})
+		bs = append(bs, button{iconPlus, locales.StageChanges(), func() { a.stage(e.Path) }})
 	}
 	if len(bs) == 0 {
 		return ui.Rect{}

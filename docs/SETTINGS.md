@@ -53,6 +53,7 @@ takes its default.
 | `panelPosition`        | `""`          | `""` (bottom), `"left"`, `"right"`                          | **View → Panel Position**                      |
 | `projectTabs`          | `false`       | `true`, `false`                                             | **View → Project Tabs**                        |
 | `projectIcons`         | `false`       | `true`, `false`                                             | **View → Project Icons**                       |
+| `locale`               | `""`          | `""` (follow the system), `"en"`, `"zh-Hans"`, `"ja"`       | **View → Language**                            |
 | `autoSave`             | `true`        | `true`, `false`                                             | **File → Auto Save**                           |
 | `wordWrap`             | `false`       | `true`, `false`                                             | **View → Word Wrap**                           |
 | `vim`                  | `false`       | `true`, `false`                                             | **View → Vim Mode**                            |
@@ -61,6 +62,14 @@ takes its default.
 | `diffLayout`           | `""`          | `""` (side by side when wide enough), `"split"`, `"inline"` | A diff's **Layout** button                     |
 | `scmTree`              | `false`       | `true`, `false`                                             | **View as Tree** in Source Control's menu      |
 | `scmAllBranches`       | `false`       | `true`, `false`                                             | **Show All Branches** in Source Control's menu |
+
+### Language
+
+- **`locale`** is the language Mayoi shows: English, Simplified Chinese (`"zh-Hans"`) or Japanese (`"ja"`). Left
+  empty, Mayoi shows the first of these that the system's preferred languages list, and English otherwise. Another tag
+  of the same language works too, as `"zh"` or `"ja-JP"`. The menus, the command palette and every window change at
+  once. The command palette also finds commands by their English names. In Japanese, the parts that MyGo draws itself,
+  as the editor's own menu and the native dialogs' buttons, stay in English.
 
 ### Fonts
 

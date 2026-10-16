@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -18,6 +17,7 @@ import (
 	"mayoi/internal/highlight"
 	"mayoi/internal/linediff"
 	"mayoi/internal/remote"
+	"mayoi/locales"
 )
 
 // diffBase is what a diff compares: which version of a file with which.
@@ -34,11 +34,11 @@ const (
 func (b diffBase) sides() (old, new string) {
 	switch b {
 	case diffIndex:
-		return "Index", "Working Tree"
+		return locales.SideIndex(), locales.SideWorkingTree()
 	case diffStaged:
-		return "HEAD", "Index"
+		return "HEAD", locales.SideIndex()
 	}
-	return "HEAD", "Working Tree"
+	return "HEAD", locales.SideWorkingTree()
 }
 
 // diffLayout is how a diff shows its sides: side by side when it is wide
@@ -292,9 +292,9 @@ func (v *diffView) name() string {
 		if c.info.Subject != "" {
 			return c.info.Subject
 		}
-		return "Commit " + git.ShortHash(c.hash)
+		return locales.DiffCommitName(git.ShortHash(c.hash))
 	}
-	return "Changes"
+	return locales.DiffChangesName()
 }
 
 // same reports whether two diffs show the same changes: both those of
@@ -863,7 +863,7 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 				}
 			}
 			if target == nil {
-				a.fail("%s has no changes.", filepath.Base(t.path))
+				a.fail("%s", locales.FailNoChanges(filepath.Base(t.path)))
 			} else {
 				target.folded = false
 			}
@@ -909,15 +909,15 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		note := ""
 		switch {
 		case !f.loaded:
-			note = "Loading…"
+			note = locales.Loading()
 		case f.err != "":
 			note = f.err
 		case f.binary:
-			note = "The file is binary."
+			note = locales.DiffBinary()
 		case !f.old.ok && !f.new.ok:
-			note = "Neither version has the file."
+			note = locales.DiffNeitherVersion()
 		case len(f.hunks) == 0:
-			note = "No changes in the text."
+			note = locales.DiffNoTextChanges()
 		}
 		if note != "" {
 			plain(rowNote, i, note)
@@ -1489,11 +1489,11 @@ func (v *diffView) summarize() string {
 	case files == 0:
 		return ""
 	case !all:
-		return plural(files, "file")
+		return locales.FilesCount(files)
 	case hunks == 0:
-		return plural(files, "file") + " · no changes in the text"
+		return locales.DiffSummaryNoText(files)
 	}
-	return fmt.Sprintf("%s · %s · +%d −%d", plural(files, "file"), plural(hunks, "change"), add, del)
+	return locales.DiffSummary(files, hunks, add, del)
 }
 
 // diffButtons are the buttons at the end of a diff's breadcrumbs: going
@@ -1519,30 +1519,30 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 		}
 	}
 	a.reviewSendButton(c)
-	act(iconArrowUp, "Previous Change ([)", func() { v.stepHunk(-1) })
-	act(iconArrowDown, "Next Change (])", func() { v.stepHunk(1) })
-	if button(iconUnfold, "Show Full Files", v.full).Clicked() {
+	act(iconArrowUp, locales.DiffPrevChange(), func() { v.stepHunk(-1) })
+	act(iconArrowDown, locales.DiffNextChange(), func() { v.stepHunk(1) })
+	if button(iconUnfold, locales.DiffShowFullFiles(), v.full).Clicked() {
 		a.post(func() { a.setDiffFull(v, !v.full) })
 	}
-	if button(iconWrap, a.withKey("Toggle Word Wrap", "view.wordWrapTab"), a.wrapsDiff(v)).Clicked() {
+	if button(iconWrap, a.withKey(locales.DiffToggleWrap(), "view.wordWrapTab"), a.wrapsDiff(v)).Clicked() {
 		a.post(func() { a.toggleDiffWrap(v) })
 	}
 	icon := iconRows
 	if v.split {
 		icon = iconColumns
 	}
-	b := button(icon, "Layout", false)
+	b := button(icon, locales.DiffLayout(), false)
 	b.Menu(func(m *ui.Menu) {
 		for _, l := range []struct {
 			layout diffLayout
 			label  string
-		}{{layoutAuto, "Side by Side When Wide"}, {layoutSplit, "Side by Side"}, {layoutInline, "Inline"}} {
+		}{{layoutAuto, locales.DiffLayoutAuto()}, {layoutSplit, locales.DiffLayoutSplit()}, {layoutInline, locales.DiffLayoutInline()}} {
 			if m.Item(l.label).Checked(v.layout == l.layout).Chosen() {
 				a.post(func() { a.setDiffLayout(v, l.layout) })
 			}
 		}
 	})
-	act(iconOpenFile, "Open File (E)", func() { a.openDiffFile(v) })
+	act(iconOpenFile, locales.DiffOpenFile(), func() { a.openDiffFile(v) })
 }
 
 // setDiffLayout shows a diff side by side, inline, or as wide as it is,

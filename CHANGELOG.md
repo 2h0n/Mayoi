@@ -5,6 +5,11 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Mayoi speaks Simplified Chinese and Japanese as well as English (#33):
+  the menus, the command palette, the panels, the dialogs and the messages
+  follow the system's languages, and **View → Language**, the command
+  palette's **Language** commands and the `locale` setting choose one. The
+  command palette still finds commands by their English names.
 - **Compare HEAD to Here**, **Compare Here to HEAD** and **Compare with
   Selected** open the changes in a diff tab, inline or side by side, with
   changed words tinted and unchanged lines folded, rather than as a patch

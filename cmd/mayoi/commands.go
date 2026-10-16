@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/updater"
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/keymap"
+	"mayoi/locales"
 )
 
 // command is something the menus, their shortcuts and the command
@@ -20,7 +22,11 @@ type command struct {
 	run              func()
 }
 
-func (a *app) commands() []command {
+func (a *app) commands() []command { return a.commandsIn(locales.In(i18n.Locale())) }
+
+// commandsIn are the commands, labelled in the language of t: the palette
+// also matches their English names.
+func (a *app) commandsIn(t locales.Messages) []command {
 	doc := func(fn func(d *editor)) func() {
 		return func() {
 			if d := a.textEditor(); d != nil {
@@ -29,137 +35,142 @@ func (a *app) commands() []command {
 		}
 	}
 	cmds := []command{
-		{"file.new", "New File", "CmdOrCtrl+N", a.newFile},
-		{"file.newWindow", "New Window", "Shift+CmdOrCtrl+N", func() { a.host.newBlankWindow() }},
-		{"file.openFolder", "Open Folder…", "CmdOrCtrl+O", a.chooseFolder},
-		{"file.openFolderWindow", "Open Folder in New Window…", "Alt+CmdOrCtrl+O", a.chooseFolderWindow},
+		{"file.new", t.CmdFileNew(), "CmdOrCtrl+N", a.newFile},
+		{"file.newWindow", t.CmdFileNewWindow(), "Shift+CmdOrCtrl+N", func() { a.host.newBlankWindow() }},
+		{"file.openFolder", t.CmdFileOpenFolder(), "CmdOrCtrl+O", a.chooseFolder},
+		{"file.openFolderWindow", t.CmdFileOpenFolderWindow(), "Alt+CmdOrCtrl+O", a.chooseFolderWindow},
 		// ⌃R, which the view takes itself, so that a terminal keeps it.
-		{"file.openRecent", "Open Recent…", "", a.openRecentPicker},
-		{"file.clearRecent", "Clear Recently Opened", "", a.clearRecent},
-		{"remote.connect", "Connect to Host…", "", a.openRemotePicker},
-		{"remote.openFolder", "Open Remote Folder…", "", a.openRemoteFolder},
-		{"remote.reconnect", "Reconnect to Host", "", a.reconnect},
-		{"remote.disconnect", "Disconnect from Host", "", a.disconnect},
-		{"remote.forwardPort", "Forward a Port…", "", a.askForwardPort},
-		{"file.save", "Save", "CmdOrCtrl+S", a.saveActive},
-		{"file.saveAs", "Save As…", "Shift+CmdOrCtrl+S", a.saveActiveAs},
-		{"file.saveAll", "Save All", "Alt+CmdOrCtrl+S", a.saveAll},
-		{"file.autoSave", "Auto Save", "", a.toggleAutoSave},
-		{"file.settings", "Open Settings", "CmdOrCtrl+,", a.openSettings},
-		{"file.keybindings", "Open Keyboard Shortcuts", "", a.openKeybindings},
-		{"file.copyPath", "Copy Path of Active File", "", func() { a.copyActivePath(false) }},
-		{"file.copyRelativePath", "Copy Relative Path of Active File", "", func() { a.copyActivePath(true) }},
-		{"file.reveal", revealActiveLabel(), "", a.revealActive},
-		{"file.close", "Close Tab", "CmdOrCtrl+W", a.closeActive},
-		{"file.reopenClosed", "Reopen Closed Tab", "Shift+CmdOrCtrl+T", a.reopenClosed},
-		{"file.closeFolder", "Close Folder", "", a.closeFolder},
-		{"file.closeProject", "Close Project", "", func() { a.host.closeProject() }},
-		{"file.installCLI", "Install 'mayoi' Command", "", func() { a.host.installCLI() }},
-		{"file.uninstallCLI", "Uninstall 'mayoi' Command", "", func() { a.host.uninstallCLI() }},
+		{"file.openRecent", t.CmdFileOpenRecent(), "", a.openRecentPicker},
+		{"file.clearRecent", t.CmdFileClearRecent(), "", a.clearRecent},
+		{"remote.connect", t.CmdRemoteConnect(), "", a.openRemotePicker},
+		{"remote.openFolder", t.CmdRemoteOpenFolder(), "", a.openRemoteFolder},
+		{"remote.reconnect", t.CmdRemoteReconnect(), "", a.reconnect},
+		{"remote.disconnect", t.CmdRemoteDisconnect(), "", a.disconnect},
+		{"remote.forwardPort", t.CmdRemoteForwardPort(), "", a.askForwardPort},
+		{"file.save", t.CmdFileSave(), "CmdOrCtrl+S", a.saveActive},
+		{"file.saveAs", t.CmdFileSaveAs(), "Shift+CmdOrCtrl+S", a.saveActiveAs},
+		{"file.saveAll", t.CmdFileSaveAll(), "Alt+CmdOrCtrl+S", a.saveAll},
+		{"file.autoSave", t.CmdFileAutoSave(), "", a.toggleAutoSave},
+		{"file.settings", t.CmdFileSettings(), "CmdOrCtrl+,", a.openSettings},
+		{"file.keybindings", t.CmdFileKeybindings(), "", a.openKeybindings},
+		{"file.copyPath", t.CmdFileCopyPath(), "", func() { a.copyActivePath(false) }},
+		{"file.copyRelativePath", t.CmdFileCopyRelativePath(), "", func() { a.copyActivePath(true) }},
+		{"file.reveal", revealActiveLabel(t), "", a.revealActive},
+		{"file.close", t.CmdFileClose(), "CmdOrCtrl+W", a.closeActive},
+		{"file.reopenClosed", t.CmdFileReopenClosed(), "Shift+CmdOrCtrl+T", a.reopenClosed},
+		{"file.closeFolder", t.CmdFileCloseFolder(), "", a.closeFolder},
+		{"file.closeProject", t.CmdFileCloseProject(), "", func() { a.host.closeProject() }},
+		{"file.installCLI", t.CmdFileInstallCLI(), "", func() { a.host.installCLI() }},
+		{"file.uninstallCLI", t.CmdFileUninstallCLI(), "", func() { a.host.uninstallCLI() }},
 		// Undo and Redo take no keys in the menu: ⌘Z goes to the focused
 		// control, the editor's history or a text field's.
-		{"edit.undo", "Undo", "", a.editActive(func(d *editor) { d.undo() })},
-		{"edit.redo", "Redo", "", a.editActive(func(d *editor) { d.redo() })},
-		{"edit.find", "Find", "CmdOrCtrl+F", func() { a.openFind(false) }},
-		{"edit.replace", "Replace", "Alt+CmdOrCtrl+F", func() { a.openFind(true) }},
-		{"edit.findNext", "Find Next", "CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, 1) })},
-		{"edit.findPrev", "Find Previous", "Shift+CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, -1) })},
-		{"edit.findInFiles", "Find in Files", "Shift+CmdOrCtrl+F", func() { a.showSearch(false) }},
-		{"edit.replaceInFiles", "Replace in Files", "Shift+CmdOrCtrl+H", func() { a.showSearch(true) }},
-		{"sel.comment", "Toggle Line Comment", "CmdOrCtrl+/", a.editActive(toggleComment)},
-		{"sel.indent", "Indent Lines", "CmdOrCtrl+]", a.editActive(func(d *editor) { indentLines(d, false) })},
-		{"sel.outdent", "Outdent Lines", "CmdOrCtrl+[", a.editActive(func(d *editor) { indentLines(d, true) })},
+		{"edit.undo", t.CmdEditUndo(), "", a.editActive(func(d *editor) { d.undo() })},
+		{"edit.redo", t.CmdEditRedo(), "", a.editActive(func(d *editor) { d.redo() })},
+		{"edit.find", t.CmdEditFind(), "CmdOrCtrl+F", func() { a.openFind(false) }},
+		{"edit.replace", t.CmdEditReplace(), "Alt+CmdOrCtrl+F", func() { a.openFind(true) }},
+		{"edit.findNext", t.CmdEditFindNext(), "CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, 1) })},
+		{"edit.findPrev", t.CmdEditFindPrev(), "Shift+CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, -1) })},
+		{"edit.findInFiles", t.CmdEditFindInFiles(), "Shift+CmdOrCtrl+F", func() { a.showSearch(false) }},
+		{"edit.replaceInFiles", t.CmdEditReplaceInFiles(), "Shift+CmdOrCtrl+H", func() { a.showSearch(true) }},
+		{"sel.comment", t.CmdSelComment(), "CmdOrCtrl+/", a.editActive(toggleComment)},
+		{"sel.indent", t.CmdSelIndent(), "CmdOrCtrl+]", a.editActive(func(d *editor) { indentLines(d, false) })},
+		{"sel.outdent", t.CmdSelOutdent(), "CmdOrCtrl+[", a.editActive(func(d *editor) { indentLines(d, true) })},
 		// The arrows with Alt are the editor's own keys, which the terminal
 		// takes too.
-		{"sel.moveUp", "Move Line Up", "", a.editActive(func(d *editor) { moveLines(d, false) })},
-		{"sel.moveDown", "Move Line Down", "", a.editActive(func(d *editor) { moveLines(d, true) })},
-		{"sel.copyUp", "Copy Line Up", "", a.editActive(func(d *editor) { copyLines(d, false) })},
-		{"sel.copyDown", "Copy Line Down", "", a.editActive(func(d *editor) { copyLines(d, true) })},
-		{"sel.deleteLine", "Delete Line", "Shift+CmdOrCtrl+K", a.editActive(deleteLines)},
-		{"sel.lineBelow", "Insert Line Below", "", a.editActive(func(d *editor) { insertLine(d, false) })},
-		{"sel.lineAbove", "Insert Line Above", "", a.editActive(func(d *editor) { insertLine(d, true) })},
-		{"sel.line", "Select Line", "CmdOrCtrl+L", a.editActive(selectLines)},
-		{"sel.indentTabs", "Indent Using Tabs", "", a.editActive(func(d *editor) { d.indent.tabs = true })},
-		{"sel.indent2", "Indent Using 2 Spaces", "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 2} })},
-		{"sel.indent4", "Indent Using 4 Spaces", "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 4} })},
-		{"sel.indent8", "Indent Using 8 Spaces", "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 8} })},
-		{"sel.camelCase", "Transform to Camel Case", "", a.editActive(camelCase)},
-		{"sel.sortAsc", "Sort Lines Ascending", "", a.editActive(func(d *editor) { sortLines(d, false) })},
-		{"sel.sortDesc", "Sort Lines Descending", "", a.editActive(func(d *editor) { sortLines(d, true) })},
-		{"go.bracket", "Go to Bracket", "Shift+CmdOrCtrl+\\", a.editActive(goToBracket)},
-		{"go.quickOpen", "Quick Open…", "CmdOrCtrl+P", func() { a.openQuick("") }},
-		{"go.commands", "Command Palette…", "Shift+CmdOrCtrl+P", func() { a.openQuick(">") }},
-		{"go.line", "Go to Line…", "Ctrl+G", func() { a.openQuick(":") }},
-		{"go.symbol", "Go to Symbol…", "Shift+CmdOrCtrl+O", func() { a.openQuick("@") }},
-		{"go.nextTab", "Next Tab", "Ctrl+Tab", func() { a.cycleTab(1) }},
-		{"go.prevTab", "Previous Tab", "Ctrl+Shift+Tab", func() { a.cycleTab(-1) }},
-		{"go.nextProject", "Next Project", "Shift+CmdOrCtrl+]", func() { a.host.stepProject(1) }},
-		{"go.prevProject", "Previous Project", "Shift+CmdOrCtrl+[", func() { a.host.stepProject(-1) }},
-		{"view.sidebar", "Toggle Sidebar", "CmdOrCtrl+B", a.toggleSidebar},
-		{"view.sidebarRight", "Sidebar on Right", "", a.toggleSidebarRight},
-		{"view.explorer", "Explorer", "Shift+CmdOrCtrl+E", a.showExplorer},
-		{"view.search", "Search", "", func() { a.showSearch(false) }},
-		{"view.scm", "Source Control", "Ctrl+Shift+G", a.showSourceControl},
-		{"git.commit", "Commit", "", func() { a.commit(false) }},
-		{"git.commitPush", "Commit & Push", "", func() { a.commit(true) }},
-		{"git.amend", "Amend Last Commit", "", func() { a.showSourceControl(); a.startAmend() }},
-		{"git.openChanges", "Open Changes", "", a.openChanges},
-		{"git.openAllChanges", "Open All Changes", "", func() { a.openChangesTab(true) }},
-		{"git.nextChange", "Next Change", "Alt+F5", func() { a.stepChange(1) }},
-		{"git.prevChange", "Previous Change", "Shift+Alt+F5", func() { a.stepChange(-1) }},
-		{"git.showChange", "Show Change", "", a.editActive(func(d *editor) { d.peekHunk(caretLine(d)) })},
-		{"git.revertChange", "Revert Change", "", a.editActive(func(d *editor) { a.onCaretHunk(d, a.revertHunk) })},
-		{"git.stageChange", "Stage Change", "", a.editActive(func(d *editor) { a.onCaretHunk(d, a.stageHunk) })},
-		{"git.stageFile", "Stage File", "", func() { a.stage(a.activePaths()...) }},
-		{"git.unstageFile", "Unstage File", "", func() { a.unstage(a.activePaths()...) }},
-		{"git.stageAll", "Stage All Changes", "", a.stageAll},
-		{"git.undoCommit", "Undo Last Commit", "", a.undoCommit},
-		{"git.continue", "Continue Merge, Rebase or Cherry-Pick", "", a.continueOp},
-		{"git.abort", "Abort Merge, Rebase or Cherry-Pick…", "", a.abortOp},
-		{"git.switchBranch", "Switch Branch…", "", a.openBranchPicker},
-		{"git.createBranch", "Create Branch…", "", a.askNewBranch},
-		{"git.blame", "Inline Blame", "", a.toggleBlame},
-		{"git.fetch", "Fetch", "", a.fetch},
-		{"git.pull", "Pull", "", a.pull},
-		{"git.push", "Push", "", a.push},
-		{"git.refresh", "Refresh Source Control", "", a.gitChanged},
-		{"review.comment", "Add Review Comment", "Shift+CmdOrCtrl+M", a.addReviewComment},
-		{"review.next", "Go to Next Review Comment", "", func() { a.stepNote(1) }},
-		{"review.previous", "Go to Previous Review Comment", "", func() { a.stepNote(-1) }},
-		{"review.copy", "Copy Review Comments", "", a.copyReview},
-		{"review.send", "Send Review Comments to Terminal", "", a.sendReview},
-		{"review.clear", "Clear Review Comments", "", a.clearReview},
-		{"view.terminal", "Toggle Terminal", "Ctrl+`", a.togglePanel},
-		{"view.newTerminal", "New Terminal", "Ctrl+Shift+`", a.newTerminal},
-		{"view.terminalTab", "New Terminal in Editor Area", "", func() { a.newTerminalTab(a.column(), a.workDir(), true) }},
-		{"view.terminalMove", "Move Terminal to Editor Area or Panel", "", a.moveTerminal},
-		{"view.terminalLockRight", "Move Terminal to Locked Right Column", "", a.moveTerminalToLockedRight},
-		{"view.panelPosition.bottom", "Move Panel to Bottom", "", func() { a.setPanelPosition("") }},
-		{"view.panelPosition.left", "Move Panel to Left", "", func() { a.setPanelPosition("left") }},
-		{"view.panelPosition.right", "Move Panel to Right", "", func() { a.setPanelPosition("right") }},
-		{"view.lockColumn", "Toggle Column Lock", "", func() { a.toggleColumnLock(a.column()) }},
-		{"view.splitRight", "Split Right", "CmdOrCtrl+\\", a.splitRight},
-		{"view.nextColumn", "Focus Next Column", "Alt+CmdOrCtrl+Right", func() { a.focusColumnBy(1) }},
-		{"view.prevColumn", "Focus Previous Column", "Alt+CmdOrCtrl+Left", func() { a.focusColumnBy(-1) }},
-		{"view.moveTabNext", "Move Tab to Next Column", "", func() { a.moveTabBy(1) }},
-		{"view.moveTabPrev", "Move Tab to Previous Column", "", func() { a.moveTabBy(-1) }},
-		{"view.wordWrap", "Word Wrap", "", a.toggleWordWrap},
-		{"view.vim", "Vim Mode", "", a.toggleVim},
-		{"view.projectTabs", "Project Tabs", "", a.toggleProjectTabs},
-		{"view.projectIcons", "Project Icons", "", a.toggleProjectIcons},
-		{"view.wordWrapTab", "Toggle Word Wrap in Tab", "Alt+Z", a.toggleTabWrap},
-		{"view.togglePreview", "Toggle Preview", "Shift+CmdOrCtrl+V", a.togglePreview},
+		{"sel.moveUp", t.CmdSelMoveUp(), "", a.editActive(func(d *editor) { moveLines(d, false) })},
+		{"sel.moveDown", t.CmdSelMoveDown(), "", a.editActive(func(d *editor) { moveLines(d, true) })},
+		{"sel.copyUp", t.CmdSelCopyUp(), "", a.editActive(func(d *editor) { copyLines(d, false) })},
+		{"sel.copyDown", t.CmdSelCopyDown(), "", a.editActive(func(d *editor) { copyLines(d, true) })},
+		{"sel.deleteLine", t.CmdSelDeleteLine(), "Shift+CmdOrCtrl+K", a.editActive(deleteLines)},
+		{"sel.lineBelow", t.CmdSelLineBelow(), "", a.editActive(func(d *editor) { insertLine(d, false) })},
+		{"sel.lineAbove", t.CmdSelLineAbove(), "", a.editActive(func(d *editor) { insertLine(d, true) })},
+		{"sel.line", t.CmdSelLine(), "CmdOrCtrl+L", a.editActive(selectLines)},
+		{"sel.indentTabs", t.CmdSelIndentTabs(), "", a.editActive(func(d *editor) { d.indent.tabs = true })},
+		{"sel.indent2", t.CmdSelIndentSpaces(2), "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 2} })},
+		{"sel.indent4", t.CmdSelIndentSpaces(4), "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 4} })},
+		{"sel.indent8", t.CmdSelIndentSpaces(8), "", a.editActive(func(d *editor) { d.indent = indentStyle{size: 8} })},
+		{"sel.camelCase", t.CmdSelCamelCase(), "", a.editActive(camelCase)},
+		{"sel.sortAsc", t.CmdSelSortAsc(), "", a.editActive(func(d *editor) { sortLines(d, false) })},
+		{"sel.sortDesc", t.CmdSelSortDesc(), "", a.editActive(func(d *editor) { sortLines(d, true) })},
+		{"go.bracket", t.CmdGoBracket(), "Shift+CmdOrCtrl+\\", a.editActive(goToBracket)},
+		{"go.quickOpen", t.CmdGoQuickOpen(), "CmdOrCtrl+P", func() { a.openQuick("") }},
+		{"go.commands", t.CmdGoCommands(), "Shift+CmdOrCtrl+P", func() { a.openQuick(">") }},
+		{"go.line", t.CmdGoLine(), "Ctrl+G", func() { a.openQuick(":") }},
+		{"go.symbol", t.CmdGoSymbol(), "Shift+CmdOrCtrl+O", func() { a.openQuick("@") }},
+		{"go.nextTab", t.CmdGoNextTab(), "Ctrl+Tab", func() { a.cycleTab(1) }},
+		{"go.prevTab", t.CmdGoPrevTab(), "Ctrl+Shift+Tab", func() { a.cycleTab(-1) }},
+		{"go.nextProject", t.CmdGoNextProject(), "Shift+CmdOrCtrl+]", func() { a.host.stepProject(1) }},
+		{"go.prevProject", t.CmdGoPrevProject(), "Shift+CmdOrCtrl+[", func() { a.host.stepProject(-1) }},
+		{"view.sidebar", t.CmdViewSidebar(), "CmdOrCtrl+B", a.toggleSidebar},
+		{"view.sidebarRight", t.CmdViewSidebarRight(), "", a.toggleSidebarRight},
+		{"view.explorer", t.CmdViewExplorer(), "Shift+CmdOrCtrl+E", a.showExplorer},
+		{"view.search", t.CmdViewSearch(), "", func() { a.showSearch(false) }},
+		{"view.scm", t.CmdViewScm(), "Ctrl+Shift+G", a.showSourceControl},
+		{"git.commit", t.CmdGitCommit(), "", func() { a.commit(false) }},
+		{"git.commitPush", t.CmdGitCommitPush(), "", func() { a.commit(true) }},
+		{"git.amend", t.CmdGitAmend(), "", func() { a.showSourceControl(); a.startAmend() }},
+		{"git.openChanges", t.CmdGitOpenChanges(), "", a.openChanges},
+		{"git.openAllChanges", t.CmdGitOpenAllChanges(), "", func() { a.openChangesTab(true) }},
+		{"git.nextChange", t.CmdGitNextChange(), "Alt+F5", func() { a.stepChange(1) }},
+		{"git.prevChange", t.CmdGitPrevChange(), "Shift+Alt+F5", func() { a.stepChange(-1) }},
+		{"git.showChange", t.CmdGitShowChange(), "", a.editActive(func(d *editor) { d.peekHunk(caretLine(d)) })},
+		{"git.revertChange", t.CmdGitRevertChange(), "", a.editActive(func(d *editor) { a.onCaretHunk(d, a.revertHunk) })},
+		{"git.stageChange", t.CmdGitStageChange(), "", a.editActive(func(d *editor) { a.onCaretHunk(d, a.stageHunk) })},
+		{"git.stageFile", t.CmdGitStageFile(), "", func() { a.stage(a.activePaths()...) }},
+		{"git.unstageFile", t.CmdGitUnstageFile(), "", func() { a.unstage(a.activePaths()...) }},
+		{"git.stageAll", t.CmdGitStageAll(), "", a.stageAll},
+		{"git.undoCommit", t.CmdGitUndoCommit(), "", a.undoCommit},
+		{"git.continue", t.CmdGitContinue(), "", a.continueOp},
+		{"git.abort", t.CmdGitAbort(), "", a.abortOp},
+		{"git.switchBranch", t.CmdGitSwitchBranch(), "", a.openBranchPicker},
+		{"git.createBranch", t.CmdGitCreateBranch(), "", a.askNewBranch},
+		{"git.blame", t.CmdGitBlame(), "", a.toggleBlame},
+		{"git.fetch", t.CmdGitFetch(), "", a.fetch},
+		{"git.pull", t.CmdGitPull(), "", a.pull},
+		{"git.push", t.CmdGitPush(), "", a.push},
+		{"git.refresh", t.CmdGitRefresh(), "", a.gitChanged},
+		{"review.comment", t.CmdReviewComment(), "Shift+CmdOrCtrl+M", a.addReviewComment},
+		{"review.next", t.CmdReviewNext(), "", func() { a.stepNote(1) }},
+		{"review.previous", t.CmdReviewPrevious(), "", func() { a.stepNote(-1) }},
+		{"review.copy", t.CmdReviewCopy(), "", a.copyReview},
+		{"review.send", t.CmdReviewSend(), "", a.sendReview},
+		{"review.clear", t.CmdReviewClear(), "", a.clearReview},
+		{"view.terminal", t.CmdViewTerminal(), "Ctrl+`", a.togglePanel},
+		{"view.newTerminal", t.CmdViewNewTerminal(), "Ctrl+Shift+`", a.newTerminal},
+		{"view.terminalTab", t.CmdViewTerminalTab(), "", func() { a.newTerminalTab(a.column(), a.workDir(), true) }},
+		{"view.terminalMove", t.CmdViewTerminalMove(), "", a.moveTerminal},
+		{"view.terminalLockRight", t.CmdViewTerminalLockRight(), "", a.moveTerminalToLockedRight},
+		{"view.panelPosition.bottom", t.CmdViewPanelBottom(), "", func() { a.setPanelPosition("") }},
+		{"view.panelPosition.left", t.CmdViewPanelLeft(), "", func() { a.setPanelPosition("left") }},
+		{"view.panelPosition.right", t.CmdViewPanelRight(), "", func() { a.setPanelPosition("right") }},
+		{"view.lockColumn", t.CmdViewLockColumn(), "", func() { a.toggleColumnLock(a.column()) }},
+		{"view.splitRight", t.CmdViewSplitRight(), "CmdOrCtrl+\\", a.splitRight},
+		{"view.nextColumn", t.CmdViewNextColumn(), "Alt+CmdOrCtrl+Right", func() { a.focusColumnBy(1) }},
+		{"view.prevColumn", t.CmdViewPrevColumn(), "Alt+CmdOrCtrl+Left", func() { a.focusColumnBy(-1) }},
+		{"view.moveTabNext", t.CmdViewMoveTabNext(), "", func() { a.moveTabBy(1) }},
+		{"view.moveTabPrev", t.CmdViewMoveTabPrev(), "", func() { a.moveTabBy(-1) }},
+		{"view.wordWrap", t.CmdViewWordWrap(), "", a.toggleWordWrap},
+		{"view.vim", t.CmdViewVim(), "", a.toggleVim},
+		{"view.projectTabs", t.CmdViewProjectTabs(), "", a.toggleProjectTabs},
+		{"view.projectIcons", t.CmdViewProjectIcons(), "", a.toggleProjectIcons},
+		{"view.wordWrapTab", t.CmdViewWordWrapTab(), "Alt+Z", a.toggleTabWrap},
+		{"view.togglePreview", t.CmdViewTogglePreview(), "Shift+CmdOrCtrl+V", a.togglePreview},
 		// The text, or the picture shown.
-		{"view.zoomIn", "Zoom In", "CmdOrCtrl+=", func() { a.zoom(1) }},
-		{"view.zoomOut", "Zoom Out", "CmdOrCtrl+-", func() { a.zoom(-1) }},
-		{"view.zoomReset", "Reset Zoom", "CmdOrCtrl+0", func() { a.zoom(0) }},
-		{"view.appearance.system", "System", "", func() { a.setAppearance("") }},
-		{"view.appearance.light", "Light", "", func() { a.setAppearance("light") }},
-		{"view.appearance.dark", "Dark", "", func() { a.setAppearance("dark") }},
+		{"view.zoomIn", t.CmdViewZoomIn(), "CmdOrCtrl+=", func() { a.zoom(1) }},
+		{"view.zoomOut", t.CmdViewZoomOut(), "CmdOrCtrl+-", func() { a.zoom(-1) }},
+		{"view.zoomReset", t.CmdViewZoomReset(), "CmdOrCtrl+0", func() { a.zoom(0) }},
+		{"view.appearance.system", t.CmdViewAppearanceSystem(), "", func() { a.setAppearance("") }},
+		{"view.appearance.light", t.CmdViewAppearanceLight(), "", func() { a.setAppearance("light") }},
+		{"view.appearance.dark", t.CmdViewAppearanceDark(), "", func() { a.setAppearance("dark") }},
 		{"view.theme.mayoi", "Mayoi", "", func() { a.setTheme("") }},
-		{"view.theme.matrix", "The Matrix", "", func() { a.setTheme(themeMatrix) }},
+		{"view.theme.matrix", t.CmdViewThemeMatrix(), "", func() { a.setTheme(themeMatrix) }},
 		{"view.theme.claude", "Claude", "", func() { a.setTheme(themeClaude) }},
 		{"view.theme.qoder", "Qoder", "", func() { a.setTheme(themeQoder) }},
+		{localeCommand + "system", t.CmdViewLocaleSystem(), "", func() { a.setLocale("") }},
+	}
+	// The languages, each named in itself.
+	for _, tag := range mygo.App.Languages() {
+		cmds = append(cmds, command{localeCommand + tag, i18n.Autonym(tag), "", func() { a.setLocale(tag) }})
 	}
 	for i := range cmds {
 		cmds[i].accel = platformAccel(cmds[i].id, cmds[i].accel)
@@ -286,6 +297,28 @@ func (a *app) themeChanged() {
 	a.host.setTheme(a.settings.Theme, a.settings.Appearance)
 }
 
+// localeCommand is the prefix of the commands that choose the language,
+// before its tag or "system".
+const localeCommand = "view.locale."
+
+// setLocale shows the app in the language of tag, or in the system's for
+// "", in every window.
+func (a *app) setLocale(tag string) {
+	a.settings.Locale = tag
+	a.settings.Changed()
+	a.host.setLocale(tag)
+}
+
+// localeOn reports whether the settings choose the language of tag, of
+// the app's languages, or the system's for "system": "zh" in the settings
+// chooses "zh-Hans".
+func (a *app) localeOn(tag string) bool {
+	if tag == "system" || a.settings.Locale == "" {
+		return tag == "system" && a.settings.Locale == ""
+	}
+	return i18n.Match([]string{a.settings.Locale}, mygo.App.Languages()) == tag
+}
+
 // openSettings opens the settings file in a tab, as they are now. The
 // preferences in it apply as it is saved.
 func (a *app) openSettings() {
@@ -346,6 +379,11 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		return it
 	}
 	theme := func(id, th string) *mygo.MenuItem { return radio(id, a.settings.Theme == th) }
+	// The system's language, then each of the app's.
+	languages := []*mygo.MenuItem{radio(localeCommand+"system", a.localeOn("system")), mygo.Separator()}
+	for _, tag := range mygo.App.Languages() {
+		languages = append(languages, radio(localeCommand+tag, a.localeOn(tag)))
+	}
 	// The recent folders but the window's, and the box of them all.
 	var recent []*mygo.MenuItem
 	for _, dir := range a.settings.RecentExcept(a.root) {
@@ -358,19 +396,19 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		recent = append(recent, mygo.Separator())
 	}
 	more := item("file.openRecent")
-	more.Label = "More…"
+	more.Label = locales.MenuOpenRecentMore()
 	forget := item("file.clearRecent")
 	forget.Disabled = len(a.settings.Recent) == 0
 	recent = append(recent, more, mygo.Separator(), forget)
 	file := []*mygo.MenuItem{
 		item("file.new"), item("file.newWindow"), item("file.openFolder"), item("file.openFolderWindow"),
-		{Label: "Open Recent", Submenu: recent},
+		{Label: locales.MenuOpenRecent(), Submenu: recent},
 	}
 	if remoteSupported {
 		// Reconnecting and disconnecting are of a remote folder's window.
 		reconnect, disconnect, forward := item("remote.reconnect"), item("remote.disconnect"), item("remote.forwardPort")
 		reconnect.Disabled, disconnect.Disabled, forward.Disabled = a.conn == nil, a.conn == nil, a.conn == nil
-		file = append(file, &mygo.MenuItem{Label: "Remote SSH", Submenu: []*mygo.MenuItem{
+		file = append(file, &mygo.MenuItem{Label: locales.MenuRemoteSSH(), Submenu: []*mygo.MenuItem{
 			item("remote.connect"), item("remote.openFolder"), mygo.Separator(), reconnect, disconnect, mygo.Separator(), forward,
 		}})
 	}
@@ -405,46 +443,47 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 	}
 	menus := []*mygo.MenuItem{
 		appMenu,
-		{Label: "File", Submenu: file},
-		{Label: "Edit", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuFile(), Submenu: file},
+		{Label: locales.MenuEdit(), Submenu: []*mygo.MenuItem{
 			item("edit.undo"), item("edit.redo"), mygo.Separator(),
 			{Role: mygo.RoleCut}, {Role: mygo.RoleCopy}, {Role: mygo.RolePaste}, {Role: mygo.RoleSelectAll}, mygo.Separator(),
 			item("edit.find"), item("edit.replace"), item("edit.findNext"), item("edit.findPrev"), mygo.Separator(),
 			item("edit.findInFiles"), item("edit.replaceInFiles"),
 		}},
-		{Label: "Selection", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuSelection(), Submenu: []*mygo.MenuItem{
 			item("sel.line"), mygo.Separator(),
 			item("sel.comment"), item("sel.indent"), item("sel.outdent"), mygo.Separator(),
 			item("sel.moveUp"), item("sel.moveDown"), item("sel.copyUp"), item("sel.copyDown"), mygo.Separator(),
 			item("sel.lineBelow"), item("sel.lineAbove"), item("sel.deleteLine"), mygo.Separator(),
 			item("sel.sortAsc"), item("sel.sortDesc"), item("sel.camelCase"),
 		}},
-		{Label: "View", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuView(), Submenu: []*mygo.MenuItem{
 			item("view.sidebar"), checkbox("view.sidebarRight", a.settings.SidebarRight), item("view.explorer"), item("view.search"), item("view.scm"), mygo.Separator(),
 			checkbox("view.wordWrap", a.settings.WordWrap), item("view.wordWrapTab"), item("view.togglePreview"),
 			checkbox("view.vim", a.settings.Vim), checkbox("view.projectTabs", a.settings.ProjectTabs), checkbox("view.projectIcons", a.settings.ProjectIcons), mygo.Separator(),
 			item("view.splitRight"), item("view.nextColumn"), item("view.prevColumn"),
 			item("view.moveTabNext"), item("view.moveTabPrev"), mygo.Separator(),
 			item("view.terminal"), item("view.newTerminal"), item("view.terminalTab"), item("view.terminalMove"),
-			{Label: "Panel Position", Submenu: []*mygo.MenuItem{
+			{Label: locales.MenuPanelPosition(), Submenu: []*mygo.MenuItem{
 				radio("view.panelPosition.bottom", a.panelSide() == "bottom"),
 				radio("view.panelPosition.left", a.panelSide() == "left"),
 				radio("view.panelPosition.right", a.panelSide() == "right"),
 			}}, mygo.Separator(),
 			item("view.zoomIn"), item("view.zoomOut"), item("view.zoomReset"), mygo.Separator(),
-			{Label: "Theme", Submenu: []*mygo.MenuItem{
+			{Label: locales.MenuTheme(), Submenu: []*mygo.MenuItem{
 				appearance("view.appearance.system", ""), appearance("view.appearance.light", "light"), appearance("view.appearance.dark", "dark"),
 				mygo.Separator(), theme("view.theme.mayoi", ""), theme("view.theme.matrix", themeMatrix), theme("view.theme.claude", themeClaude),
 				theme("view.theme.qoder", themeQoder),
-			}}, mygo.Separator(),
+			}},
+			{Label: locales.MenuLanguage(), Submenu: languages}, mygo.Separator(),
 			{Role: mygo.RoleToggleFullScreen}, {Role: mygo.RoleToggleDevTools},
 		}},
-		{Label: "Go", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuGo(), Submenu: []*mygo.MenuItem{
 			item("go.quickOpen"), item("go.commands"), item("go.symbol"), item("go.line"), item("go.bracket"), mygo.Separator(),
 			item("go.nextTab"), item("go.prevTab"), mygo.Separator(),
 			item("go.nextProject"), item("go.prevProject"),
 		}},
-		{Label: "Git", Submenu: []*mygo.MenuItem{
+		{Label: locales.MenuGit(), Submenu: []*mygo.MenuItem{
 			item("git.commit"), item("git.commitPush"), item("git.amend"), item("git.undoCommit"), mygo.Separator(),
 			item("git.openChanges"), item("git.openAllChanges"), item("git.nextChange"), item("git.prevChange"), mygo.Separator(),
 			item("git.showChange"), item("git.revertChange"), item("git.stageChange"), mygo.Separator(),
@@ -457,7 +496,7 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		{Role: mygo.RoleWindowMenu},
 	}
 	if len(help) > 0 {
-		menus = append(menus, &mygo.MenuItem{Label: "Help", Submenu: help})
+		menus = append(menus, &mygo.MenuItem{Label: locales.MenuHelp(), Submenu: help})
 	}
 	return mygo.NewMenu(menus)
 }

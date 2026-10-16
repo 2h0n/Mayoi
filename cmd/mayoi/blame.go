@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"mayoi/internal/git"
+	"mayoi/locales"
+
+	"github.com/egoist/mygo/i18n"
 )
 
 // blameState is who last changed the caret's line of an editor, which
@@ -80,17 +83,23 @@ func ago(t, now time.Time) string {
 	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
-		return "just now"
+		return locales.AgoJustNow()
 	case d < time.Hour:
-		return plural(int(d/time.Minute), "minute") + " ago"
+		return locales.AgoMinutes(int(d / time.Minute))
 	case d < 24*time.Hour:
-		return plural(int(d/time.Hour), "hour") + " ago"
+		return locales.AgoHours(int(d / time.Hour))
 	case d < 30*24*time.Hour:
-		return plural(int(d/(24*time.Hour)), "day") + " ago"
+		return locales.AgoDays(int(d / (24 * time.Hour)))
 	case d < 365*24*time.Hour:
-		return plural(int(d/(30*24*time.Hour)), "month") + " ago"
+		return locales.AgoMonths(int(d / (30 * 24 * time.Hour)))
 	}
-	return plural(int(d/(365*24*time.Hour)), "year") + " ago"
+	return locales.AgoYears(int(d / (365 * 24 * time.Hour)))
+}
+
+// dateTime is a date and time to the minute, in the language shown, as
+// "Jan 2, 2006, 15:04" in English.
+func dateTime(t time.Time) string {
+	return i18n.FormatDate(i18n.Locale(), t, i18n.DateOptions{Skeleton: "yMMMdHm"})
 }
 
 // toggleBlame shows the blame of the caret's line, or stops.

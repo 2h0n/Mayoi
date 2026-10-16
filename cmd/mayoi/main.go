@@ -10,6 +10,7 @@ import (
 	"mayoi/internal/keymap"
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
+	"mayoi/locales"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/plugins/updater/native"
 	"github.com/egoist/mygo/ui"
 )
@@ -61,7 +63,7 @@ type mayoi struct {
 func (h *desktop) openFolder(done func(string)) {
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Parent: h.f.win, Title: "Open Folder", ButtonLabel: "Open", Directory: true, CreateDirectories: true,
+			Parent: h.f.win, Title: locales.DialogOpenFolder(), ButtonLabel: locales.DialogOpen(), Directory: true, CreateDirectories: true,
 		})
 		if err == nil && len(paths) > 0 {
 			h.a.post(func() { done(paths[0]) })
@@ -85,7 +87,7 @@ func (h *desktop) saveAs(name string, done func(string)) {
 	dir := h.a.root
 	go func() {
 		path, err := mygo.Dialog.Save(mygo.SaveDialogOptions{
-			Parent: h.f.win, Title: "Save As", DefaultPath: filepath.Join(dir, name), CreateDirectories: true,
+			Parent: h.f.win, Title: locales.DialogSaveAs(), DefaultPath: filepath.Join(dir, name), CreateDirectories: true,
 		})
 		if err == nil && path != "" {
 			h.a.post(func() { done(path) })
@@ -97,9 +99,9 @@ func (h *desktop) confirmClose(name string, done func(int)) {
 	go func() {
 		res, err := mygo.Dialog.Message(mygo.MessageOptions{
 			Parent: h.f.win, Type: mygo.MessageWarning,
-			Message: "Do you want to save the changes you made to " + name + "?",
-			Detail:  "Your changes will be lost if you don't save them.",
-			Buttons: []string{"Save", "Don't Save", "Cancel"}, DefaultButton: 0, CancelButton: 2,
+			Message: locales.SaveChangesQuestion(name),
+			Detail:  locales.SaveChangesDetail(),
+			Buttons: []string{locales.ButtonSave(), locales.ButtonDontSave(), locales.ButtonCancel()}, DefaultButton: 0, CancelButton: 2,
 		})
 		choice := 2
 		if err == nil {
@@ -144,6 +146,13 @@ func (h *desktop) setTheme(theme, appearance string) {
 	h.m.refreshMenu()
 }
 
+func (h *desktop) setLocale(tag string) {
+	mygo.App.SetLocale(tag)
+	// The language may show as it did, as English for the system's
+	// English: the menu's choice changes all the same.
+	h.m.refreshMenu()
+}
+
 func (h *desktop) showFolder(dir string) bool {
 	if w := h.m.showing(dir); w != nil && w != h {
 		w.show()
@@ -179,10 +188,9 @@ func (h *desktop) installCLI() {
 		switch {
 		case errors.Is(err, cli.ErrCanceled):
 		case err != nil:
-			h.tell(mygo.MessageWarning, "The 'mayoi' command could not be installed.", err.Error())
+			h.tell(mygo.MessageWarning, locales.CliInstallFailed(), err.Error())
 		default:
-			h.tell(mygo.MessageInfo, "The 'mayoi' command is installed in "+shortenHome(filepath.Dir(p))+".",
-				"In a terminal, mayoi . opens the folder you are in, and mayoi <file> a file.")
+			h.tell(mygo.MessageInfo, locales.CliInstalled(shortenHome(filepath.Dir(p))), locales.CliInstalledDetail())
 		}
 	}()
 }
@@ -194,11 +202,11 @@ func (h *desktop) uninstallCLI() {
 		switch {
 		case errors.Is(err, cli.ErrCanceled):
 		case err != nil:
-			h.tell(mygo.MessageWarning, "The 'mayoi' command could not be uninstalled.", err.Error())
+			h.tell(mygo.MessageWarning, locales.CliUninstallFailed(), err.Error())
 		case len(removed) == 0:
-			h.tell(mygo.MessageInfo, "The 'mayoi' command is not installed.", "")
+			h.tell(mygo.MessageInfo, locales.CliNotInstalled(), "")
 		default:
-			h.tell(mygo.MessageInfo, "The 'mayoi' command is uninstalled.", "It was in "+shortenHome(filepath.Dir(removed[0]))+".")
+			h.tell(mygo.MessageInfo, locales.CliUninstalled(), locales.CliUninstalledDetail(shortenHome(filepath.Dir(removed[0]))))
 		}
 	}()
 }
@@ -291,6 +299,12 @@ func main() {
 	mygo.App.WhenReady(func() {
 		m.s = settings.Load(settingsPath())
 		mygo.Theme.SetSource(themeSource(m.s.Theme, m.s.Appearance))
+		// The language of the settings, unless MYGO_LOCALE (mygo dev -lang)
+		// chose one for the run.
+		if os.Getenv("MYGO_LOCALE") == "" {
+			applyLocale(m.s.Locale)
+		}
+		mygo.App.OnLocaleChanged(func(string) { m.localeChanged() })
 		if stop, err := m.s.Watch(func(p settings.Prefs) { mygo.RunOnMain(func() { m.reload(p) }) }); err == nil {
 			mygo.App.OnQuit(stop)
 		}
@@ -516,6 +530,9 @@ func (m *mayoi) reload(p settings.Prefs) {
 	if p.ProjectTabs != old.ProjectTabs {
 		m.projectTabsChanged()
 	}
+	if p.Locale != old.Locale {
+		applyLocale(p.Locale)
+	}
 	for _, w := range m.wins {
 		if p.AutoSave && !old.AutoSave {
 			w.a.autoSaveAll()
@@ -541,6 +558,27 @@ func (m *mayoi) reloadKeys(km *keymap.Map, err error) {
 	}
 	front := m.wins[0]
 	front.do(func() { front.a.keysFailed(km, err) })
+}
+
+// applyLocale shows the app in the language of tag, or of the system's
+// languages for "" or a tag that names none.
+func applyLocale(tag string) {
+	if i18n.Normalize(tag) == "" {
+		tag = ""
+	}
+	mygo.App.SetLocale(tag)
+}
+
+// localeChanged says anew what the windows made once in the language they
+// showed: the menus and the command palette. The windows draw anew
+// themselves.
+func (m *mayoi) localeChanged() {
+	for _, w := range m.wins {
+		w.a.palette, w.a.quick.stale = nil, true
+		w.a.invalidate()
+	}
+	m.menuKey = ""
+	m.refreshMenu()
 }
 
 // refreshMenu builds the menus anew on the window in front, whose folder
@@ -573,7 +611,7 @@ func (m *mayoi) setMenu(a *app) {
 // dockMenu is the menu of the Dock icon: a window that shows nothing, and
 // the recent folders, each in the window in front, which comes forward.
 func (m *mayoi) dockMenu() *mygo.Menu {
-	items := []*mygo.MenuItem{{Label: "New Window", Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
+	items := []*mygo.MenuItem{{Label: locales.CmdFileNewWindow(), Click: func(_ *mygo.MenuItem, _ *mygo.Window) {
 		m.openBlankWindow()
 	}}}
 	recent := m.s.RecentExcept("")

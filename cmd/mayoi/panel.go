@@ -5,6 +5,7 @@ import (
 	"mayoi/internal/keymap"
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
+	"mayoi/locales"
 	"os"
 	"path/filepath"
 	"slices"
@@ -78,7 +79,7 @@ func (a *app) startTerminal(dir string) *session {
 	}
 	term, err := a.spawnTerminal(s, dir)
 	if err != nil {
-		a.fail("Could not start a terminal: %v", err)
+		a.fail("%s", locales.FailStartTerminal(err.Error()))
 		return nil
 	}
 	s.term = term
@@ -145,13 +146,13 @@ func (a *app) spawnTerminal(s *session, dir string) (*terminal.Terminal, error) 
 		// A program done in a project out of sight, as a build or an
 		// agent, has the rail mark the project's square.
 		OnBell: func() {
-			a.post(func() { a.alert = "Bell from " + s.title })
+			a.post(func() { a.alert = locales.BellFrom(s.title) })
 		},
 		OnNotify: func(title, body string) {
 			a.post(func() {
 				a.alert = strings.TrimSpace(title + " " + body)
 				if a.alert == "" {
-					a.alert = "Notification from " + s.title
+					a.alert = locales.NotificationFrom(s.title)
 				}
 			})
 		},
@@ -314,11 +315,11 @@ func (a *app) hidePanel() {
 // panelMenu is the menu of the panel's header: where the panel sits,
 // and its size.
 func (a *app) panelMenu(m *ui.Menu) {
-	m.Submenu("Panel Position", func(m *ui.Menu) {
+	m.Submenu(locales.MenuPanelPosition(), func(m *ui.Menu) {
 		for _, pos := range []struct{ label, id, side string }{
-			{"Bottom", "", "bottom"},
-			{"Left", "left", "left"},
-			{"Right", "right", "right"},
+			{locales.PanelBottom(), "", "bottom"},
+			{locales.PanelLeft(), "left", "left"},
+			{locales.PanelRight(), "right", "right"},
 		} {
 			if m.Item(pos.label).Checked(a.panelSide() == pos.side).Chosen() {
 				a.post(func() { a.setPanelPosition(pos.id) })
@@ -326,14 +327,14 @@ func (a *app) panelMenu(m *ui.Menu) {
 		}
 	})
 	m.Separator()
-	label := "Maximize Panel"
+	label := locales.PanelMaximize()
 	if a.panelMax {
-		label = "Restore Panel"
+		label = locales.PanelRestore()
 	}
 	if m.Item(label).Chosen() {
 		a.post(func() { a.panelMax = !a.panelMax })
 	}
-	if m.Item("Hide Panel").Chosen() {
+	if m.Item(locales.PanelHide()).Chosen() {
 		a.post(a.hidePanel)
 	}
 }
@@ -365,7 +366,7 @@ func (a *app) panel(c *ui.Context) {
 		head.Children(func() {
 			if titled {
 				ui.Column(c).Height(panelHeadH).Justify(ui.Center).Children(func() {
-					ui.Text(c, "TERMINAL").FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.text)
+					ui.Text(c, strings.ToUpper(locales.TabTerminal())).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.text)
 					ui.Box(c).Absolute().Bottom(0).Left(0).Right(0).Height(1.5).Background(p.accent)
 				})
 				ui.Box(c).Width(10)
@@ -399,38 +400,38 @@ func (a *app) panel(c *ui.Context) {
 							a.focusTerminal()
 						}
 						chip.ContextMenu(func(m *ui.Menu) {
-							if m.Item("Move to Locked Right Column").Chosen() {
+							if m.Item(locales.TermMoveLockedRight()).Chosen() {
 								a.post(func() { a.terminalToLockedRight(s) })
 							}
-							if m.Item("Move to Editor Area").Chosen() {
+							if m.Item(locales.TermMoveEditorArea()).Chosen() {
 								a.post(func() { a.terminalToColumn(s, a.column(), a.column().active+1) })
 							}
-							if m.Item("Kill Terminal").Chosen() {
+							if m.Item(locales.TermKill()).Chosen() {
 								a.post(func() { a.removeTerminal(s) })
 							}
 						})
 					}
 				})
 			})
-			if a.iconButton(c, iconPlus, a.withKey("New Terminal", "view.newTerminal"), false).Clicked() {
+			if a.iconButton(c, iconPlus, a.withKey(locales.CmdViewNewTerminal(), "view.newTerminal"), false).Clicked() {
 				a.newTerminal()
 			}
 			if s := a.panelTerm; s != nil {
-				if a.iconButton(c, iconToEditor, "Move Terminal to Editor Area", false).Clicked() {
+				if a.iconButton(c, iconToEditor, locales.TermMoveToEditor(), false).Clicked() {
 					a.post(func() { a.terminalToColumn(s, a.column(), a.column().active+1) })
 				}
-				if a.iconButton(c, iconTrash, "Kill Terminal", false).Clicked() {
+				if a.iconButton(c, iconTrash, locales.TermKill(), false).Clicked() {
 					a.post(func() { a.removeTerminal(s) })
 				}
 			}
-			icon, label := iconMaximize, "Maximize Panel"
+			icon, label := iconMaximize, locales.PanelMaximize()
 			if a.panelMax {
-				icon, label = iconMinimize, "Restore Panel"
+				icon, label = iconMinimize, locales.PanelRestore()
 			}
 			if a.iconButton(c, icon, label, false).Clicked() {
 				a.panelMax = !a.panelMax
 			}
-			if a.iconButton(c, iconX, "Hide Panel", false).Clicked() {
+			if a.iconButton(c, iconX, locales.PanelHide(), false).Clicked() {
 				a.hidePanel()
 			}
 		})
@@ -448,7 +449,7 @@ func (a *app) panel(c *ui.Context) {
 			s := a.panelTerm
 			if s == nil {
 				ui.Column(c).Fill().Center().Children(func() {
-					if ui.Button(c, "New Terminal").Clicked() {
+					if ui.Button(c, locales.CmdViewNewTerminal()).Clicked() {
 						a.newTerminal()
 					}
 				})

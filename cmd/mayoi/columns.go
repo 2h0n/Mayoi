@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -14,6 +13,7 @@ import (
 	"mayoi/internal/highlight"
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
+	"mayoi/locales"
 )
 
 // column is a column of the editor area: its tabs, and the one it shows.
@@ -227,11 +227,11 @@ func (a *app) openFileIn(col *column, at int, path string, focus bool) {
 		a.nextID++
 		d, err := readDocument(a.nextID, path, a.invalidate)
 		if errors.Is(err, errBinary) {
-			a.fail("%s is a binary file", filepath.Base(path))
+			a.fail("%s", locales.FailBinary(filepath.Base(path)))
 			return
 		}
 		if err != nil {
-			a.fail("Could not open %s: %v", filepath.Base(path), err)
+			a.fail("%s", locales.FailOpen(filepath.Base(path), err.Error()))
 			return
 		}
 		doc = d
@@ -328,7 +328,7 @@ func (a *app) openImage(col *column, at int, path string, focus bool) {
 	}
 	// A remote image says itself why it could not be read.
 	if _, err := os.Stat(path); err != nil && !remote.Is(path) {
-		a.fail("Could not open %s: %v", filepath.Base(path), err)
+		a.fail("%s", locales.FailOpen(filepath.Base(path), err.Error()))
 		return
 	}
 	v := newImageViewer(path)
@@ -346,7 +346,7 @@ func (a *app) newFile() {
 	a.nextID++
 	a.untitled++
 	doc := newDocument(a.nextID, "", "", highlight.New(nil, nil))
-	doc.title = fmt.Sprintf("Untitled-%d", a.untitled)
+	doc.title = locales.UntitledName(a.untitled)
 	a.docs = append(a.docs, doc)
 	col := a.fileColumn()
 	a.addTab(col, len(col.tabs), &colTab{ed: newEditor(doc)})

@@ -13,6 +13,7 @@ import (
 
 	"mayoi/internal/git"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 )
 
 // scmGroup is a group of the changes the source control view lists.
@@ -27,7 +28,20 @@ const (
 	groupCount
 )
 
-var groupNames = [groupCount]string{"Merge Changes", "Staged Changes", "Changes", "Untracked", "Commits"}
+// groupName names a group of the view, in the language shown.
+func groupName(group scmGroup) string {
+	switch group {
+	case groupMerge:
+		return locales.GroupMergeChanges()
+	case groupStaged:
+		return locales.GroupStagedChanges()
+	case groupChanges:
+		return locales.GroupChanges()
+	case groupUntracked:
+		return locales.GroupUntracked()
+	}
+	return locales.GroupCommits()
+}
 
 // scmRow is a row of the source control view: a group's header, or a
 // file of it.
@@ -289,12 +303,12 @@ func (a *app) scmView(c *ui.Context) {
 		if g.amend {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Padding(4, 4, 4, 8).Radius(5).Background(p.accent.Alpha(0.12)).Children(func() {
 				ui.Icon(c, iconPencil).FontSize(12).TextColor(p.accent)
-				ui.Text(c, "Amending last commit").FontSize(11.5).TextColor(p.text).Grow(1).SingleLine().Shrink(1)
-				b := ui.ButtonBase(c.Key("stop-amending")).Padding(1, 6).Radius(4).Label("Stop Amending")
+				ui.Text(c, locales.ScmAmending()).FontSize(11.5).TextColor(p.text).Grow(1).SingleLine().Shrink(1)
+				b := ui.ButtonBase(c.Key("stop-amending")).Padding(1, 6).Radius(4).Label(locales.ScmStopAmending())
 				if b.Hovered() {
 					b.Background(p.hover)
 				}
-				b.Children(func() { ui.Text(c, "Cancel").FontSize(11.5).FontWeight(500).TextColor(p.accent) })
+				b.Children(func() { ui.Text(c, locales.ButtonCancel()).FontSize(11.5).FontWeight(500).TextColor(p.accent) })
 				if b.Clicked() {
 					g.amend, g.message = false, ""
 				}
@@ -305,12 +319,12 @@ func (a *app) scmView(c *ui.Context) {
 		}
 		branch := a.branch()
 		enter := keyText("CmdOrCtrl+Enter")
-		hint := "Message (" + enter + " to commit)"
+		hint := locales.ScmMessageHint(enter)
 		if branch != "" {
-			hint = fmt.Sprintf("Message (%s to commit on %s)", enter, branch)
+			hint = locales.ScmMessageHintOn(enter, branch)
 		}
 		box := a.textKeys(ui.TextArea(c.Key("commit-message"), &g.message)).Placeholder(hint).FontSize(12.5).
-			MinHeight(60).MaxHeight(160).Label("Commit Message")
+			MinHeight(60).MaxHeight(160).Label(locales.ScmCommitMessage())
 		if box.Shortcut(ui.Cmd, ui.KeyEnter) {
 			a.commit(false)
 		}
@@ -345,7 +359,7 @@ func (a *app) scmView(c *ui.Context) {
 		case r.commit != nil:
 			return r.commit.Subject
 		case r.more:
-			return "Show More Commits"
+			return locales.ScmShowMoreCommits()
 		}
 		return filepath.Base(rows[i].e.Path)
 	}
@@ -453,9 +467,9 @@ func (a *app) scmOpBanner(c *ui.Context, op git.Op) {
 	p := a.pal
 	g := &a.git
 	conflicts := len(a.groupEntries()[groupMerge])
-	label := op.Title() + " in progress"
+	label := locales.ScmOpInProgress(opTitle(op))
 	if conflicts > 0 {
-		label += " · " + plural(conflicts, "conflict")
+		label += " · " + locales.ScmConflicts(conflicts)
 	}
 	tint := p.accent
 	if conflicts > 0 {
@@ -472,10 +486,10 @@ func (a *app) scmOpBanner(c *ui.Context, op git.Op) {
 			b.Children(func() { ui.Text(c, text).FontSize(11.5).FontWeight(500).TextColor(p.accent) })
 			return b.Clicked()
 		}
-		if button("op-abort", "Abort", "Abort "+op.Title()+"…") {
+		if button("op-abort", locales.ButtonAbort(), locales.ScmAbortOp(opTitle(op))) {
 			a.post(a.abortOp)
 		}
-		if button("op-continue", "Continue", "Continue "+op.Title()) {
+		if button("op-continue", locales.ScmContinue(), locales.ScmContinueOp(opTitle(op))) {
 			a.post(a.continueOp)
 		}
 	})
@@ -489,7 +503,7 @@ func (a *app) scmActivity(c *ui.Context) {
 		ui.Box(c.Key("scm-activity")).Height(2)
 		return
 	}
-	ui.Progress(c.Key("scm-activity"), -1).Height(2).Radius(0).Label("Running Git")
+	ui.Progress(c.Key("scm-activity"), -1).Height(2).Radius(0).Label(locales.ScmRunningGit())
 }
 
 // subjectLimit is how long the first line of a commit message should be,
@@ -509,9 +523,9 @@ func (a *app) subjectLength(c *ui.Context) {
 	if n <= subjectHint {
 		return
 	}
-	col, note := p.faint, "Summary"
+	col, note := p.faint, locales.ScmSummary()
 	if n > subjectLimit {
-		col, note = p.modified, "Summary is long"
+		col, note = p.modified, locales.ScmSummaryLong()
 	}
 	ui.Row(c).Margin(-4, 2, 0, 2).Children(func() {
 		ui.Text(c, note).FontSize(11).TextColor(col).Grow(1).SingleLine()
@@ -527,22 +541,22 @@ func (a *app) commitButton(c *ui.Context) {
 	groups := a.groupEntries()
 	staged := len(groups[groupStaged])
 	others := len(groups[groupChanges]) + len(groups[groupUntracked])
-	label := "Commit"
+	label := locales.CmdGitCommit()
 	switch {
 	case g.amend:
-		label = "Amend Commit"
+		label = locales.ScmAmendCommit()
 	case staged == 0 && others > 0:
-		label = "Commit All"
+		label = locales.ScmCommitAll()
 	}
-	tip := "Commit the staged changes"
+	tip := locales.ScmCommitTip()
 	switch {
 	case g.amend:
-		tip = "Amend the last commit with the staged changes"
+		tip = locales.ScmAmendTip()
 	case staged == 0 && others > 0:
-		tip = "Stage every change and commit it"
+		tip = locales.ScmCommitAllTip()
 	}
 	tip += " (" + keyText("CmdOrCtrl+Enter") + ")"
-	committing := g.busy == "Committing…"
+	committing := g.busy == locales.BusyCommitting()
 	idle := g.busy == "" && (g.amend || staged+others > 0)
 	// In the accent color while it commits, or can; gray while there is
 	// nothing to commit or another command runs, its menu still there.
@@ -565,7 +579,7 @@ func (a *app) commitButton(c *ui.Context) {
 		main.Children(func() {
 			if committing {
 				ui.Spinner(c).Size(12, 12)
-				ui.Text(c, "Committing…").FontSize(12.5).FontWeight(600).TextColor(fg).SingleLine()
+				ui.Text(c, locales.BusyCommitting()).FontSize(12.5).FontWeight(600).TextColor(fg).SingleLine()
 				return
 			}
 			ui.Icon(c, iconCheck).FontSize(14).TextColor(fg)
@@ -576,7 +590,7 @@ func (a *app) commitButton(c *ui.Context) {
 		}
 		ui.Box(c).Width(1).Height(28).Background(fg.Alpha(0.28).Over(bg))
 		more := ui.ButtonBase(c.Key("commit-more")).Width(28).Height(28).Radius(0, 6, 6, 0).Justify(ui.Center).AlignItems(ui.Center).
-			Background(bg).Label("More Commit Actions").Tooltip("More Commit Actions")
+			Background(bg).Label(locales.ScmMoreCommitActions()).Tooltip(locales.ScmMoreCommitActions())
 		switch {
 		case more.Pressed():
 			more.Background(pressed)
@@ -594,14 +608,14 @@ func (a *app) commitMenu(m *ui.Menu) {
 	st := g.status
 	busy := g.busy != ""
 	none := st == nil || len(st.Entries) == 0 && !g.amend
-	if m.Item("Commit").Shortcut(ui.Cmd, ui.KeyEnter).Disabled(busy || none).Chosen() {
+	if m.Item(locales.CmdGitCommit()).Shortcut(ui.Cmd, ui.KeyEnter).Disabled(busy || none).Chosen() {
 		a.post(func() { a.commit(false) })
 	}
-	if m.Item("Commit & Push").Disabled(busy || none).Chosen() {
+	if m.Item(locales.CmdGitCommitPush()).Disabled(busy || none).Chosen() {
 		a.post(func() { a.commit(true) })
 	}
 	m.Separator()
-	if m.Item("Amend Last Commit").Checked(g.amend).Disabled(busy || st == nil || st.Head == "").Chosen() {
+	if m.Item(locales.CmdGitAmend()).Checked(g.amend).Disabled(busy || st == nil || st.Head == "").Chosen() {
 		a.post(func() {
 			if g.amend {
 				g.amend, g.message = false, ""
@@ -610,7 +624,7 @@ func (a *app) commitMenu(m *ui.Menu) {
 			a.startAmend()
 		})
 	}
-	if m.Item("Undo Last Commit").Disabled(busy || st == nil || st.Head == "").Chosen() {
+	if m.Item(locales.CmdGitUndoCommit()).Disabled(busy || st == nil || st.Head == "").Chosen() {
 		a.post(a.undoCommit)
 	}
 }
@@ -623,11 +637,11 @@ func (a *app) scmNoRepo(c *ui.Context) {
 		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconBranch).FontSize(20).TextColor(p.muted)
 		})
-		ui.Text(c, "No Git Repository").FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
-		ui.Text(c, "The folder is not in a Git repository. Make it one to track and commit its changes.").
+		ui.Text(c, locales.ScmNoRepo()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, locales.ScmNoRepoDetail()).
 			FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
 		ui.Box(c).Height(4)
-		if ui.PrimaryButton(c, "Initialize Repository").FillWidth().Clicked() {
+		if ui.PrimaryButton(c, locales.ScmInitRepo()).FillWidth().Clicked() {
 			a.initRepo()
 		}
 	})
@@ -644,23 +658,22 @@ func (a *app) scmClean(c *ui.Context) {
 		ui.Box(c).Size(44, 44).Radius(22).Background(p.added.Alpha(0.13)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconCheck).FontSize(20).TextColor(p.added)
 		})
-		ui.Text(c, "No Changes").FontSize(13).FontWeight(600).TextColor(p.text).Margin(6, 0, 0, 0)
-		note := "The working tree is clean."
+		ui.Text(c, locales.DiffNoChanges()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(6, 0, 0, 0)
+		note := locales.ScmTreeClean()
 		switch {
 		case st.Branch == "":
 		case st.Upstream == "" && len(g.remotes) == 0:
-			note = fmt.Sprintf("%s is clean.", st.Branch)
+			note = locales.ScmBranchClean(st.Branch)
 		case st.Upstream == "":
-			note = fmt.Sprintf("%s is clean, and not yet published.", st.Branch)
+			note = locales.ScmBranchUnpublished(st.Branch)
 		case st.Ahead > 0 && st.Behind > 0:
-			note = fmt.Sprintf("%s is clean, %s ahead of %s and %s behind.", st.Branch,
-				plural(st.Ahead, "commit"), st.Upstream, plural(st.Behind, "commit"))
+			note = locales.ScmBranchAheadBehind(st.Branch, st.Ahead, st.Upstream, st.Behind)
 		case st.Ahead > 0:
-			note = fmt.Sprintf("%s is clean, %s ahead of %s.", st.Branch, plural(st.Ahead, "commit"), st.Upstream)
+			note = locales.ScmBranchAhead(st.Branch, st.Ahead, st.Upstream)
 		case st.Behind > 0:
-			note = fmt.Sprintf("%s is clean, %s behind %s.", st.Branch, plural(st.Behind, "commit"), st.Upstream)
+			note = locales.ScmBranchBehind(st.Branch, st.Behind, st.Upstream)
 		default:
-			note = fmt.Sprintf("%s is clean and up to date with %s.", st.Branch, st.Upstream)
+			note = locales.ScmBranchUpToDate(st.Branch, st.Upstream)
 		}
 		ui.Text(c, note).FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
 		busy := g.busy != ""
@@ -683,15 +696,15 @@ func (a *app) scmClean(c *ui.Context) {
 		switch {
 		case st.Branch == "":
 		case st.Upstream == "" && len(g.remotes) > 0:
-			button(iconPush, "Publish Branch", true, a.push)
+			button(iconPush, locales.ScmPublishBranch(), true, a.push)
 		case st.Upstream == "":
 		case st.Behind > 0:
-			button(iconPull, fmt.Sprintf("Pull %s", plural(st.Behind, "Commit")), true, a.pull)
+			button(iconPull, locales.ScmPullCommits(st.Behind), true, a.pull)
 			if st.Ahead > 0 {
-				button(iconPush, fmt.Sprintf("Push %s", plural(st.Ahead, "Commit")), false, a.push)
+				button(iconPush, locales.ScmPushCommits(st.Ahead), false, a.push)
 			}
 		case st.Ahead > 0:
-			button(iconPush, fmt.Sprintf("Push %s", plural(st.Ahead, "Commit")), true, a.push)
+			button(iconPush, locales.ScmPushCommits(st.Ahead), true, a.push)
 		}
 	})
 }
@@ -708,40 +721,40 @@ func (a *app) scmHeader(c *ui.Context, r scmRow, action *func()) {
 			icon = iconChevronRight
 		}
 		ui.Icon(c, icon).FontSize(12).TextColor(p.muted)
-		ui.Text(c, strings.ToUpper(groupNames[r.group])).FontSize(11).FontWeight(600).LetterSpacing(0.4).
+		ui.Text(c, strings.ToUpper(groupName(r.group))).FontSize(11).FontWeight(600).LetterSpacing(0.4).
 			TextColor(p.muted).SingleLine().Shrink(1)
 		ui.Spacer(c)
 		if hovered {
 			paths := a.groupPaths(r.group)
 			switch r.group {
 			case groupStaged:
-				if a.smallButton(c, iconFiles, "Open Staged Changes") {
+				if a.smallButton(c, iconFiles, locales.ScmOpenStaged()) {
 					*action = func() { a.showChanges(diffTarget{base: diffStaged}, true) }
 				}
-				if a.smallButton(c, iconMinus, "Unstage All Changes") {
+				if a.smallButton(c, iconMinus, locales.ScmUnstageAll()) {
 					*action = func() { a.unstage(paths...) }
 				}
 			case groupChanges, groupUntracked:
-				if a.smallButton(c, iconFiles, "Open Changes") {
+				if a.smallButton(c, iconFiles, locales.CmdGitOpenChanges()) {
 					*action = func() { a.showChanges(diffTarget{base: diffIndex}, true) }
 				}
-				if a.smallButton(c, iconUndo, "Discard All Changes…") {
+				if a.smallButton(c, iconUndo, locales.ScmDiscardAll()) {
 					*action = func() { a.discard(a.groupEntries()[r.group]...) }
 				}
-				if a.smallButton(c, iconPlus, "Stage All Changes") {
+				if a.smallButton(c, iconPlus, locales.CmdGitStageAll()) {
 					*action = func() { a.stage(paths...) }
 				}
 			case groupMerge:
-				if a.smallButton(c, iconPlus, "Stage All Merge Changes") {
+				if a.smallButton(c, iconPlus, locales.ScmStageAllMerge()) {
 					*action = func() { a.stage(paths...) }
 				}
 			}
 		}
 		// The toggle of every branch stays, in the accent, while it is on.
 		if all := a.settings.ScmAllBranches; r.group == groupCommits && (hovered || all) {
-			tip := "Show All Branches"
+			tip := locales.ScmShowAllBranches()
 			if all {
-				tip = "Show Current Branch Only"
+				tip = locales.ScmShowCurrentBranch()
 			}
 			b := ui.ButtonBase(c.Key("commits:all")).Size(20, 20).Radius(4).Justify(ui.Center).AlignItems(ui.Center).
 				Label(tip).Tooltip(tip)
@@ -809,14 +822,14 @@ func (a *app) scmFile(c *ui.Context, r scmRow, action *func()) {
 			}
 			switch r.group {
 			case groupStaged:
-				if a.smallButton(c, iconMinus, "Unstage Changes") {
+				if a.smallButton(c, iconMinus, locales.UnstageChanges()) {
 					*action = func() { a.toggleStaged(r) }
 				}
 			default:
-				if r.group != groupMerge && !e.Submodule() && a.smallButton(c, iconUndo, "Discard Changes…") {
+				if r.group != groupMerge && !e.Submodule() && a.smallButton(c, iconUndo, locales.DiscardChangesEllipsis()) {
 					*action = func() { a.discardChosen(r) }
 				}
-				if a.smallButton(c, iconPlus, "Stage Changes") {
+				if a.smallButton(c, iconPlus, locales.StageChanges()) {
 					*action = func() { a.toggleStaged(r) }
 				}
 			}
@@ -893,10 +906,10 @@ func (a *app) scmCommit(c *ui.Context, i int, r scmRow, action *func()) {
 	badges := refBadges(cm.Refs)
 	tip := fmt.Sprintf("%s\n%s · %s · %s", cm.Subject, cm.Author, ago(cm.Time, time.Now()), cm.Short())
 	if unpushed {
-		tip += " · not pushed"
+		tip += locales.ScmNotPushed()
 	}
 	if len(cm.Parents) > 1 {
-		tip += " · merge"
+		tip += locales.ScmMerge()
 	}
 	if len(badges) > 0 {
 		names := make([]string, len(badges))
@@ -1175,50 +1188,50 @@ func (a *app) scmCommitMenu(m *ui.Menu, cm *git.Commit, head bool, action *func(
 	moving := busy || op != ""
 	branch := a.branch()
 	in := a.inHead(cm.Hash)
-	if m.Item("Open Changes").Chosen() {
+	if m.Item(locales.CmdGitOpenChanges()).Chosen() {
 		*action = func() { a.showCommit(*cm, true) }
 	}
 	m.Separator()
-	if m.Item("Check Out…").Disabled(moving || head).Chosen() {
+	if m.Item(locales.ScmCheckOutEllipsis()).Disabled(moving || head).Chosen() {
 		*action = func() { a.checkOutCommit(*cm) }
 	}
-	if m.Item("Merge into " + branch + "…").Disabled(moving || in).Chosen() {
+	if m.Item(locales.ScmMergeInto(branch)).Disabled(moving || in).Chosen() {
 		*action = func() { a.mergeCommit(*cm) }
 	}
-	if m.Item("Rebase " + branch + " onto This Commit…").Disabled(moving || in).Chosen() {
+	if m.Item(locales.ScmRebaseOnto(branch)).Disabled(moving || in).Chosen() {
 		*action = func() { a.rebaseOnto(*cm) }
 	}
 	m.Separator()
-	if m.Item("Create Tag Here…").Disabled(busy).Chosen() {
+	if m.Item(locales.ScmCreateTagHere()).Disabled(busy).Chosen() {
 		*action = func() { a.askRefAt(*cm, true) }
 	}
-	if m.Item("Create Branch Here…").Disabled(busy).Chosen() {
+	if m.Item(locales.ScmCreateBranchHere()).Disabled(busy).Chosen() {
 		*action = func() { a.askRefAt(*cm, false) }
 	}
 	m.Separator()
-	if m.Item("Reset " + branch + " to This Commit…").Disabled(moving || head).Chosen() {
+	if m.Item(locales.ScmResetTo(branch)).Disabled(moving || head).Chosen() {
 		*action = func() { a.resetTo(*cm) }
 	}
-	if m.Item("Revert Commit…").Disabled(moving).Chosen() {
+	if m.Item(locales.ScmRevertCommit()).Disabled(moving).Chosen() {
 		*action = func() { a.revertCommit(*cm) }
 	}
-	if m.Item("Cherry-Pick Commit").Disabled(moving || in).Chosen() {
+	if m.Item(locales.ScmCherryPickCommit()).Disabled(moving || in).Chosen() {
 		*action = func() { a.cherryPick(*cm) }
 	}
 	if op != "" {
 		m.Separator()
-		if m.Item("Continue " + op.Title()).Disabled(busy).Chosen() {
+		if m.Item(locales.ScmContinueOp(opTitle(op))).Disabled(busy).Chosen() {
 			*action = a.continueOp
 		}
-		if m.Item("Abort " + op.Title() + "…").Disabled(busy).Chosen() {
+		if m.Item(locales.ScmAbortOp(opTitle(op))).Disabled(busy).Chosen() {
 			*action = a.abortOp
 		}
 	}
 	m.Separator()
-	if m.Item("Copy Commit Hash").Chosen() {
+	if m.Item(locales.CopyCommitHash()).Chosen() {
 		a.services.WriteClipboard(cm.Hash)
 	}
-	if m.Item("Copy Commit Message").Chosen() {
+	if m.Item(locales.ScmCopyCommitMessage()).Chosen() {
 		msg := cm.Subject
 		if cm.Body != "" {
 			msg += "\n\n" + cm.Body
@@ -1230,13 +1243,13 @@ func (a *app) scmCommitMenu(m *ui.Menu, cm *git.Commit, head bool, action *func(
 			continue
 		}
 		name := r.Name
-		if m.Item(fmt.Sprintf("Copy “%s”", name)).Chosen() {
+		if m.Item(locales.ScmCopyQuoted(name)).Chosen() {
 			a.services.WriteClipboard(name)
 		}
 	}
 	if head {
 		m.Separator()
-		if m.Item("Undo Last Commit").Disabled(moving).Chosen() {
+		if m.Item(locales.CmdGitUndoCommit()).Disabled(moving).Chosen() {
 			*action = a.undoCommit
 		}
 	}
@@ -1260,7 +1273,7 @@ func (a *app) scmMore(c *ui.Context, action *func()) {
 		if hovered {
 			col = p.accent
 		}
-		ui.Text(c, "Show More Commits").FontSize(12).TextColor(col)
+		ui.Text(c, locales.ScmShowMoreCommits()).FontSize(12).TextColor(col)
 	})
 	if clicked {
 		*action = func() { a.git.historyN = max(a.git.historyN, historyPage) + historyPage }
@@ -1332,18 +1345,18 @@ func (a *app) scmFolder(c *ui.Context, r scmRow, action *func()) {
 		}
 		switch r.group {
 		case groupStaged:
-			if a.smallButton(c, iconMinus, "Unstage Folder") {
+			if a.smallButton(c, iconMinus, locales.ScmUnstageFolder()) {
 				*action = func() { a.unstage(paths...) }
 			}
 		case groupChanges, groupUntracked:
-			if a.smallButton(c, iconUndo, "Discard Folder Changes…") {
+			if a.smallButton(c, iconUndo, locales.ScmDiscardFolder()) {
 				*action = func() { a.discard(es...) }
 			}
-			if a.smallButton(c, iconPlus, "Stage Folder") {
+			if a.smallButton(c, iconPlus, locales.ScmStageFolder()) {
 				*action = func() { a.stage(paths...) }
 			}
 		case groupMerge:
-			if a.smallButton(c, iconPlus, "Stage Folder") {
+			if a.smallButton(c, iconPlus, locales.ScmStageFolder()) {
 				*action = func() { a.stage(paths...) }
 			}
 		}
@@ -1356,7 +1369,7 @@ func (a *app) scmFolder(c *ui.Context, r scmRow, action *func()) {
 // scmFileMenu is the menu of a changed file's row.
 func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 	e := r.e
-	if m.Item("Open Changes").Chosen() {
+	if m.Item(locales.CmdGitOpenChanges()).Chosen() {
 		*action = func() { a.openChange(r, true) }
 	}
 	if m.Item(openLabel(e)).Disabled(e.Letter() == 'D' && r.group != groupStaged).Chosen() {
@@ -1364,22 +1377,22 @@ func (a *app) scmFileMenu(m *ui.Menu, r scmRow, action *func()) {
 	}
 	m.Separator()
 	if r.group == groupStaged {
-		if m.Item("Unstage Changes").Chosen() {
+		if m.Item(locales.UnstageChanges()).Chosen() {
 			*action = func() { a.toggleStaged(r) }
 		}
 	} else {
-		if m.Item("Stage Changes").Chosen() {
+		if m.Item(locales.StageChanges()).Chosen() {
 			*action = func() { a.toggleStaged(r) }
 		}
-		if r.group != groupMerge && !e.Submodule() && m.Item("Discard Changes…").Chosen() {
+		if r.group != groupMerge && !e.Submodule() && m.Item(locales.DiscardChangesEllipsis()).Chosen() {
 			*action = func() { a.discardChosen(r) }
 		}
 	}
 	m.Separator()
-	if m.Item("Reveal in Explorer").Chosen() {
+	if m.Item(locales.ScmRevealInExplorer()).Chosen() {
 		*action = func() { a.showExplorer(); a.revealInTree(e.Path) }
 	}
-	if m.Item("Copy Path").Chosen() {
+	if m.Item(locales.CopyPath()).Chosen() {
 		a.services.WriteClipboard(e.Path)
 	}
 }
@@ -1391,61 +1404,61 @@ func (a *app) scmTitleActions(c *ui.Context) {
 	if a.git.repo == nil {
 		return
 	}
-	a.iconButton(c.Key("scm:more"), iconMore, "More Actions", false).Menu(a.scmMenu)
+	a.iconButton(c.Key("scm:more"), iconMore, locales.ScmMoreActions(), false).Menu(a.scmMenu)
 }
 
 // scmMenu is the menu of the view's actions.
 func (a *app) scmMenu(m *ui.Menu) {
 	g := &a.git
 	st := g.status
-	if m.Item("Commit").Disabled(g.busy != "").Chosen() {
+	if m.Item(locales.CmdGitCommit()).Disabled(g.busy != "").Chosen() {
 		a.post(func() { a.commit(false) })
 	}
-	if m.Item("Commit & Push").Disabled(g.busy != "").Chosen() {
+	if m.Item(locales.CmdGitCommitPush()).Disabled(g.busy != "").Chosen() {
 		a.post(func() { a.commit(true) })
 	}
-	if m.Item("Amend Last Commit").Disabled(st == nil || st.Head == "").Chosen() {
+	if m.Item(locales.CmdGitAmend()).Disabled(st == nil || st.Head == "").Chosen() {
 		a.post(a.startAmend)
 	}
-	if m.Item("Undo Last Commit").Disabled(g.busy != "" || st == nil || st.Head == "").Chosen() {
+	if m.Item(locales.CmdGitUndoCommit()).Disabled(g.busy != "" || st == nil || st.Head == "").Chosen() {
 		a.post(a.undoCommit)
 	}
 	m.Separator()
 	groups := a.groupEntries()
-	if m.Item("Open All Changes").Disabled(len(groups[groupStaged])+len(groups[groupChanges])+len(groups[groupUntracked]) == 0).Chosen() {
+	if m.Item(locales.CmdGitOpenAllChanges()).Disabled(len(groups[groupStaged])+len(groups[groupChanges])+len(groups[groupUntracked]) == 0).Chosen() {
 		a.post(func() { a.openChangesTab(true) })
 	}
 	m.Separator()
-	if m.Item("Stage All Changes").Disabled(len(groups[groupChanges])+len(groups[groupUntracked])+len(groups[groupMerge]) == 0).Chosen() {
+	if m.Item(locales.CmdGitStageAll()).Disabled(len(groups[groupChanges])+len(groups[groupUntracked])+len(groups[groupMerge]) == 0).Chosen() {
 		a.post(a.stageAll)
 	}
-	if m.Item("Unstage All Changes").Disabled(len(groups[groupStaged]) == 0).Chosen() {
+	if m.Item(locales.ScmUnstageAll()).Disabled(len(groups[groupStaged]) == 0).Chosen() {
 		a.post(func() { a.unstage(a.groupPaths(groupStaged)...) })
 	}
-	if m.Item("Discard All Changes…").Disabled(len(groups[groupChanges])+len(groups[groupUntracked]) == 0).Chosen() {
+	if m.Item(locales.ScmDiscardAll()).Disabled(len(groups[groupChanges])+len(groups[groupUntracked]) == 0).Chosen() {
 		a.post(func() { a.discard(append(groups[groupChanges], groups[groupUntracked]...)...) })
 	}
 	m.Separator()
-	if m.Item("Fetch").Disabled(g.busy != "").Chosen() {
+	if m.Item(locales.CmdGitFetch()).Disabled(g.busy != "").Chosen() {
 		a.post(a.fetch)
 	}
-	if m.Item("Pull").Disabled(g.busy != "").Chosen() {
+	if m.Item(locales.CmdGitPull()).Disabled(g.busy != "").Chosen() {
 		a.post(a.pull)
 	}
-	if m.Item("Push").Disabled(g.busy != "").Chosen() {
+	if m.Item(locales.CmdGitPush()).Disabled(g.busy != "").Chosen() {
 		a.post(a.push)
 	}
 	m.Separator()
-	if m.Item("View as Tree").Checked(a.settings.ScmTree).Chosen() {
+	if m.Item(locales.ScmViewAsTree()).Checked(a.settings.ScmTree).Chosen() {
 		a.post(func() {
 			a.settings.ScmTree = !a.settings.ScmTree
 			a.settings.Changed()
 		})
 	}
-	if m.Item("Show All Branches").Checked(a.settings.ScmAllBranches).Chosen() {
+	if m.Item(locales.ScmShowAllBranches()).Checked(a.settings.ScmAllBranches).Chosen() {
 		a.post(a.toggleAllBranches)
 	}
-	if m.Item("Refresh").Chosen() {
+	if m.Item(locales.Refresh()).Chosen() {
 		a.post(func() {
 			a.git.refsGen++
 			a.gitChanged()
@@ -1514,9 +1527,9 @@ func (a *app) openChange(r scmRow, focus bool) {
 // as a folder.
 func openLabel(e git.Entry) string {
 	if e.Submodule() {
-		return "Open Folder"
+		return locales.OpenFolder()
 	}
-	return "Open File"
+	return locales.OpenFile()
 }
 
 // entryIcon is the icon of a changed file, or of a submodule.
@@ -1620,21 +1633,21 @@ func (a *app) discard(es ...git.Entry) {
 			tracked = append(tracked, e.Path)
 		}
 	}
-	title := fmt.Sprintf("Discard the changes of %d files?", len(es))
+	title := locales.DiscardFilesQuestion(len(es))
 	if len(es) == 1 {
-		title = fmt.Sprintf("Discard the changes of %s?", filepath.Base(es[0].Path))
+		title = locales.DiscardFileQuestion(filepath.Base(es[0].Path))
 		if es[0].Untracked() {
-			title = fmt.Sprintf("Move %s to %s?", filepath.Base(es[0].Path), trashName())
+			title = locales.MoveToTrashQuestion(filepath.Base(es[0].Path), trashName())
 		}
 	}
-	msg := "The changes cannot be undone."
+	msg := locales.CannotBeUndone()
 	if len(untracked) > 0 {
-		msg = "The changes cannot be undone. Files Git does not track go to " + trashName() + "."
+		msg = locales.UntrackedGoTo(trashName())
 		if a.conn != nil {
-			msg = "The changes cannot be undone. Files Git does not track are deleted: a remote folder has no trash."
+			msg = locales.UntrackedDeleted()
 		}
 	}
-	a.confirm = &confirm{title: title, message: msg, ok: "Discard", danger: true, run: func() {
+	a.confirm = &confirm{title: title, message: msg, ok: locales.ButtonDiscard(), danger: true, run: func() {
 		if a.conn != nil && len(untracked) > 0 {
 			// On the host, in the background.
 			gone := slices.Clone(untracked)
@@ -1653,7 +1666,7 @@ func (a *app) discard(es ...git.Entry) {
 		}
 		for _, p := range untracked {
 			if err := a.host.trash(p); err != nil {
-				a.fail("Could not move %s to %s: %v", filepath.Base(p), trashName(), err)
+				a.fail("%s", locales.FailMoveTo(filepath.Base(p), trashName(), err.Error()))
 			}
 		}
 		if a.tree != nil && len(untracked) > 0 {
@@ -1707,9 +1720,9 @@ func (a *app) undoCommitOf(hash string) {
 		return
 	}
 	var msg string
-	a.gitDo("Undoing the last commit…", func(r *git.Repo) error {
+	a.gitDo(locales.BusyUndoingCommit(), func(r *git.Repo) error {
 		if hash != "" && r.Head() != hash {
-			return errors.New("a commit has been made since, so this one is no longer the last to undo")
+			return errors.New(locales.ErrCommitSince())
 		}
 		msg = r.LastMessage()
 		return r.UndoCommit()
@@ -1731,7 +1744,7 @@ func (a *app) commit(push bool) {
 	}
 	msg := strings.TrimSpace(g.message)
 	if msg == "" {
-		a.fail("Write a commit message first.")
+		a.fail("%s", locales.WriteMessageFirst())
 		return
 	}
 	for _, d := range a.docs {
@@ -1742,7 +1755,7 @@ func (a *app) commit(push bool) {
 	amend := g.amend
 	run := func(stageAll bool) {
 		var made string // the commit made
-		a.gitDo("Committing…", func(r *git.Repo) error {
+		a.gitDo(locales.BusyCommitting(), func(r *git.Repo) error {
 			if stageAll {
 				if err := r.Stage(r.Root); err != nil {
 					return err
@@ -1759,14 +1772,14 @@ func (a *app) commit(push bool) {
 			case push:
 				a.push()
 			case amend:
-				a.tell(note{message: "Amended the last commit"})
+				a.tell(note{message: locales.AmendedLastCommit()})
 			default:
 				subject, _, _ := strings.Cut(msg, "\n")
-				where := ""
+				said := locales.Committed(ellipsize(subject, 48))
 				if b := a.branch(); b != "" {
-					where = " to " + b
+					said = locales.CommittedTo(ellipsize(subject, 48), b)
 				}
-				a.tell(note{message: fmt.Sprintf("Committed “%s”%s", ellipsize(subject, 48), where), label: "Undo",
+				a.tell(note{message: said, label: locales.ButtonUndo(),
 					action: func() { a.undoCommitOf(made) }})
 			}
 		})
@@ -1776,15 +1789,15 @@ func (a *app) commit(push bool) {
 	case amend || len(groups[groupStaged]) > 0:
 		run(false)
 	case len(groups[groupMerge]) > 0:
-		a.fail("Resolve the merge conflicts and stage the files first.")
+		a.fail("%s", locales.ResolveMergeFirst())
 	case g.status != nil && (g.status.Op == git.OpMerge || g.status.Op == git.OpRevert || g.status.Op == git.OpCherryPick) &&
 		len(groups[groupChanges])+len(groups[groupUntracked]) == 0:
 		run(false) // ends the merge, though its changes are all HEAD's
 	case len(groups[groupChanges])+len(groups[groupUntracked]) > 0:
-		a.confirm = &confirm{title: "Stage all changes and commit them?", ok: "Stage All & Commit",
-			message: "There are no staged changes to commit.", run: func() { run(true) }}
+		a.confirm = &confirm{title: locales.StageAllQuestion(), ok: locales.StageAllCommit(),
+			message: locales.NoStagedChanges(), run: func() { run(true) }}
 	default:
-		a.fail("There are no changes to commit.")
+		a.fail("%s", locales.NoChangesToCommit())
 	}
 }
 
@@ -1848,10 +1861,10 @@ func (a *app) scmBranchRow(c *ui.Context) {
 	ui.Row(c).Height(30).Padding(0, 8, 0, 8).Gap(2).AlignItems(ui.Center).Children(func() {
 		branch := a.branch()
 		if branch == "" {
-			branch = "No Branch"
+			branch = locales.NoBranch()
 		}
 		b := ui.ButtonBase(c.Key("scm-branch")).Height(24).Padding(0, 6).Gap(5).Radius(5).AlignItems(ui.Center).
-			Shrink(1).Label("Branch " + branch).Tooltip("Switch Branch…").Disabled(a.git.busy != "")
+			Shrink(1).Label(locales.BranchLabel(branch)).Tooltip(locales.CmdGitSwitchBranch()).Disabled(a.git.busy != "")
 		col := p.text
 		if b.Hovered() || b.Pressed() {
 			b.Background(p.hover)
@@ -1879,11 +1892,11 @@ func (a *app) scmActions(c *ui.Context) {
 	if len(g.remotes) == 0 {
 		return
 	}
-	if a.syncButton(c, "fetch", iconFetch, "Fetch", 0).Disabled(busy).Clicked() {
+	if a.syncButton(c, "fetch", iconFetch, locales.CmdGitFetch(), 0).Disabled(busy).Clicked() {
 		a.fetch()
 	}
 	if st != nil && st.Branch != "" && st.Upstream == "" {
-		if a.syncButton(c, "publish", iconPush, "Publish Branch", 0).Disabled(busy).Clicked() {
+		if a.syncButton(c, "publish", iconPush, locales.ScmPublishBranch(), 0).Disabled(busy).Clicked() {
 			a.push()
 		}
 		return
@@ -1892,12 +1905,12 @@ func (a *app) scmActions(c *ui.Context) {
 	if st != nil {
 		behind, ahead = st.Behind, st.Ahead
 	}
-	pull, push := "Pull", "Push"
+	pull, push := locales.CmdGitPull(), locales.CmdGitPush()
 	if behind > 0 {
-		pull = fmt.Sprintf("Pull %s", plural(behind, "commit"))
+		pull = locales.ScmPullCount(behind)
 	}
 	if ahead > 0 {
-		push = fmt.Sprintf("Push %s", plural(ahead, "commit"))
+		push = locales.ScmPushCount(ahead)
 	}
 	if a.syncButton(c, "pull", iconPull, pull, behind).Disabled(busy).Clicked() {
 		a.pull()

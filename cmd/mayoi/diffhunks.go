@@ -11,6 +11,7 @@ import (
 	"mayoi/internal/git"
 	"mayoi/internal/linediff"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 )
 
 // hunkAction is what a button of a run of changes in a diff does to them.
@@ -100,19 +101,19 @@ func (a *app) hunkButtons(c *ui.Context, v *diffView, i int, right, contentW, y 
 		return ui.Rect{}
 	}
 	type button struct {
-		icon  *ui.SVG
-		label string
-		act   hunkAction
+		icon             *ui.SVG
+		label, name, tip string
+		act              hunkAction
 	}
 	var bs []button
 	for _, act := range acts {
 		switch act {
 		case hunkStage:
-			bs = append(bs, button{iconPlus, "Stage", act})
+			bs = append(bs, button{iconPlus, locales.HunkStage(), locales.HunkStageLabel(), locales.HunkStageTip(), act})
 		case hunkUnstage:
-			bs = append(bs, button{iconMinus, "Unstage", act})
+			bs = append(bs, button{iconMinus, locales.HunkUnstage(), locales.HunkUnstageLabel(), locales.HunkUnstageTip(), act})
 		case hunkDiscard:
-			bs = append(bs, button{iconUndo, "Discard", act})
+			bs = append(bs, button{iconUndo, locales.HunkDiscard(), locales.HunkDiscardLabel(), locales.HunkDiscardTip(), act})
 		}
 	}
 	h := a.font.lineH - 2
@@ -123,7 +124,7 @@ func (a *app) hunkButtons(c *ui.Context, v *diffView, i int, right, contentW, y 
 	row.Children(func() {
 		for _, b := range bs {
 			btn := ui.ButtonBase(c.Key("hunk:"+b.label)).Height(h).Padding(0, 7).Gap(4).Radius(4).AlignItems(ui.Center).
-				Background(p.editor).Border(1, p.border).Label(b.label + " Change").Tooltip(b.label + " this change")
+				Background(p.editor).Border(1, p.border).Label(b.name).Tooltip(b.tip)
 			col := p.muted
 			if btn.Hovered() {
 				btn.Background(p.hover.Over(p.editor))
@@ -152,7 +153,7 @@ func (a *app) applyHunks(f *diffFile, hs []linediff.Hunk, act hunkAction) {
 	path := f.path
 	// The changes are of the editor's text as the diff last compared it.
 	if doc := a.diffDoc(f); doc != nil && doc.buf.Version() != f.docVersion && act != hunkUnstage {
-		a.fail("The diff is catching up with your edits: try again in a moment.")
+		a.fail("%s", locales.DiffCatchingUp())
 		return
 	}
 	switch act {
@@ -222,12 +223,12 @@ func (a *app) discardHunks(f *diffFile, hs []linediff.Hunk) {
 		return
 	}
 	path := f.path
-	title := "Discard this change to " + filepath.Base(path) + "?"
+	title := locales.DiscardChangeTo(filepath.Base(path))
 	if len(hs) > 1 {
-		title = "Discard these changes to " + filepath.Base(path) + "?"
+		title = locales.DiscardChangesTo(filepath.Base(path))
 	}
-	a.confirm = &confirm{title: title, message: "The lines go back as the index has them. This cannot be undone.",
-		ok: "Discard", danger: true, run: func() {
+	a.confirm = &confirm{title: title, message: locales.DiscardHunkDetail(),
+		ok: locales.ButtonDiscard(), danger: true, run: func() {
 			a.gitDo("", func(r *git.Repo) error {
 				work, crlf, err := readWork(path)
 				if err != nil {

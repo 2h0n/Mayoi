@@ -21,6 +21,7 @@ import (
 
 	"mayoi/internal/remote"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 )
 
 // imageExts are the files a viewer shows: those MyGo decodes.
@@ -130,14 +131,14 @@ func decodeImage(path string) (bm *ui.Bitmap, w, h int, size int64, err error) {
 	}
 	bm, err = ui.DecodeBitmap(data)
 	if errors.Is(err, image.ErrFormat) {
-		return nil, 0, 0, 0, errors.New("it is not a PNG, JPEG, GIF, WebP or BMP image")
+		return nil, 0, 0, 0, errors.New(locales.ErrNotImage())
 	}
 	if err != nil {
 		return nil, 0, 0, 0, err
 	}
 	w, h = bm.Size()
 	if w == 0 || h == 0 {
-		return nil, 0, 0, 0, errors.New("the image is empty")
+		return nil, 0, 0, 0, errors.New(locales.ErrImageEmpty())
 	}
 	if side := max(w, h); side > maxBitmapSide {
 		img, _, err := image.Decode(bytes.NewReader(data))
@@ -159,7 +160,7 @@ func readImage(path string) ([]byte, error) {
 	if remote.Is(path) {
 		data, err := vfs.ReadFileLimit(path, maxOpenBytes)
 		if errors.Is(err, remote.ErrTooLarge) {
-			err = errors.New("the image is too large to show")
+			err = errors.New(locales.ErrImageTooLarge())
 		}
 		return data, err
 	}
@@ -173,14 +174,14 @@ func readImage(path string) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("the image is not a regular file")
+		return nil, errors.New(locales.ErrImageNotRegular())
 	}
 	if info.Size() > maxOpenBytes {
-		return nil, errors.New("the image is too large to show")
+		return nil, errors.New(locales.ErrImageTooLarge())
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxOpenBytes+1))
 	if err == nil && int64(len(data)) > maxOpenBytes {
-		err = errors.New("the image is too large to show")
+		err = errors.New(locales.ErrImageTooLarge())
 	}
 	return data, err
 }
@@ -210,7 +211,7 @@ func (a *app) followSVG(v *viewer) {
 		}
 		w, h := s.Size()
 		if w <= 0 || h <= 0 {
-			v.err = "the SVG has no size"
+			v.err = locales.ErrSVGNoSize()
 			return
 		}
 		v.err = ""
@@ -380,9 +381,9 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 		return
 	}
 	p := a.pal
-	label := "Image " + name
+	label := locales.ImageLabel(name)
 	if v.doc != nil {
-		label = "Preview " + name
+		label = locales.PreviewLabel(name)
 	}
 	if v.doc != nil {
 		a.followSVG(v)
@@ -430,9 +431,9 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 		switch {
 		case !v.loaded:
 		case v.src == nil:
-			msg := "Cannot show " + name
+			msg := locales.CannotShow(name)
 			if v.err != "" {
-				msg += ": " + v.err
+				msg = locales.CannotShowWhy(name, v.err)
 			}
 			ui.Column(c).Fill().Center().Padding(24).Children(func() {
 				ui.Icon(c, iconImage).FontSize(32).TextColor(p.faint)
@@ -549,11 +550,11 @@ func (a *app) viewerStatus(c *ui.Context, v *viewer, item func(key, label, tip s
 	if v.diskGone {
 		ui.Row(c).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconTrash).FontSize(12).TextColor(p.danger)
-			text("Deleted on disk").TextColor(p.danger)
+			text(locales.DeletedOnDisk()).TextColor(p.danger)
 		})
 	}
 	if v.markdown != nil {
-		item("preview", "Preview", "", nil, nil)
+		item("preview", locales.PreviewWord(), "", nil, nil)
 		return
 	}
 	if v.src == nil {
@@ -563,5 +564,5 @@ func (a *app) viewerStatus(c *ui.Context, v *viewer, item func(key, label, tip s
 	if v.size > 0 {
 		item("size", sizeText(v.size), "", nil, nil)
 	}
-	item("zoom", v.zoomPercent(), a.withKey("Fit to the View", "view.zoomReset"), nil, func() { v.zoomBy(0) })
+	item("zoom", v.zoomPercent(), a.withKey(locales.FitToView(), "view.zoomReset"), nil, func() { v.zoomBy(0) })
 }

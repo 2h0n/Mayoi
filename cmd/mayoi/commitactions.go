@@ -1,9 +1,11 @@
 package main
 
 import (
-	"github.com/egoist/mygo/ui"
 	"mayoi/internal/git"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
+
+	"github.com/egoist/mygo/ui"
 )
 
 // commitTools keeps the selected comparison tied to its repository.
@@ -14,31 +16,31 @@ type commitTools struct {
 
 func (a *app) commitToolsMenu(m *ui.Menu, cm git.Commit, head bool, action *func()) {
 	m.Separator()
-	if m.Item("Create Patch…").Chosen() {
+	if m.Item(locales.CommitCreatePatch()).Chosen() {
 		*action = func() { a.commitPatch(cm, true) }
 	}
-	if m.Item("Copy Changes (Patch)").Chosen() {
+	if m.Item(locales.CommitCopyPatch()).Chosen() {
 		*action = func() { a.commitPatch(cm, false) }
 	}
 	m.Separator()
 	// HEAD compared with itself, or a commit with itself, has nothing to show.
-	if m.Item("Compare HEAD to Here").Disabled(head).Chosen() {
+	if m.Item(locales.CommitCompareHeadToHere()).Disabled(head).Chosen() {
 		*action = func() { a.compareRevisions("HEAD", cm.Hash) }
 	}
-	if m.Item("Compare Here to HEAD").Disabled(head).Chosen() {
+	if m.Item(locales.CommitCompareHereToHead()).Disabled(head).Chosen() {
 		*action = func() { a.compareRevisions(cm.Hash, "HEAD") }
 	}
-	if m.Item("Select for Compare").Chosen() {
+	if m.Item(locales.CommitSelectForCompare()).Chosen() {
 		a.commitTools = commitTools{repo: a.git.repo, selected: cm.Hash}
 	}
 	selected := a.commitTools
 	if selected.repo == a.git.repo && selected.selected != "" {
-		if m.Item("Compare with Selected (" + git.ShortHash(selected.selected) + ")").Disabled(selected.selected == cm.Hash).Chosen() {
+		if m.Item(locales.CommitCompareWithSelected(git.ShortHash(selected.selected))).Disabled(selected.selected == cm.Hash).Chosen() {
 			*action = func() { a.compareRevisions(selected.selected, cm.Hash) }
 		}
 	}
 	m.Separator()
-	if m.Item("Open Commit on Remote").Chosen() {
+	if m.Item(locales.CommitOpenOnRemote()).Chosen() {
 		*action = func() { a.commitRemote(cm) }
 	}
 }
@@ -52,7 +54,7 @@ func (a *app) compareRevisions(from, to string) {
 		return
 	}
 	var hashes [2]string
-	a.gitRead("Comparing…", func(repo *git.Repo) (err error) {
+	a.gitRead(locales.BusyComparing(), func(repo *git.Repo) (err error) {
 		for i, rev := range []string{from, to} {
 			if hashes[i], err = repo.ResolveCommit(rev); err != nil {
 				return err
@@ -73,27 +75,27 @@ func (a *app) commitPatch(cm git.Commit, save bool) {
 		return
 	}
 	var patch string
-	a.gitRead("Reading patch…", func(repo *git.Repo) (err error) { patch, err = repo.CommitPatch(cm.Hash); return }, func() {
+	a.gitRead(locales.BusyReadingPatch(), func(repo *git.Repo) (err error) { patch, err = repo.CommitPatch(cm.Hash); return }, func() {
 		if a.git.repo != r {
 			return
 		}
 		if !save {
 			a.services.WriteClipboard(patch)
-			a.tell(note{message: "Copied the patch of " + cm.Short()})
+			a.tell(note{message: locales.CopiedPatchOf(cm.Short())})
 			return
 		}
 		a.askSavePath(cm.Short()+".patch", func(path string) {
 			if path == "" || a.git.repo != r {
 				return
 			}
-			a.gitRead("Saving patch…", func(_ *git.Repo) error { _, err := vfs.WriteFile(path, []byte(patch), 0o644); return err }, func() { a.tell(note{message: "Patch saved to " + hostPath(path)}) })
+			a.gitRead(locales.BusySavingPatch(), func(_ *git.Repo) error { _, err := vfs.WriteFile(path, []byte(patch), 0o644); return err }, func() { a.tell(note{message: locales.PatchSavedTo(hostPath(path))}) })
 		})
 	})
 }
 
 func (a *app) commitRemote(cm git.Commit) {
 	var link string
-	a.gitRead("Reading remote…", func(repo *git.Repo) (err error) { link, err = repo.CommitRemoteURL(cm); return }, func() { a.services.OpenURL(link) })
+	a.gitRead(locales.BusyReadingRemote(), func(repo *git.Repo) (err error) { link, err = repo.CommitRemoteURL(cm); return }, func() { a.services.OpenURL(link) })
 }
 
 // gitRead runs without invalidating status or loaded history. Results and
@@ -105,7 +107,7 @@ func (a *app) gitRead(busy string, fn func(*git.Repo) error, then func()) {
 		return
 	}
 	if !a.online() {
-		a.fail("Not connected to %s", a.conn.Host)
+		a.fail("%s", locales.NotConnectedTo(a.conn.Host))
 		return
 	}
 	if g.busy != "" {

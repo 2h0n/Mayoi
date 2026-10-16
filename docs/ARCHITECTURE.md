@@ -30,6 +30,13 @@ watches the folder too, and when the file changes into something it did not writ
 layout stay as the app has them. Each frame, a window checks the code's font and the terminals' against the settings and
 measures them anew when they differ.
 
+**`locales`.** What Mayoi says is in catalogs of ICU messages, `en.json`, `zh-Hans.json` and `ja.json`, from which
+`mygo generate` writes `catalog_gen.go`, a typed function per message, in the language the app shows. The views say
+their words each frame, so they follow a change of language as they draw. What is made once, the menus and the command
+palette's titles, is made again when `App.OnLocaleChanged` tells of it. The `locale` setting, which **View → Language**
+writes, goes to `App.SetLocale`. The commands are labelled by `commandsIn`, in a language given, so that the palette
+matches their English titles too. The text sent to agents and Git's own messages stay as they are.
+
 **`internal/keymap`, `keymap.go`.** `keybindings.json` is read in VS Code's format, comments and all, and watched as the
 settings are. Every place that takes keys itself, the editor, the terminal (`OnKey`), the Explorer, diffs, pictures and
 text fields, asks the keymap first with `takeKeys`, as the key comes, so that a chord's next key never types. Where the

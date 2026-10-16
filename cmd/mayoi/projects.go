@@ -28,6 +28,7 @@ import (
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 )
 
 // railW is the width of the rail of project tabs.
@@ -472,7 +473,7 @@ const (
 func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 	p := a.pal
 	dir := h.a.folder()
-	name, where := "Untitled", "No folder"
+	name, where := locales.RailUntitled(), locales.RailNoFolder()
 	if dir != "" {
 		name, where = filepath.Base(dir), shortenHome(dir)
 	}
@@ -565,14 +566,14 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 		if mn.Item(revealLabel()).Disabled(dir == "" || remote.Is(dir)).Chosen() {
 			a.host.reveal(dir)
 		}
-		if mn.Item("Copy Path").Disabled(dir == "").Chosen() {
+		if mn.Item(locales.CopyPath()).Disabled(dir == "").Chosen() {
 			a.services.WriteClipboard(hostPath(dir))
 		}
 		mn.Separator()
-		if mn.Item("Close Project").Chosen() {
+		if mn.Item(locales.CmdFileCloseProject()).Chosen() {
 			h.closeProject()
 		}
-		if mn.Item("Close Other Projects").Chosen() {
+		if mn.Item(locales.CloseOtherProjects()).Chosen() {
 			a.post(func() { f.closeOthers(h) })
 		}
 	})
@@ -607,7 +608,7 @@ func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string,
 				note(p.accent, alert)
 			}
 			if dirty {
-				note(p.text.Alpha(0.85), "Unsaved changes")
+				note(p.text.Alpha(0.85), locales.UnsavedChanges())
 			}
 		})
 	})
@@ -618,8 +619,8 @@ func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string,
 // dragged over the rail.
 func (f *frame) railAdd(c *ui.Context, a *app, folders bool) {
 	p := a.pal
-	b := ui.ButtonBase(c.Key("rail-add")).Size(railW, railSquare+4).Shrink(0).Label("Open Folder…").
-		Tooltip(a.withKey("Open Folder…", "file.openFolder"))
+	b := ui.ButtonBase(c.Key("rail-add")).Size(railW, railSquare+4).Shrink(0).Label(locales.CmdFileOpenFolder()).
+		Tooltip(a.withKey(locales.CmdFileOpenFolder(), "file.openFolder"))
 	hot := b.Hovered() || folders
 	k := b.Animate("hot", unit(hot), 120*time.Millisecond)
 	b.Draw(func(pt *ui.Painter, r ui.Rect) {

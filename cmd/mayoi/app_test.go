@@ -22,6 +22,7 @@ type fakeHost struct {
 	choice  int
 	asked   []string
 	title   string
+	locale  string // the language setLocale chose
 	closed  bool
 	trashed []string
 	// revealed are the paths asked to show in the Finder.
@@ -72,6 +73,7 @@ func (h *fakeHost) choosePaths(title, _, _ string, _ bool, done func([]string)) 
 }
 func (h *fakeHost) closeWindow()         { h.closed = true }
 func (h *fakeHost) setTheme(_, _ string) {}
+func (h *fakeHost) setLocale(tag string) { h.locale = tag }
 func (h *fakeHost) showFolder(dir string) bool {
 	return slices.Contains(h.others, dir)
 }

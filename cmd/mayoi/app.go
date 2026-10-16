@@ -18,6 +18,7 @@ import (
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"mayoi/internal/workspace"
+	"mayoi/locales"
 )
 
 // remoteIndexEvery is the least time between two listings of the files of
@@ -48,6 +49,9 @@ type host interface {
 	// setTheme gives the windows a theme and an appearance of the
 	// settings.
 	setTheme(theme, appearance string)
+	// setLocale shows the windows in the language of tag, or of the
+	// system for "".
+	setLocale(tag string)
 	// showFolder brings the other window that has dir open to the front,
 	// and reports whether there is one.
 	showFolder(dir string) bool
@@ -461,11 +465,11 @@ func (a *app) saveDoc(d *document, then func()) {
 	if remote.Is(d.path) {
 		// Saved by hand, a file that changed on its host asks again.
 		d.conflict = false
-		a.saveRemote(d, saved, func(err error) { a.fail("Could not save %s: %v", d.name(), err) })
+		a.saveRemote(d, saved, func(err error) { a.fail("%s", locales.FailSave(d.name(), err.Error())) })
 		return
 	}
 	if err := d.save(); err != nil {
-		a.fail("Could not save %s: %v", d.name(), err)
+		a.fail("%s", locales.FailSave(d.name(), err.Error()))
 		return
 	}
 	saved()

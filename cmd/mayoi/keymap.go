@@ -14,6 +14,7 @@ import (
 
 	"mayoi/internal/keymap"
 	"mayoi/internal/remote"
+	"mayoi/locales"
 )
 
 // keyPlace is where the keyboard is as the shortcuts of keybindings.json
@@ -346,7 +347,7 @@ func (a *app) runBinding(name string, args json.RawMessage, where keyPlace) {
 	case "vscode.open":
 		var path string
 		if json.Unmarshal(args, &path) != nil || path == "" {
-			a.fail("vscode.open needs the path of a file as its args.")
+			a.fail("%s", locales.KeymapOpenNeedsPath())
 			return
 		}
 		path = strings.TrimPrefix(path, "file://")
@@ -372,7 +373,7 @@ func (a *app) runBinding(name string, args json.RawMessage, where keyPlace) {
 	default:
 		id := a.commandID(name)
 		if id == "" {
-			a.tell(note{message: "Mayoi has no command " + name})
+			a.tell(note{message: locales.KeymapNoCommand(name)})
 			return
 		}
 		a.run(id)
@@ -469,7 +470,7 @@ func (a *app) openKeybindings() {
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		os.MkdirAll(filepath.Dir(path), 0o755)
 		if err := os.WriteFile(path, []byte(keymap.Template), 0o644); err != nil {
-			a.fail("Could not make %s: %v", path, err)
+			a.fail("%s", locales.FailMake(path, err.Error()))
 			return
 		}
 	}

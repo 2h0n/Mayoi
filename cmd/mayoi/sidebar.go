@@ -13,6 +13,7 @@ import (
 
 	"mayoi/internal/remote"
 	"mayoi/internal/vfs"
+	"mayoi/locales"
 )
 
 // sidebar is the explorer, the workspace's files in a tree, or the
@@ -29,19 +30,19 @@ func (a *app) sidebar(c *ui.Context) {
 	sb.Children(func() {
 		ui.Row(c).Height(34).Padding(0, 6, 0, 8).Gap(2).AlignItems(ui.Center).Children(func() {
 			if a.root != "" {
-				a.sidebarSwitch(c, iconFiles, a.withKey("Explorer", "view.explorer"), !scm && !search, 0, a.showExplorer)
-				a.sidebarSwitch(c, iconSearch, a.withKey("Search", "edit.findInFiles"), search, 0, func() { a.showSearch(false) })
-				a.sidebarSwitch(c, iconBranch, a.withKey("Source Control", "view.scm"), scm, a.changeCount(), a.showSourceControl)
+				a.sidebarSwitch(c, iconFiles, a.withKey(locales.SidebarExplorer(), "view.explorer"), !scm && !search, 0, a.showExplorer)
+				a.sidebarSwitch(c, iconSearch, a.withKey(locales.SidebarSearch(), "edit.findInFiles"), search, 0, func() { a.showSearch(false) })
+				a.sidebarSwitch(c, iconBranch, a.withKey(locales.SidebarScm(), "view.scm"), scm, a.changeCount(), a.showSourceControl)
 			}
-			title, short, actions := "EXPLORER", "", 0
+			title, short, actions := locales.SidebarTitleExplorer(), "", 0
 			switch {
 			case scm:
-				title, short = "SOURCE CONTROL", "GIT"
+				title, short = locales.SidebarTitleScm(), locales.SidebarTitleScmShort()
 				if a.git.repo != nil {
 					actions = 1
 				}
 			case search:
-				title = "SEARCH"
+				title = locales.SidebarTitleSearch()
 				if hovered {
 					actions = 3
 				}
@@ -85,17 +86,17 @@ func (a *app) sidebar(c *ui.Context) {
 			if !hovered && !a.files.List.FocusWithin(c) {
 				return
 			}
-			if a.iconButton(c, iconFilePlus, "New File…", false).Clicked() {
+			if a.iconButton(c, iconFilePlus, locales.NewFileEllipsis(), false).Clicked() {
 				a.askNewEntry(a.targetDir(), false)
 			}
-			if a.iconButton(c, iconFolderPlus, "New Folder…", false).Clicked() {
+			if a.iconButton(c, iconFolderPlus, locales.NewFolderEllipsis(), false).Clicked() {
 				a.askNewEntry(a.targetDir(), true)
 			}
-			if a.iconButton(c, iconRefresh, "Refresh Explorer", false).Clicked() {
+			if a.iconButton(c, iconRefresh, locales.RefreshExplorer(), false).Clicked() {
 				a.tree.Refresh()
 				a.indexStale = true
 			}
-			if a.iconButton(c, iconCollapse, "Collapse Folders", false).Clicked() {
+			if a.iconButton(c, iconCollapse, locales.CollapseFolders(), false).Clicked() {
 				a.files.Open.Clear()
 			}
 		})
@@ -118,14 +119,14 @@ func (a *app) emptyFolder(c *ui.Context) {
 		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconFolderOpen).FontSize(20).TextColor(p.muted)
 		})
-		ui.Text(c, "This Folder Is Empty").FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
-		ui.Text(c, "Add a file or a folder to start.").
+		ui.Text(c, locales.FolderEmpty()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, locales.FolderEmptyDetail()).
 			FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
 		ui.Box(c).Height(4)
-		if ui.PrimaryButton(c, "New File…").FillWidth().Clicked() {
+		if ui.PrimaryButton(c, locales.NewFileEllipsis()).FillWidth().Clicked() {
 			a.askNewEntry(a.root, false)
 		}
-		if ui.Button(c, "New Folder…").FillWidth().Clicked() {
+		if ui.Button(c, locales.NewFolderEllipsis()).FillWidth().Clicked() {
 			a.askNewEntry(a.root, true)
 		}
 	})
@@ -192,14 +193,14 @@ func (a *app) noFolder(c *ui.Context) {
 		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
 			ui.Icon(c, iconFolderOpen).FontSize(20).TextColor(p.muted)
 		})
-		ui.Text(c, "No Folder Open").FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
-		ui.Text(c, "Open a folder to browse its files, search them and track their changes.").
+		ui.Text(c, locales.NoFolderOpen()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
+		ui.Text(c, locales.NoFolderDetail()).
 			FontSize(12).TextColor(p.muted).TextAlign(ui.Center).LineHeight(1.45)
 		ui.Box(c).Height(4)
-		if ui.PrimaryButton(c, "Open Folder").FillWidth().Clicked() {
+		if ui.PrimaryButton(c, locales.OpenFolder()).FillWidth().Clicked() {
 			a.chooseFolder()
 		}
-		if remoteSupported && ui.Button(c.Key("no-folder-remote"), "Connect to Host…").FillWidth().Clicked() {
+		if remoteSupported && ui.Button(c.Key("no-folder-remote"), locales.CmdRemoteConnect()).FillWidth().Clicked() {
 			a.openRemotePicker()
 		}
 	})
@@ -299,53 +300,53 @@ func (a *app) fileTree(c *ui.Context) {
 			if !isDir {
 				dir = filepath.Dir(path)
 			}
-			if m.Item("New File…").Chosen() {
+			if m.Item(locales.NewFileEllipsis()).Chosen() {
 				action = func() { a.askNewEntry(dir, false) }
 			}
-			if m.Item("New Folder…").Chosen() {
+			if m.Item(locales.NewFolderEllipsis()).Chosen() {
 				action = func() { a.askNewEntry(dir, true) }
 			}
 			m.Separator()
 			if a.conn == nil && m.Item(revealLabel()).Chosen() {
 				action = func() { a.host.reveal(path) }
 			}
-			if !isDir && m.Item("Open in Terminal").Chosen() {
+			if !isDir && m.Item(locales.OpenInTerminal()).Chosen() {
 				action = func() { a.newTerminalIn(dir) }
 			}
-			if isDir && m.Item("Open in Terminal").Chosen() {
+			if isDir && m.Item(locales.OpenInTerminal()).Chosen() {
 				action = func() { a.newTerminalIn(path) }
 			}
 			m.Separator()
 			if _, changed := a.git.entries[path]; changed && !isDir {
-				if m.Item("Open Changes").Chosen() {
+				if m.Item(locales.CmdGitOpenChanges()).Chosen() {
 					action = func() { a.showChanges(diffTarget{path: path, any: true}, true) }
 				}
 				m.Separator()
 			}
-			if m.Item("Copy").Chosen() {
+			if m.Item(locales.CopyLabel()).Chosen() {
 				action = func() { a.copyFiles(path) }
 			}
-			if m.Item("Paste").Disabled(len(a.clipboardSources()) == 0).Chosen() {
+			if m.Item(locales.PasteLabel()).Disabled(len(a.clipboardSources()) == 0).Chosen() {
 				action = func() { a.pasteFiles(dir) }
 			}
 			m.Separator()
 			if a.conn != nil {
-				if m.Item("Upload…").Chosen() {
+				if m.Item(locales.UploadEllipsis()).Chosen() {
 					action = func() { a.askUpload(dir) }
 				}
-				if m.Item("Download…").Chosen() {
+				if m.Item(locales.DownloadEllipsis()).Chosen() {
 					action = func() { a.askDownload(path) }
 				}
 				m.Separator()
 			}
-			if m.Item("Copy Path").Chosen() {
+			if m.Item(locales.CopyPath()).Chosen() {
 				action = func() { a.services.WriteClipboard(hostPath(path)) }
 			}
-			if m.Item("Copy Relative Path").Chosen() {
+			if m.Item(locales.CopyRelativePath()).Chosen() {
 				action = func() { a.services.WriteClipboard(t.Rel(path)) }
 			}
 			m.Separator()
-			if m.Item("Rename…").Chosen() {
+			if m.Item(locales.RenameEllipsis()).Chosen() {
 				action = func() { a.askRename(path) }
 			}
 			if m.Item(a.trashLabel()).Chosen() {
@@ -436,24 +437,24 @@ func (a *app) fileTree(c *ui.Context) {
 			return
 		}
 		a.fileRow = -1
-		if m.Item("New File…").Chosen() {
+		if m.Item(locales.NewFileEllipsis()).Chosen() {
 			action = func() { a.askNewEntry(a.root, false) }
 		}
-		if m.Item("New Folder…").Chosen() {
+		if m.Item(locales.NewFolderEllipsis()).Chosen() {
 			action = func() { a.askNewEntry(a.root, true) }
 		}
 		m.Separator()
 		if a.conn == nil && m.Item(revealLabel()).Chosen() {
 			action = func() { a.host.reveal(a.root) }
 		}
-		if m.Item("Open in Terminal").Chosen() {
+		if m.Item(locales.OpenInTerminal()).Chosen() {
 			action = func() { a.newTerminalIn(a.root) }
 		}
 		m.Separator()
-		if m.Item("Paste").Disabled(len(a.clipboardSources()) == 0).Chosen() {
+		if m.Item(locales.PasteLabel()).Disabled(len(a.clipboardSources()) == 0).Chosen() {
 			action = func() { a.pasteFiles(a.root) }
 		}
-		if a.conn != nil && m.Item("Upload…").Chosen() {
+		if a.conn != nil && m.Item(locales.UploadEllipsis()).Chosen() {
 			action = func() { a.askUpload(a.root) }
 		}
 	})
@@ -574,14 +575,14 @@ func (a *app) revealInTree(path string) {
 }
 
 func (a *app) askNewEntry(dir string, folder bool) {
-	title := "New File"
+	title := locales.NewFileTitle()
 	if folder {
-		title = "New Folder"
+		title = locales.NewFolderTitle()
 	}
-	a.prompt = &prompt{title: title, hint: "in " + a.relOrPath(dir), done: func(name string) string {
+	a.prompt = &prompt{title: title, hint: locales.InDir(a.relOrPath(dir)), done: func(name string) string {
 		name = strings.TrimSpace(name)
 		if name == "" {
-			return "Enter a name."
+			return locales.EnterName()
 		}
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if remote.Is(path) {
@@ -589,7 +590,7 @@ func (a *app) askNewEntry(dir string, folder bool) {
 			return ""
 		}
 		if _, err := os.Lstat(path); err == nil {
-			return "A file or folder with that name exists."
+			return locales.NameExists()
 		}
 		if folder {
 			if err := os.MkdirAll(path, 0o755); err != nil {
@@ -614,10 +615,10 @@ func (a *app) askNewEntry(dir string, folder bool) {
 }
 
 func (a *app) askRename(path string) {
-	a.prompt = &prompt{title: "Rename", hint: a.relOrPath(path), value: filepath.Base(path), done: func(name string) string {
+	a.prompt = &prompt{title: locales.RenameTitle(), hint: a.relOrPath(path), value: filepath.Base(path), done: func(name string) string {
 		name = strings.TrimSpace(name)
 		if name == "" || strings.ContainsRune(name, filepath.Separator) {
-			return "Enter a name without slashes."
+			return locales.EnterNameNoSlashes()
 		}
 		to := filepath.Join(filepath.Dir(path), name)
 		if to == path {
@@ -628,7 +629,7 @@ func (a *app) askRename(path string) {
 				err := vfs.Rename(path, to)
 				a.post(func() {
 					if err != nil {
-						a.fail("Could not rename %s: %v", filepath.Base(path), err)
+						a.fail("%s", locales.FailRename(filepath.Base(path), err.Error()))
 						return
 					}
 					a.renamed(path, to)
@@ -637,7 +638,7 @@ func (a *app) askRename(path string) {
 			return ""
 		}
 		if _, err := os.Lstat(to); err == nil {
-			return "A file or folder with that name exists."
+			return locales.NameExists()
 		}
 		if err := os.Rename(path, to); err != nil {
 			return err.Error()
@@ -673,7 +674,7 @@ func (a *app) newRemoteEntry(dir, path string, folder bool) {
 		var err error
 		if folder {
 			if _, serr := vfs.Lstat(path); serr == nil {
-				err = errors.New("a file or folder with that name exists")
+				err = errors.New(locales.ErrNameExists())
 			} else {
 				err = vfs.MkdirAll(path)
 			}
@@ -682,7 +683,7 @@ func (a *app) newRemoteEntry(dir, path string, folder bool) {
 		}
 		a.post(func() {
 			if err != nil {
-				a.fail("Could not make %s: %v", filepath.Base(path), err)
+				a.fail("%s", locales.FailMake(filepath.Base(path), err.Error()))
 				return
 			}
 			a.files.Open.Add(dir)
@@ -699,21 +700,21 @@ func (a *app) newRemoteEntry(dir, path string, folder bool) {
 // remote one, which has no trash.
 func (a *app) trashLabel() string {
 	if a.conn != nil {
-		return "Delete Permanently…"
+		return locales.DeletePermanently()
 	}
 	return trashLabel()
 }
 
 func (a *app) trash(path string) {
 	if remote.Is(path) {
-		a.confirm = &confirm{title: "Delete " + filepath.Base(path) + "?",
-			message: "It is deleted from " + remote.HostOf(path) + " for good: a remote folder has no trash.",
-			ok:      "Delete", danger: true, run: func() {
+		a.confirm = &confirm{title: locales.DeleteQuestion(filepath.Base(path)),
+			message: locales.DeleteRemoteDetail(remote.HostOf(path)),
+			ok:      locales.ButtonDelete(), danger: true, run: func() {
 				go func() {
 					err := vfs.RemoveAll(path)
 					a.post(func() {
 						if err != nil {
-							a.fail("Could not delete %s: %v", filepath.Base(path), err)
+							a.fail("%s", locales.FailDelete(filepath.Base(path), err.Error()))
 							return
 						}
 						a.tree.Refresh()
@@ -724,7 +725,7 @@ func (a *app) trash(path string) {
 		return
 	}
 	if err := a.host.trash(path); err != nil {
-		a.fail("Could not move %s to %s: %v", filepath.Base(path), trashName(), err)
+		a.fail("%s", locales.FailMoveTo(filepath.Base(path), trashName(), err.Error()))
 		return
 	}
 	a.tree.Refresh()

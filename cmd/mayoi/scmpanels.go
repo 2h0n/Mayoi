@@ -6,8 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/egoist/mygo/ui"
 	"mayoi/internal/git"
+	"mayoi/locales"
+
+	"github.com/egoist/mygo/i18n"
+	"github.com/egoist/mygo/ui"
 )
 
 type scmPanelTab int
@@ -20,12 +23,21 @@ const (
 // Each repository view registers one toolbar icon and a stable content key.
 // Future views such as Stashes share the panel's header and switching behavior.
 var scmPanelTabs = []struct {
-	id         scmPanelTab
-	key, label string
-	icon       *ui.SVG
+	id   scmPanelTab
+	key  string
+	icon *ui.SVG
 }{
-	{scmBranchesTab, "branches", "Branches", iconBranch},
-	{scmRemotesTab, "remotes", "Remotes", iconCloud},
+	{scmBranchesTab, "branches", iconBranch},
+	{scmRemotesTab, "remotes", iconCloud},
+}
+
+// panelTabLabel names a tab of the repository panel, by its key, in the
+// language shown.
+func panelTabLabel(key string) string {
+	if key == "remotes" {
+		return locales.PanelRemotes()
+	}
+	return locales.PanelBranches()
 }
 
 // Panels use the same virtual list as changes and history. Requests carry
@@ -201,20 +213,20 @@ func (a *app) scmPanelRows(rows []scmRow) []scmRow {
 	if a.git.repo == nil {
 		return rows
 	}
-	header := panelRow("tabs", "panel:tabs", "REPOSITORY", "", 0)
+	header := panelRow("tabs", "panel:tabs", strings.ToUpper(locales.PanelRepository()), "", 0)
 	header.header = true
 	rows = append(rows, header)
 	if !a.settings.ScmRepositoryOpen {
 		return rows
 	}
 	addStatus := func(key string, depth int) {
-		label, kind := "Loading…", "status"
+		label, kind := locales.Loading(), "status"
 		if p.err != "" {
-			label, kind = "Unable to read Git refs — Retry", "retry"
+			label, kind = locales.PanelReadRefsFailed(), "retry"
 		} else if p.loaded && (key != "remotes" || p.remotesLoaded) {
-			label = "No branches"
+			label = locales.PanelNoBranches()
 			if key == "remotes" {
-				label = "No remotes — Add Remote…"
+				label = locales.PanelNoRemotes()
 				kind = "addRemote"
 			}
 		}
@@ -225,9 +237,9 @@ func (a *app) scmPanelRows(rows []scmRow) []scmRow {
 		l := a.panelLog(key, from, to)
 		switch {
 		case l.loading && !l.loaded:
-			rows = append(rows, panelRow("status", key+":loading", "Loading commits…", "", depth))
+			rows = append(rows, panelRow("status", key+":loading", locales.PanelLoadingCommits(), "", depth))
 		case l.err != "":
-			r := panelRow("retryLog", key+":error", "Unable to read commits — Retry", l.err, depth)
+			r := panelRow("retryLog", key+":error", locales.PanelReadCommitsFailed(), l.err, depth)
 			r.panel.log = key
 			rows = append(rows, r)
 			if !l.loaded {
@@ -236,13 +248,13 @@ func (a *app) scmPanelRows(rows []scmRow) []scmRow {
 			fallthrough
 		default:
 			if len(l.commits) == 0 {
-				rows = append(rows, panelRow("status", key+":empty", "No commits", "", depth))
+				rows = append(rows, panelRow("status", key+":empty", locales.PanelNoCommits(), "", depth))
 			}
 			for i := range l.commits {
 				rows = append(rows, scmRow{key: key + ":" + l.commits[i].Hash, commit: &l.commits[i], at: -1, depth: depth})
 			}
 			if len(l.commits) >= l.n {
-				r := panelRow("more", key+":more", "Load more", "", depth)
+				r := panelRow("more", key+":more", locales.PanelLoadMore(), "", depth)
 				r.panel.log = key
 				rows = append(rows, r)
 			}
@@ -252,7 +264,7 @@ func (a *app) scmPanelRows(rows []scmRow) []scmRow {
 		key := "panel:branch:" + panelRef(*b)
 		detail := b.Upstream
 		if b.Gone {
-			detail += " · gone"
+			detail += locales.PanelGone()
 		} else if b.Upstream != "" {
 			// As the status bar counts them, leaving out a direction at 0.
 			if b.Behind > 0 {
@@ -272,15 +284,15 @@ func (a *app) scmPanelRows(rows []scmRow) []scmRow {
 		if !p.closed[key] {
 			if b.Upstream != "" && !b.Gone {
 				for _, incoming := range []bool{true, false} {
-					label, n, from, to := "Outgoing", b.Ahead, b.UpstreamRef, panelRef(*b)
+					label, n, from, to := locales.PanelOutgoing(), b.Ahead, b.UpstreamRef, panelRef(*b)
 					if incoming {
-						label, n, from, to = "Incoming", b.Behind, panelRef(*b), b.UpstreamRef
+						label, n, from, to = locales.PanelIncoming(), b.Behind, panelRef(*b), b.UpstreamRef
 					}
 					if n == 0 {
 						continue
 					}
 					k := key + ":" + strings.ToLower(label)
-					q := panelRow("range", k, fmt.Sprintf("%s · %d commits", label, n), "", depth+1)
+					q := panelRow("range", k, locales.PanelRangeCommits(label, n), "", depth+1)
 					q.panel.log = k
 					rows = append(rows, q)
 					if !p.closed[k] {
@@ -293,7 +305,7 @@ func (a *app) scmPanelRows(rows []scmRow) []scmRow {
 	}
 	// Branches default closed; opening a branch is the first read of its log.
 	section := scmPanelTabs[p.tab].key
-	r := panelRow("section", "panel:"+section, strings.ToUpper(section), "", 0)
+	r := panelRow("section", "panel:"+section, strings.ToUpper(panelTabLabel(section)), "", 0)
 	r.header = true
 	if section == "branches" {
 		for _, b := range p.branches {
@@ -463,7 +475,7 @@ func (a *app) scmPanelTabsView(c *ui.Context, r scmRow, action *func()) {
 		ui.Spacer(c)
 		for _, tab := range scmPanelTabs {
 			active := a.scm.panels.tab == tab.id
-			button := ui.ButtonBase(c.Key("repository-tab:"+tab.key)).Size(26, 24).Radius(3).AlignItems(ui.Center).Justify(ui.Center).Label(tab.label).Tooltip(tab.label)
+			button := ui.ButtonBase(c.Key("repository-tab:"+tab.key)).Size(26, 24).Radius(3).AlignItems(ui.Center).Justify(ui.Center).Label(panelTabLabel(tab.key)).Tooltip(panelTabLabel(tab.key))
 			color := p.muted
 			if active {
 				button.Background(p.active)
@@ -500,7 +512,7 @@ func (a *app) scmPanelRowView(c *ui.Context, r scmRow, action *func()) {
 	row := ui.Row(c).Grow(1).Gap(5).AlignItems(ui.Center).Height(22).Padding(0, 4, 0, indent)
 	tip := q.label
 	if q.branch != nil && q.branch.Current {
-		tip += " (current branch)"
+		tip += locales.PanelCurrentBranch()
 	}
 	if q.detail != "" {
 		tip += "\n" + q.detail
@@ -508,7 +520,7 @@ func (a *app) scmPanelRowView(c *ui.Context, r scmRow, action *func()) {
 	if q.branch != nil {
 		tip += "\n" + q.branch.Subject
 		if !q.branch.Time.IsZero() {
-			tip += "\n" + q.branch.Time.Local().Format("Jan 2, 2006 15:04:05 MST")
+			tip += "\n" + i18n.FormatDate(i18n.Locale(), q.branch.Time.Local(), i18n.DateOptions{Skeleton: "yMMMdHmsz"})
 		}
 	}
 	row.Tooltip(tip)
@@ -577,26 +589,26 @@ func (a *app) scmPanelRowView(c *ui.Context, r scmRow, action *func()) {
 					*action = run
 				}
 			}
-			button(iconCheckout, "Check Out Branch", moving || b.Current, func() { a.checkoutPanelBranch(b) })
+			button(iconCheckout, locales.PanelCheckOutBranch(), moving || b.Current, func() { a.checkoutPanelBranch(b) })
 			if b.Remote {
-				button(iconFetch, "Fetch Remote", a.git.busy != "" || q.remote == nil, func() {
+				button(iconFetch, locales.PanelFetchRemote(), a.git.busy != "" || q.remote == nil, func() {
 					if q.remote != nil {
 						name := q.remote.Name
-						a.gitDo("Fetching "+name+"…", func(repo *git.Repo) error { return repo.FetchRemote(name, false) }, nil)
+						a.gitDo(locales.BusyFetchingRemote(name), func(repo *git.Repo) error { return repo.FetchRemote(name, false) }, nil)
 					}
 				})
 			} else {
-				button(iconPull, "Pull Branch", moving || b.UpstreamRef == "" || b.Gone, func() { a.pullPanelBranch(b) })
+				button(iconPull, locales.PanelPullBranch(), moving || b.UpstreamRef == "" || b.Gone, func() { a.pullPanelBranch(b) })
 			}
 		}
 		if r.header {
-			if q.label == "BRANCHES" && a.smallButton(c, iconPlus, "Create Branch…") {
+			if r.key == "panel:branches" && a.smallButton(c, iconPlus, locales.CreateBranchEllipsis()) {
 				*action = a.askPanelNewBranch
 			}
-			if q.label == "REMOTES" && a.smallButton(c, iconPlus, "Add Remote…") {
+			if r.key == "panel:remotes" && a.smallButton(c, iconPlus, locales.PanelAddRemote()) {
 				*action = func() { a.askPanelRemote(nil, false) }
 			}
-			if a.smallButton(c, iconRefresh, "Refresh") {
+			if a.smallButton(c, iconRefresh, locales.Refresh()) {
 				*action = a.invalidateScmPanels
 			}
 		}
@@ -626,103 +638,103 @@ func (a *app) scmPanelMenu(m *ui.Menu, r scmRow, action *func()) {
 	moving := busy || a.git.status != nil && a.git.status.Op != ""
 	if q.branch != nil {
 		b := *q.branch
-		if m.Item("Check Out Branch").Disabled(moving || b.Current).Chosen() {
+		if m.Item(locales.PanelCheckOutBranch()).Disabled(moving || b.Current).Chosen() {
 			*action = func() { a.checkoutPanelBranch(b) }
 		}
-		if m.Item("Create Branch Here…").Disabled(busy).Chosen() {
+		if m.Item(locales.ScmCreateBranchHere()).Disabled(busy).Chosen() {
 			*action = func() { a.askRefAt(git.Commit{Hash: b.Hash, Subject: b.Subject}, false) }
 		}
 		if !b.Remote {
-			if m.Item("Rename Branch…").Disabled(busy).Chosen() {
+			if m.Item(locales.PanelRenameBranch()).Disabled(busy).Chosen() {
 				*action = func() { a.askRenamePanelBranch(b) }
 			}
-			if m.Item("Delete Branch…").Disabled(moving || b.Current).Chosen() {
+			if m.Item(locales.PanelDeleteBranch()).Disabled(moving || b.Current).Chosen() {
 				*action = func() {
-					a.confirm = &confirm{title: "Delete branch " + b.Name + "?", ok: "Delete", danger: true, message: "Only a branch whose commits have been merged can be deleted.", run: func() {
-						a.gitDo("Deleting branch…", func(repo *git.Repo) error { return repo.DeleteBranch(b.Name, false) }, nil)
+					a.confirm = &confirm{title: locales.PanelDeleteBranchQuestion(b.Name), ok: locales.ButtonDelete(), danger: true, message: locales.PanelDeleteBranchDetail(), run: func() {
+						a.gitDo(locales.BusyDeletingBranch(), func(repo *git.Repo) error { return repo.DeleteBranch(b.Name, false) }, nil)
 					}}
 				}
 			}
 		}
 		m.Separator()
-		if m.Item("Merge into Current Branch…").Disabled(moving || b.Current).Chosen() {
+		if m.Item(locales.PanelMergeIntoCurrent()).Disabled(moving || b.Current).Chosen() {
 			*action = func() { a.mergeCommit(git.Commit{Hash: b.Hash, Subject: b.Name}) }
 		}
-		if m.Item("Rebase Current Branch onto Here…").Disabled(moving || b.Current).Chosen() {
+		if m.Item(locales.PanelRebaseCurrentOnto()).Disabled(moving || b.Current).Chosen() {
 			*action = func() { a.rebaseOnto(git.Commit{Hash: b.Hash, Subject: b.Name}) }
 		}
-		if m.Item("Copy Branch Name").Chosen() {
+		if m.Item(locales.PanelCopyBranchName()).Chosen() {
 			a.services.WriteClipboard(b.Name)
 		}
 		return
 	}
 	if q.remote != nil {
 		remote := *q.remote
-		if m.Item("Fetch").Disabled(busy).Chosen() {
+		if m.Item(locales.CmdGitFetch()).Disabled(busy).Chosen() {
 			*action = func() {
-				a.gitDo("Fetching…", func(repo *git.Repo) error { return repo.FetchRemote(remote.Name, false) }, nil)
+				a.gitDo(locales.BusyFetching(), func(repo *git.Repo) error { return repo.FetchRemote(remote.Name, false) }, nil)
 			}
 		}
-		if m.Item("Fetch and Prune…").Disabled(busy).Chosen() {
+		if m.Item(locales.PanelFetchAndPrune()).Disabled(busy).Chosen() {
 			*action = func() {
 				a.askPrunePanelRemote(remote.Name, true)
 			}
 		}
-		if m.Item("Prune Remote…").Disabled(busy).Chosen() {
+		if m.Item(locales.PanelPruneRemote()).Disabled(busy).Chosen() {
 			*action = func() {
-				a.confirm = &confirm{title: "Prune " + remote.Name + "?", ok: "Prune", message: "Remove tracking refs for branches deleted on the remote.", run: func() {
-					a.gitDo("Pruning…", func(repo *git.Repo) error { return repo.PruneRemote(remote.Name) }, nil)
+				a.confirm = &confirm{title: locales.PanelPruneQuestion(remote.Name), ok: locales.PanelPrune(), message: locales.PanelPruneDetail(), run: func() {
+					a.gitDo(locales.BusyPruning(), func(repo *git.Repo) error { return repo.PruneRemote(remote.Name) }, nil)
 				}}
 			}
 		}
 		m.Separator()
-		if m.Item("Edit Fetch URL…").Disabled(busy).Chosen() {
+		if m.Item(locales.PanelEditFetchURL()).Disabled(busy).Chosen() {
 			*action = func() { a.editPanelRemote(remote.Name, false) }
 		}
-		if m.Item("Edit Push URL…").Disabled(busy).Chosen() {
+		if m.Item(locales.PanelEditPushURL()).Disabled(busy).Chosen() {
 			*action = func() { a.editPanelRemote(remote.Name, true) }
 		}
-		if m.Item("Remove Remote…").Disabled(busy).Chosen() {
+		if m.Item(locales.PanelRemoveRemote()).Disabled(busy).Chosen() {
 			*action = func() {
-				a.confirm = &confirm{title: "Remove remote " + remote.Name + "?", ok: "Remove", danger: true, message: "Remove the remote configuration and its tracking refs. The server is unchanged.", run: func() {
-					a.gitDo("Removing remote…", func(repo *git.Repo) error { return repo.RemoveRemote(remote.Name) }, nil)
+				a.confirm = &confirm{title: locales.PanelRemoveRemoteQuestion(remote.Name), ok: locales.PanelRemove(), danger: true, message: locales.PanelRemoveRemoteDetail(), run: func() {
+					a.gitDo(locales.BusyRemovingRemote(), func(repo *git.Repo) error { return repo.RemoveRemote(remote.Name) }, nil)
 				}}
 			}
 		}
 		if q.kind == "url" {
-			if m.Item("Copy URL").Chosen() {
+			if m.Item(locales.PanelCopyURL()).Chosen() {
 				a.services.WriteClipboard(q.label)
 			}
 		} else {
 			for _, url := range remote.FetchURLs {
-				if m.Item("Copy " + url).Chosen() {
+				if m.Item(locales.CopiedTextItem(url)).Chosen() {
 					a.services.WriteClipboard(url)
 				}
 			}
 		}
 	}
-	if q.kind == "section" && q.label == "BRANCHES" {
-		if m.Item("Create Branch…").Disabled(busy).Chosen() {
+	if q.kind == "section" && r.key == "panel:branches" {
+		if m.Item(locales.CreateBranchEllipsis()).Disabled(busy).Chosen() {
 			*action = a.askPanelNewBranch
 		}
-	} else if q.kind == "remote" || q.kind == "url" || q.kind == "addRemote" || q.kind == "section" && q.label == "REMOTES" {
-		if m.Item("Add Remote…").Disabled(busy).Chosen() {
+	} else if q.kind == "remote" || q.kind == "url" || q.kind == "addRemote" || q.kind == "section" && r.key == "panel:remotes" {
+		if m.Item(locales.PanelAddRemote()).Disabled(busy).Chosen() {
 			*action = func() { a.askPanelRemote(nil, false) }
 		}
 	}
-	if m.Item("Refresh").Chosen() {
+	if m.Item(locales.Refresh()).Chosen() {
 		*action = a.invalidateScmPanels
 	}
 }
 
 func (a *app) askRenamePanelBranch(b git.Branch) {
 	defer a.bindPanelDialogs(a.git.repo)
-	a.prompt = &prompt{title: "Rename Branch…", value: b.Name, done: func(name string) string {
+	a.prompt = &prompt{title: locales.PanelRenameBranch(), value: b.Name, done: func(name string) string {
 		name = strings.TrimSpace(name)
 		if name == "" {
-			return "Enter a branch name."
+			return locales.PanelEnterBranchName()
 		}
-		a.gitDo("Renaming branch…", func(repo *git.Repo) error { return repo.RenameBranch(b.Name, name) }, nil)
+		a.gitDo(locales.BusyRenamingBranch(), func(repo *git.Repo) error { return repo.RenameBranch(b.Name, name) }, nil)
 		return ""
 	}}
 }
@@ -752,10 +764,10 @@ func (a *app) askPanelRemote(remote *git.Remote, push bool) {
 	repo := a.git.repo
 	defer a.bindPanelDialogs(repo)
 	if remote == nil {
-		a.prompt = &prompt{title: "Add Remote…", hint: "Remote name, for example origin", done: func(name string) string {
+		a.prompt = &prompt{title: locales.PanelAddRemote(), hint: locales.PanelRemoteNameHint(), done: func(name string) string {
 			name = strings.TrimSpace(name)
 			if name == "" {
-				return "Enter a remote name."
+				return locales.PanelEnterRemoteName()
 			}
 			// Defer the next prompt because the current prompt closes after done.
 			a.post(func() {
@@ -768,27 +780,27 @@ func (a *app) askPanelRemote(remote *git.Remote, push bool) {
 		return
 	}
 	name := remote.Name
-	title := "Add Remote URL…"
+	title := locales.PanelAddRemoteURL()
 	value := ""
 	existing := len(remote.FetchURLs) > 0 || len(remote.PushURLs) > 0
 	if existing {
-		title = "Edit Fetch URL…"
+		title = locales.PanelEditFetchURL()
 		if len(remote.FetchURLs) > 0 {
 			value = remote.FetchURLs[0]
 		}
 	}
 	if push {
-		title = "Edit Push URL…"
+		title = locales.PanelEditPushURL()
 		if len(remote.PushURLs) > 0 {
 			value = remote.PushURLs[0]
 		}
 	}
-	a.prompt = &prompt{title: title, hint: "URL for " + name, value: value, done: func(url string) string {
+	a.prompt = &prompt{title: title, hint: locales.PanelURLFor(name), value: value, done: func(url string) string {
 		url = strings.TrimSpace(url)
 		if url == "" {
-			return "Enter a remote URL."
+			return locales.PanelEnterRemoteURL()
 		}
-		a.gitDo("Updating remote…", func(repo *git.Repo) error {
+		a.gitDo(locales.BusyUpdatingRemote(), func(repo *git.Repo) error {
 			if !existing {
 				return repo.AddRemote(name, url)
 			}
@@ -805,7 +817,7 @@ func (a *app) bindPanelDialogs(repo *git.Repo) {
 		done := pr.done
 		pr.done = func(value string) string {
 			if a.git.repo != repo {
-				return "The repository changed. Open this command again."
+				return locales.PanelRepoChanged()
 			}
 			return done(value)
 		}
@@ -825,12 +837,12 @@ func (a *app) askPanelNewBranch() {
 }
 func (a *app) askPrunePanelRemote(name string, fetch bool) {
 	defer a.bindPanelDialogs(a.git.repo)
-	title, ok := "Prune "+name+"?", "Prune"
+	title, ok := locales.PanelPruneQuestion(name), locales.PanelPrune()
 	if fetch {
-		title, ok = "Fetch and prune "+name+"?", "Fetch and Prune"
+		title, ok = locales.PanelFetchPruneQuestion(name), locales.PanelFetchAndPruneButton()
 	}
-	a.confirm = &confirm{title: title, ok: ok, message: "Remove tracking refs for branches deleted on the remote.", run: func() {
-		a.gitDo("Pruning…", func(repo *git.Repo) error {
+	a.confirm = &confirm{title: title, ok: ok, message: locales.PanelPruneDetail(), run: func() {
+		a.gitDo(locales.BusyPruning(), func(repo *git.Repo) error {
 			if fetch {
 				return repo.FetchRemote(name, true)
 			}
@@ -847,23 +859,23 @@ func (a *app) checkoutPanelBranch(b git.Branch) {
 		a.switchBranch(b.Name, false)
 		return
 	}
-	if !a.docsSaved("switching branches") {
+	if !a.docsSaved(locales.BeforeSwitching()) {
 		return
 	}
 	_, name, ok := strings.Cut(b.Name, "/")
 	if !ok {
-		a.fail("Invalid remote branch %q", b.Name)
+		a.fail("%s", locales.FailInvalidRemoteBranch(b.Name))
 		return
 	}
-	a.gitDo("Checking out…", func(repo *git.Repo) error { return repo.CheckoutTracking(b.Name, name) }, nil)
+	a.gitDo(locales.BusyCheckingOutPlain(), func(repo *git.Repo) error { return repo.CheckoutTracking(b.Name, name) }, nil)
 }
 
 func (a *app) pullPanelBranch(b git.Branch) {
 	if a.git.busy != "" || b.Remote || b.UpstreamRef == "" || b.Gone || a.git.status != nil && a.git.status.Op != "" {
 		return
 	}
-	if b.Current && !a.docsSaved("pulling a branch") {
+	if b.Current && !a.docsSaved(locales.BeforePullingBranch()) {
 		return
 	}
-	a.gitDo("Pulling "+b.Name+"…", func(repo *git.Repo) error { return repo.PullBranch(b.Name) }, nil)
+	a.gitDo(locales.BusyPullingBranch(b.Name), func(repo *git.Repo) error { return repo.PullBranch(b.Name) }, nil)
 }

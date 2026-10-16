@@ -9,6 +9,7 @@ import (
 
 	"mayoi/internal/git"
 	"mayoi/internal/workspace"
+	"mayoi/locales"
 )
 
 // branchPicker is the box that switches branches: the branches, local and
@@ -174,12 +175,12 @@ func (a *app) branchPickerView(c *ui.Context) {
 		back := a.dialogBack(c, "branches")
 		back.Children(func() {
 			box := a.floating(c, ui.Column(c).Width(560).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
-				Role(ui.RoleDialog).Label("Switch Branch")
+				Role(ui.RoleDialog).Label(locales.BranchSwitchLabel())
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
 					ui.Icon(c, iconBranch).FontSize(15).TextColor(p.muted)
 					in := a.textKeys(ui.TextInputBase(c.Key("branch-input"), &b.query)).Grow(1).FontSize(14).AutoFocus().
-						Placeholder("Switch to a branch, or type a name to create one").Label("Switch Branch")
+						Placeholder(locales.BranchPlaceholder()).Label(locales.BranchSwitchLabel())
 					if in.Shortcut(0, ui.KeyDown) {
 						b.sel, b.moved = min(b.sel+1, len(choices)-1), true
 					}
@@ -198,12 +199,12 @@ func (a *app) branchPickerView(c *ui.Context) {
 						}
 					})
 				case b.loading:
-					ui.Text(c, "Reading the branches…").FontSize(13).TextColor(p.muted).Padding(12, 16)
+					ui.Text(c, locales.BranchReading()).FontSize(13).TextColor(p.muted).Padding(12, 16)
 				default:
-					ui.Text(c, "No matching branches").FontSize(13).TextColor(p.muted).Padding(12, 16)
+					ui.Text(c, locales.BranchNoMatches()).FontSize(13).TextColor(p.muted).Padding(12, 16)
 				}
 				b.moved = false
-				a.quickFooter(c, false, "switch", "Type a new name to create a branch", false)
+				a.quickFooter(c, false, locales.QuickSwitchAction(), locales.BranchTypeToCreate(), false)
 			})
 			if box.PressedOutside() || back.OverlayShortcut(0, ui.KeyEscape) {
 				a.closeBranchPicker()
@@ -219,7 +220,7 @@ func (a *app) branchPickerView(c *ui.Context) {
 func (a *app) branchRow(c *ui.Context, ch branchChoice, i int) {
 	b := &a.branches
 	p := a.pal
-	key, label := "create", "Create Branch "+ch.create
+	key, label := "create", locales.BranchCreateLabel(ch.create)
 	var br git.Branch
 	var positions []int
 	if ch.create == "" {
@@ -243,11 +244,11 @@ func (a *app) branchRow(c *ui.Context, ch branchChoice, i int) {
 	row.Children(func() {
 		if ch.create != "" {
 			ui.Icon(c, iconPlus).FontSize(14).TextColor(p.accent)
-			ui.RichText(c, ui.Span{Text: "Create branch "}, ui.Span{Text: ch.create, Weight: 650}).FontSize(13).
+			ui.RichText(c, ui.Span{Text: locales.BranchCreatePrefix()}, ui.Span{Text: ch.create, Weight: 650}).FontSize(13).
 				TextColor(p.text).SingleLine().Shrink(1)
 			ui.Spacer(c)
 			if from := a.branch(); from != "" {
-				ui.Text(c, "from "+from).FontSize(12).TextColor(p.faint).SingleLine().Shrink(0)
+				ui.Text(c, locales.BranchFrom(from)).FontSize(12).TextColor(p.faint).SingleLine().Shrink(0)
 			}
 			return
 		}

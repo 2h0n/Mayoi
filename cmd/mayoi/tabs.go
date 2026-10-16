@@ -6,6 +6,7 @@ import (
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/remote"
+	"mayoi/locales"
 )
 
 // tabStrip shows a tab for each tab of a column: a click shows it, the
@@ -52,7 +53,7 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 			ui.Row(c).Height(tabStripH).AlignItems(ui.Stretch).Children(func() {
 				for i, t := range col.tabs {
 					active := i == col.active
-					tip := "Terminal"
+					tip := locales.TabTerminal()
 					if t.term == nil {
 						tip = a.relOrPath(t.path())
 					}
@@ -126,7 +127,7 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 						}
 						// The dot of unsaved changes turns into the cross under the
 						// pointer.
-						x := ui.ButtonBase(c).Size(18, 18).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label("Close " + t.name())
+						x := ui.ButtonBase(c).Size(18, 18).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(locales.CloseName(t.name()))
 						if x.Hovered() {
 							x.Background(p.hover)
 						}
@@ -150,11 +151,11 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 		})
 		ui.Row(c).Padding(0, 6, 0, 4).Children(func() {
 			if col.locked {
-				if a.iconButton(c, iconLock, "Unlock Column", true).Clicked() {
+				if a.iconButton(c, iconLock, locales.UnlockColumn(), true).Clicked() {
 					a.post(func() { a.toggleColumnLock(col) })
 				}
 			}
-			if a.iconButton(c, iconColumns, a.withKey("Split Right", "view.splitRight"), false).Clicked() {
+			if a.iconButton(c, iconColumns, a.withKey(locales.CmdViewSplitRight(), "view.splitRight"), false).Clicked() {
 				a.post(func() {
 					if at := slices.Index(a.cols, col); at >= 0 {
 						a.col = at
@@ -216,42 +217,42 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 			}
 		})
 	}
-	if m.Item("Close").Chosen() {
+	if m.Item(locales.TabClose()).Chosen() {
 		*closing = t
 	}
-	if m.Item("Close Others").Disabled(len(col.tabs) < 2).Chosen() {
+	if m.Item(locales.TabCloseOthers()).Disabled(len(col.tabs) < 2).Chosen() {
 		a.post(func() { a.closeOthers(col, t) })
 	}
-	if m.Item("Close All").Chosen() {
+	if m.Item(locales.TabCloseAll()).Chosen() {
 		a.post(func() { a.closeTabs(slices.Clone(col.tabs), nil) })
 	}
 	m.Separator()
 	a.columnLockMenu(m, col)
-	if m.Item("Split Right").Chosen() {
+	if m.Item(locales.CmdViewSplitRight()).Chosen() {
 		show(a.splitRight)
 	}
 	at := slices.Index(a.cols, col)
 	alone := len(col.tabs) < 2
-	if m.Item("Move to Next Column").Disabled(alone && at == len(a.cols)-1).Chosen() {
+	if m.Item(locales.MoveToNextColumn()).Disabled(alone && at == len(a.cols)-1).Chosen() {
 		show(func() { a.moveTabBy(1) })
 	}
-	if m.Item("Move to Previous Column").Disabled(alone && at == 0).Chosen() {
+	if m.Item(locales.MoveToPrevColumn()).Disabled(alone && at == 0).Chosen() {
 		show(func() { a.moveTabBy(-1) })
 	}
 	if t.term != nil {
-		if m.Item("Move to Locked Right Column").Chosen() {
+		if m.Item(locales.TermMoveLockedRight()).Chosen() {
 			a.post(func() { a.terminalToLockedRight(t.term) })
 		}
-		if m.Item("Move to Panel").Chosen() {
+		if m.Item(locales.MoveToPanel()).Chosen() {
 			a.post(func() { a.terminalToPanel(t.term) })
 		}
 		return
 	}
 	m.Separator()
 	if d := t.ed; d != nil && canPreview(d.document) {
-		label := "Show Preview"
+		label := locales.ShowPreview()
 		if d.preview != nil {
-			label = "Show Source"
+			label = locales.ShowSource()
 		}
 		if m.Item(label).Chosen() {
 			show(func() { a.setPreview(d, d.preview == nil); a.focusColumn() })
@@ -259,27 +260,27 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 	}
 	path := t.path()
 	if t.diff != nil {
-		if m.Item("Open File").Chosen() {
+		if m.Item(locales.OpenFile()).Chosen() {
 			show(a.openChanges)
 		}
-	} else if t.ed != nil && path != "" && a.git.repo != nil && m.Item("Open Changes").Chosen() {
+	} else if t.ed != nil && path != "" && a.git.repo != nil && m.Item(locales.CmdGitOpenChanges()).Chosen() {
 		show(a.openChanges)
 	}
-	if m.Item("Reveal in Explorer").Disabled(path == "" || a.root == "").Chosen() {
+	if m.Item(locales.ScmRevealInExplorer()).Disabled(path == "" || a.root == "").Chosen() {
 		a.post(func() { a.showExplorer(); a.revealInTree(path) })
 	}
 	if m.Item(revealLabel()).Disabled(path == "" || remote.Is(path)).Chosen() {
 		a.host.reveal(path)
 	}
-	if m.Item("Copy Path").Disabled(path == "").Chosen() {
+	if m.Item(locales.CopyPath()).Disabled(path == "").Chosen() {
 		a.services.WriteClipboard(hostPath(path))
 	}
 }
 
 func (a *app) columnLockMenu(m *ui.Menu, col *column) {
-	label := "Lock Column"
+	label := locales.LockColumn()
 	if col.locked {
-		label = "Unlock Column"
+		label = locales.UnlockColumn()
 	}
 	if m.Item(label).Chosen() {
 		a.post(func() { a.toggleColumnLock(col) })

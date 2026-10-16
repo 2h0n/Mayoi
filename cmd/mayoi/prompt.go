@@ -2,6 +2,7 @@ package main
 
 import (
 	"cmp"
+	"mayoi/locales"
 	"path/filepath"
 	"strings"
 
@@ -62,7 +63,7 @@ func (a *app) promptView(c *ui.Context) {
 					submit()
 				}
 				ui.Row(c).Gap(8).Justify(ui.End).Children(func() {
-					if ui.Button(c, "Cancel").Clicked() {
+					if ui.Button(c, locales.ButtonCancel()).Clicked() {
 						a.prompt = nil
 					}
 					if ui.PrimaryButton(c, strings.TrimSuffix(pr.title, "…")).Disabled(strings.TrimSpace(pr.value) == "").Clicked() {
@@ -144,7 +145,7 @@ func (a *app) confirmView(c *ui.Context) {
 				}
 				buttons := ui.Row(c).Gap(8).Justify(ui.End)
 				buttons.Children(func() {
-					cancel := ui.Button(c, "Cancel")
+					cancel := ui.Button(c, locales.ButtonCancel())
 					if compact {
 						cancel.FontSize(12).Padding(6, 8)
 					}
