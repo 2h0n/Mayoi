@@ -36,7 +36,7 @@ func monURL() string {
 }
 
 // tokenKey is the key of Mon's access token in the system's credential
-// store.
+// store, and the name of the file that keeps it in development.
 const tokenKey = "mon-token"
 
 // conflictFile is where the account's keybindings.json goes when it
@@ -110,6 +110,9 @@ type cloud struct {
 	// onMain runs fn on the main thread and waits for it: mygo.RunOnMain,
 	// but in tests.
 	onMain func(fn func())
+	// tokenFile keeps the token in development, "" for the credential
+	// store.
+	tokenFile string
 }
 
 // frozenLocal is this machine's settings as the app quits: its snapshot,
@@ -143,6 +146,11 @@ func (m *mayoi) startCloud() {
 	}
 	dir := filepath.Dir(m.s.Path())
 	c := &cloud{m: m, client: mon.New(monURL()), onMain: mygo.RunOnMain}
+	if mygo.IsDev() {
+		// On macOS each development build signs anew, ad hoc, and the
+		// Keychain asks again whether it may read what the last one kept.
+		c.tokenFile = filepath.Join(dir, tokenKey)
+	}
 	c.engine = cloudsync.New(c.client, cloudLocal{c}, filepath.Join(dir, "sync.json"))
 	m.cloud = c
 	c.checkConflict()
@@ -157,7 +165,7 @@ func (m *mayoi) startCloud() {
 		return
 	}
 	go func() {
-		token, err := mygo.Secrets.Get(tokenKey)
+		token, err := c.loadToken()
 		mygo.RunOnMain(func() {
 			if errors.Is(err, mygo.ErrSecretNotFound) {
 				// The token is gone: the next sign-in starts anew.
@@ -428,7 +436,7 @@ func (c *cloud) signIn(a *app) {
 	a.invalidate()
 	go func() {
 		// Where there is no credential store, the token has nowhere to go.
-		if _, err := mygo.Secrets.Get(tokenKey); errors.Is(err, errors.ErrUnsupported) {
+		if _, err := c.loadToken(); errors.Is(err, errors.ErrUnsupported) {
 			mygo.RunOnMain(func() {
 				a.dropSignin(si)
 				c.m.toast(locales.SyncNoKeyring())
@@ -457,7 +465,7 @@ func (c *cloud) signIn(a *app) {
 		token, err := c.client.WaitForDeviceToken(ctx, dc)
 		var u *mon.User
 		if err == nil {
-			err = mygo.Secrets.Set(tokenKey, []byte(token))
+			err = c.saveToken([]byte(token))
 		}
 		if err == nil {
 			signedIn := *c.client
@@ -520,6 +528,37 @@ func (c *cloud) signOut() {
 	c.m.toast(locales.SyncSignedOut())
 }
 
+// loadToken returns the token kept at sign-in, or mygo.ErrSecretNotFound.
+func (c *cloud) loadToken() ([]byte, error) {
+	if c.tokenFile == "" {
+		return mygo.Secrets.Get(tokenKey)
+	}
+	b, err := os.ReadFile(c.tokenFile)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, mygo.ErrSecretNotFound
+	}
+	return b, err
+}
+
+// saveToken keeps the token for the next launches.
+func (c *cloud) saveToken(token []byte) error {
+	if c.tokenFile == "" {
+		return mygo.Secrets.Set(tokenKey, token)
+	}
+	return os.WriteFile(c.tokenFile, token, 0o600)
+}
+
+// dropToken removes the token kept, if any.
+func (c *cloud) dropToken() error {
+	if c.tokenFile == "" {
+		return mygo.Secrets.Delete(tokenKey)
+	}
+	if err := os.Remove(c.tokenFile); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // forget forgets the account and its token, as signed out.
 func (c *cloud) forget() {
 	if c.push != nil {
@@ -533,7 +572,7 @@ func (c *cloud) forget() {
 	c.avatar, c.avatarURL = nil, ""
 	c.client.Token = ""
 	c.engine.Forget()
-	go mygo.Secrets.Delete(tokenKey)
+	go c.dropToken()
 	c.m.refreshMenu()
 	c.notify()
 }

@@ -214,6 +214,8 @@ sign one out or delete the settings saved there.
 
 The sign-in is kept in the system's credential store: the Keychain on macOS, the Credential Manager on Windows, and the
 Secret Service on Linux (GNOME Keyring, KWallet and others). On Linux without one, settings sync is not available.
+Development builds (`mygo dev`, `go run`) keep it in `mon-token` beside settings.json instead, readable only by you, as
+the Keychain would ask again after every rebuild.
 
 ## keybindings.json
 

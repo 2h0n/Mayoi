@@ -246,3 +246,29 @@ func TestCloudLocalKeybindings(t *testing.T) {
 		t.Errorf("keybindings.json stayed: %v", err)
 	}
 }
+
+// TestTokenFile: in development the token is kept in a file only its
+// owner reads, and a missing one is as no token kept.
+func TestTokenFile(t *testing.T) {
+	c := &cloud{tokenFile: filepath.Join(t.TempDir(), tokenKey)}
+	if _, err := c.loadToken(); !errors.Is(err, mygo.ErrSecretNotFound) {
+		t.Fatalf("loadToken() before saving = %v, want ErrSecretNotFound", err)
+	}
+	if err := c.saveToken([]byte("tok")); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := c.loadToken(); err != nil || string(got) != "tok" {
+		t.Fatalf("loadToken() = %q, %v, want \"tok\"", got, err)
+	}
+	if fi, err := os.Stat(c.tokenFile); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("the token file's mode = %v, %v, want 0600", fi.Mode().Perm(), err)
+	}
+	for range 2 {
+		if err := c.dropToken(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := c.loadToken(); !errors.Is(err, mygo.ErrSecretNotFound) {
+		t.Fatalf("loadToken() after dropping = %v, want ErrSecretNotFound", err)
+	}
+}
