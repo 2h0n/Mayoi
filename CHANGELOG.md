@@ -23,6 +23,8 @@ needs a `## <version>` section here, or its build fails.
   2.36, as on Ubuntu 22.04.
 - A paste to or from a remote host canceled as it finishes leaves nothing
   behind.
+- A paste to or from a remote host canceled before it starts copies
+  nothing; a small one could still arrive.
 - Selecting a file anywhere in its Explorer row switches to its editor,
   including clicks in the space beside its name, and moving through the
   Explorer with the arrow keys previews each file in turn.

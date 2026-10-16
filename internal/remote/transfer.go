@@ -53,8 +53,13 @@ func (p *Progress) Canceled() bool {
 }
 
 // within returns the context of the connection, which also ends as p is
-// canceled, and a function to call once the transfer is done.
+// canceled, and a function to call once the transfer is done. A transfer
+// canceled already does not start: the context would end only a moment
+// later, after a small one may have arrived.
 func (c *Conn) within(p *Progress) (string, context.Context, func(), error) {
+	if p.Canceled() {
+		return "", nil, nil, ErrCanceled
+	}
 	sock, ctx, err := c.live()
 	if err != nil {
 		return "", nil, nil, err
