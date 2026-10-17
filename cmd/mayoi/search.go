@@ -899,7 +899,7 @@ func (a *app) searchSummary(c *ui.Context) {
 	var msg string
 	switch {
 	case s.err != "":
-		msg, col = s.err, p.danger
+		msg, col = s.err, p.dangerFg
 	case s.query == "":
 	case s.count > 0:
 		msg = locales.SearchResultsIn(s.count, len(s.files))

@@ -119,7 +119,7 @@ func (a *app) tabStrip(c *ui.Context, col *column) {
 						}
 						switch {
 						case t.ed != nil && t.ed.diskGone, t.view != nil && t.view.diskGone:
-							name.TextColor(p.danger).Strikethrough()
+							name.TextColor(p.dangerFg).Strikethrough()
 						case active:
 							name.FontWeight(550).TextColor(p.text)
 						default:

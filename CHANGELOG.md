@@ -18,6 +18,14 @@ needs a `## <version>` section here, or its build fails.
   quotes, as GitHub does.
 - The welcome page gives Quick Open an icon of its own, apart from Find in
   Files.
+- In light themes, the names of changed, added and deleted files, and
+  error messages, are drawn darker so they meet WCAG AA contrast (4.5:1);
+  the gutter marks keep their brighter colors.
+- A `fontFamily` that isn't installed falls back to the system's
+  monospaced font, not to its proportional one; so does
+  `terminalFontFamily`.
+- The breadcrumbs of a file outside the folder no longer start with an
+  empty segment, and show the home folder as `~`.
 
 - **Submodules in Source Control:** each initialized submodule, nested ones
   and those of linked worktrees too, lists its own changes to stage and

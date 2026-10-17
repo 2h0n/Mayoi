@@ -582,7 +582,7 @@ func (a *gitContext) subjectLength(c *ui.Context) {
 	}
 	col, note := p.faint, locales.ScmSummary()
 	if n > subjectLimit {
-		col, note = p.modified, locales.ScmSummaryLong()
+		col, note = p.modifiedFg, locales.ScmSummaryLong()
 	}
 	ui.Row(c).Margin(-4, 2, 0, 2).Children(func() {
 		ui.Text(c, note).FontSize(11).TextColor(col).Grow(1).SingleLine()

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"math"
 	"time"
 
 	"github.com/egoist/mygo"
@@ -67,6 +68,11 @@ type palette struct {
 	added                 ui.Color // lines changed since Git's last commit
 	changed               ui.Color
 	removed               ui.Color
+	// modifiedFg, addedFg, removedFg and dangerFg are those colors as
+	// text: the same hues, darker on a light window or lighter on a dark
+	// one, as far as they need to read at 4.5:1 on the chrome and the
+	// editor. The marks and tints keep the brighter ones.
+	modifiedFg, addedFg, removedFg, dangerFg ui.Color
 
 	syntax [highlight.Kinds]ui.Color
 	// ansi is the terminal's 16 colors: black, red, green, yellow, blue,
@@ -665,10 +671,54 @@ func (p *palette) derive() *palette {
 	} else {
 		p.dangerHover, p.dangerPressed = p.dangerFill.Mix(black, 0.1), p.dangerFill.Mix(black, 0.22)
 	}
+	p.modifiedFg = legible(p.modified, p.dark, p.chrome, p.editor, p.panel)
+	p.addedFg = legible(p.added, p.dark, p.chrome, p.editor, p.panel)
+	p.removedFg = legible(p.removed, p.dark, p.chrome, p.editor, p.panel)
+	p.dangerFg = legible(p.danger, p.dark, p.chrome, p.editor, p.panel)
 	p.selected = p.selection.Over(p.editor)
 	p.selectedDim = p.selection.Alpha(0.5).Over(p.editor)
 	p.cursor = p.accent.Alpha(0.5)
 	return p
+}
+
+// legible returns col as text that reads at 4.5:1, WCAG's AA, on each of
+// the backgrounds: col itself when it does, or else col mixed toward black
+// on a light window, or white on a dark one, no further than it must.
+func legible(col ui.Color, dark bool, backs ...ui.Color) ui.Color {
+	to := black
+	if dark {
+		to = white
+	}
+	reads := func(c ui.Color) bool {
+		for _, b := range backs {
+			if contrast(c, b) < 4.5 {
+				return false
+			}
+		}
+		return true
+	}
+	for i := 0; i <= 40; i++ {
+		if c := col.Mix(to, float32(i)/40); reads(c) || i == 40 {
+			return c
+		}
+	}
+	return col
+}
+
+// contrast is the WCAG contrast ratio of two opaque colors.
+func contrast(x, y ui.Color) float64 {
+	lum := func(c ui.Color) float64 {
+		ch := func(v uint8) float64 {
+			f := float64(v) / 255
+			if f <= 0.03928 {
+				return f / 12.92
+			}
+			return math.Pow((f+0.055)/1.055, 2.4)
+		}
+		return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
+	}
+	a, b := lum(x)+0.05, lum(y)+0.05
+	return max(a, b) / min(a, b)
 }
 
 // applyTheme sets the window's theme from the palette of its theme,
@@ -682,7 +732,7 @@ func (a *app) applyTheme(c *ui.Context) *palette {
 	// default theme's blue.
 	t.Accent, t.AccentText = p.fill, p.fillText
 	t.AccentHover, t.AccentPressed = p.fillHover, p.fillPressed
-	t.Danger, t.Warning, t.Success = p.danger, p.modified, p.added
+	t.Danger, t.Warning, t.Success = p.dangerFg, p.modifiedFg, p.addedFg
 	t.Selection = p.selection
 	t.Border = p.border
 	t.Text, t.TextMuted = p.text, p.muted

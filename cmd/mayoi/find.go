@@ -377,7 +377,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			}
 			col := p.muted
 			if none || f.err != "" {
-				col = p.danger
+				col = p.dangerFg
 			}
 			ui.Text(c, count).FontSize(11.5).TextColor(col).Width(findCountW).SingleLine().TextAlign(ui.Center)
 			if a.iconButton(c, iconArrowUp, locales.FindPrevMatch(keyText("Shift+Enter")), false).Disabled(len(f.matches) == 0).Clicked() {

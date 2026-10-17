@@ -688,8 +688,16 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 		rel := path
 		if a.root != "" && strings.HasPrefix(path, a.root+string(filepath.Separator)) {
 			rel = path[len(a.root)+1:]
+		} else {
+			// A file outside the folder, from the home folder on, as ~.
+			rel = shortenHome(path)
 		}
-		parts = strings.Split(filepath.ToSlash(rel), "/")
+		for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
+			// The root of an absolute path has no name to show.
+			if part != "" {
+				parts = append(parts, part)
+			}
+		}
 	} else if t.diff != nil && t.diff.commit != nil && t.diff.commit.from != "" {
 		parts = []string{locales.Comparison(), t.name()}
 	} else if t.diff != nil && t.diff.commit != nil {
@@ -1024,7 +1032,7 @@ func (a *app) statusBar(c *ui.Context) {
 		if d.diskGone {
 			ui.Row(c).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
 				ui.Icon(c, iconTrash).FontSize(12).TextColor(p.danger)
-				text(locales.DeletedOnDisk()).TextColor(p.danger)
+				text(locales.DeletedOnDisk()).TextColor(p.dangerFg)
 			})
 		}
 		snap := d.buf.Snapshot()

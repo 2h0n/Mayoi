@@ -1039,7 +1039,7 @@ func (a *app) noteCard(c *ui.Context, n *reviewNote, ed *editor, w float32) {
 			ui.Text(c, locales.ReviewNewComment()).FontSize(12).TextColor(p.muted).SingleLine().Shrink(1).MinWidth(0)
 		}
 		if n.outdated {
-			notePill(c, locales.ReviewOutdated(), locales.ReviewOutdatedTip(), p.modified)
+			notePill(c, locales.ReviewOutdated(), locales.ReviewOutdatedTip(), p.modifiedFg)
 		}
 		ui.Spacer(c)
 		if editing {

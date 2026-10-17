@@ -39,7 +39,7 @@ type codeFont struct {
 
 func newCodeFont(p settings.Prefs) codeFont {
 	f := codeFont{
-		family: p.FontFamily, size: p.FontSize, weight: p.FontWeight, features: strings.Join(p.FontFeatures, ","),
+		family: monoFallback(p.FontFamily), size: p.FontSize, weight: p.FontWeight, features: strings.Join(p.FontFeatures, ","),
 		lineHeight: p.LineHeight, lineH: float32(int(p.FontSize*p.LineHeight + 0.5)),
 	}
 	w, _ := ui.ShapeText(strings.Repeat("0", 64), f.font(), 0).Size()
@@ -52,8 +52,26 @@ func newCodeFont(p settings.Prefs) codeFont {
 
 // is reports whether the font is the one the preferences choose.
 func (f codeFont) is(p settings.Prefs) bool {
-	return f.charW != 0 && f.family == p.FontFamily && f.size == p.FontSize && f.weight == p.FontWeight &&
+	return f.charW != 0 && f.family == monoFallback(p.FontFamily) && f.size == p.FontSize && f.weight == p.FontWeight &&
 		f.features == strings.Join(p.FontFeatures, ",") && f.lineHeight == p.LineHeight
+}
+
+// monoFallback is a font family list that ends in the system's monospaced
+// font, so that a family the system lacks, as a font named in the settings
+// but not installed, falls back to a monospaced font rather than to the
+// system's proportional one. A list that names a generic family already
+// is kept.
+func monoFallback(family string) string {
+	for _, f := range strings.Split(family, ",") {
+		switch strings.ToLower(strings.Trim(strings.TrimSpace(f), `"'`)) {
+		case "monospace", "ui-monospace", "system-ui", "sans-serif", "serif", "ui-serif", "ui-sans-serif":
+			return family
+		}
+	}
+	if strings.TrimSpace(family) == "" {
+		return "monospace"
+	}
+	return family + ", monospace"
 }
 
 func (f codeFont) font() ui.Font {

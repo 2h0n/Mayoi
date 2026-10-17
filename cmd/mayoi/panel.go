@@ -477,6 +477,7 @@ func termFont(s *settings.Settings) terminal.Font {
 	if strings.TrimSpace(f.Family) == "" {
 		f.Family = s.FontFamily
 	}
+	f.Family = monoFallback(f.Family)
 	if f.Size == 0 {
 		f.Size = max(s.FontSize-0.5, 9)
 	}

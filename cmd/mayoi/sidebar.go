@@ -381,7 +381,7 @@ func (a *app) fileTree(c *ui.Context) {
 			}
 			switch i := a.docIndex(path); {
 			case i >= 0 && a.docs[i].dirty():
-				label.TextColor(p.modified)
+				label.TextColor(p.modifiedFg)
 			case ignored:
 				label.TextColor(p.faint)
 			case letter != 0:
@@ -749,17 +749,17 @@ func (a *app) relOrPath(path string) string {
 }
 
 // gitColor is the color of a file of a letter of Git's: changed, added,
-// removed or in conflict.
+// removed or in conflict, as text.
 func gitColor(p *palette, letter byte) ui.Color {
 	switch letter {
 	case 'A', 'U':
-		return p.added
+		return p.addedFg
 	case 'D':
-		return p.removed
+		return p.removedFg
 	case 'C':
-		return p.danger
+		return p.dangerFg
 	}
-	return p.modified
+	return p.modifiedFg
 }
 
 // mix blends from toward to by t.
