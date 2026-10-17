@@ -5,6 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Cut with no selection cuts the caret's entire line,
+  and can be undone in one step.
+
 - **AI commit messages:** signed in to your mon.sorrycc.dev account, the ✨
   button at the corner of Source Control's message box writes the commit
   message from the staged changes, or from every change when nothing is

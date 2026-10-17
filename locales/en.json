@@ -96,6 +96,7 @@
   "cmdAccountSignIn": "Sign In…",
   "cmdAccountSignOut": "Sign Out of Settings Sync…",
   "cmdAccountSyncNow": "Sync Settings Now",
+  "cmdEditCut": "Cut",
   "cmdEditFind": "Find",
   "cmdEditFindInFiles": "Find in Files",
   "cmdEditFindNext": "Find Next",

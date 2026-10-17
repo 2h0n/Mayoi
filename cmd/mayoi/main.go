@@ -203,6 +203,7 @@ func (h *desktop) openFolders(dirs []string) {
 }
 
 func (h *desktop) recentChanged() { h.m.refreshMenu() }
+func (h *desktop) menuChanged()   { h.m.refreshMenu() }
 
 func (h *desktop) fontChanged() {
 	for _, w := range h.m.wins {

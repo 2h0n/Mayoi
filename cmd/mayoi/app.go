@@ -67,6 +67,7 @@ type host interface {
 	// recentChanged shows the recent folders anew, in the menus, once
 	// they change.
 	recentChanged()
+	menuChanged()
 	// fontChanged draws every window anew, in the font the settings
 	// have now.
 	fontChanged()
@@ -251,10 +252,11 @@ type app struct {
 	// strokes of a chord of them typed so far. keyFocus is the place the
 	// keyboard is in as the view was built, placeNone where the window
 	// takes their keys, and keyTerm the terminal that took a key last.
-	keys     *keymap.Map
-	chord    []keymap.Stroke
-	keyFocus keyPlace
-	keyTerm  *session
+	keys        *keymap.Map
+	chord       []keymap.Stroke
+	keyFocus    keyPlace
+	cutInEditor bool
+	keyTerm     *session
 	// held is the key the keymap took last, until it is let go of.
 	held *ui.Key
 	// chain are the commands of runCommands still to run, which stop at

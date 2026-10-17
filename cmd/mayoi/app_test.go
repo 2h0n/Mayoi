@@ -94,6 +94,7 @@ func (h *fakeHost) newWindow(dir string)      { h.windows = append(h.windows, di
 func (h *fakeHost) newBlankWindow()           { h.blankWindows++ }
 func (h *fakeHost) openFolders(dirs []string) { h.folders = append(h.folders, dirs...) }
 func (h *fakeHost) recentChanged()            { h.recentChanges++ }
+func (h *fakeHost) menuChanged()              {}
 func (h *fakeHost) fontChanged()              {}
 func (h *fakeHost) installCLI()               {}
 func (h *fakeHost) uninstallCLI()             {}

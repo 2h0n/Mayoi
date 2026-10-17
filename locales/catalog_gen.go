@@ -997,6 +997,16 @@ func (msgs Messages) CmdAccountSyncNow() string {
 	return Catalog.Format(msgs.locale, "cmdAccountSyncNow", nil)
 }
 
+// CmdEditCut says "Cut"
+// in the language the app shows.
+func CmdEditCut() string { return In(i18n.Locale()).CmdEditCut() }
+
+// CmdEditCut says "Cut"
+// in the language of msgs.
+func (msgs Messages) CmdEditCut() string {
+	return Catalog.Format(msgs.locale, "cmdEditCut", nil)
+}
+
 // CmdEditFind says "Find"
 // in the language the app shows.
 func CmdEditFind() string { return In(i18n.Locale()).CmdEditFind() }
