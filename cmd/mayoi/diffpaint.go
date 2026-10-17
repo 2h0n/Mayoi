@@ -989,8 +989,14 @@ func avatarColor(p *palette, who string) ui.Color {
 // bold font of size. It shapes them in their own font: RichText lays a
 // small span on a line of the theme's font, whose baseline sits too low.
 func paintInitials(pt *ui.Painter, b ui.Rect, who string, size float32, col ui.Color) {
+	paintLabel(pt, b, initials(who), size, col)
+}
+
+// paintLabel paints s in the middle of b, as paintInitials paints
+// initials.
+func paintLabel(pt *ui.Painter, b ui.Rect, s string, size float32, col ui.Color) {
 	f := ui.Font{Size: size, Weight: 700}
-	gs := ui.Shape(initials(who), f)
+	gs := ui.Shape(s, f)
 	var w float32
 	for _, g := range gs {
 		w += g.Advance

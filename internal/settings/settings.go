@@ -143,6 +143,9 @@ type Prefs struct {
 	// ProjectTabs keeps the folders open in one window, a rail on its left
 	// choosing which shows, rather than a window for each.
 	ProjectTabs bool `json:"projectTabs,omitempty"`
+	// ProjectTabStyle is a project's own label and color on the rail of
+	// project tabs, by its folder.
+	ProjectTabStyle map[string]TabStyle `json:"projectTabStyle,omitempty"`
 	// Locale is the language Mayoi shows, as "en", "zh-Hans" or "ja", or ""
 	// for the one the system's languages prefer.
 	Locale string `json:"locale,omitempty"`
@@ -150,6 +153,32 @@ type Prefs struct {
 	// the preferences, "settings.json" for all of them, and
 	// "keybindings.json" for the keyboard shortcuts.
 	SyncIgnored []string `json:"syncIgnored,omitempty"`
+}
+
+// TabStyle is a project's own look on the rail: Label, up to two
+// characters, in place of its initials or logo, and Color, a name of the
+// terminal's colors as "red" or "cyan", in place of its own. Either is ""
+// for the project's own.
+type TabStyle struct {
+	Label string `json:"label,omitempty"`
+	Color string `json:"color,omitempty"`
+}
+
+// SetTabStyle keeps st as the look of the project of folder, forgetting
+// it when st is the project's own.
+func (s *Settings) SetTabStyle(folder string, st TabStyle) {
+	if st == (TabStyle{}) {
+		delete(s.ProjectTabStyle, folder)
+		if len(s.ProjectTabStyle) == 0 {
+			s.ProjectTabStyle = nil
+		}
+	} else {
+		if s.ProjectTabStyle == nil {
+			s.ProjectTabStyle = map[string]TabStyle{}
+		}
+		s.ProjectTabStyle[folder] = st
+	}
+	s.Changed()
 }
 
 // SyncIgnored's names of all the preferences, and of the keyboard
@@ -720,8 +749,9 @@ func (s *Settings) OnPrefsWritten(fn func()) {
 
 // unsynced are the preferences that stay on each machine: what the
 // windows remember of source control's panels rather than what a person
-// chooses, and what the person keeps on the machine.
-var unsynced = []string{"scmRepositoryOpen", "scmRemotes", "syncIgnored"}
+// chooses, what the person keeps on the machine, and the looks of the
+// projects on the rail, by folders of this machine.
+var unsynced = []string{"scmRepositoryOpen", "scmRemotes", "syncIgnored", "projectTabStyle"}
 
 // PrefKeys are the keys of the preferences in the settings' file.
 var PrefKeys = func() []string {

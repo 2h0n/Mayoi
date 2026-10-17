@@ -161,6 +161,15 @@ needs a `## <version>` section here, or its build fails.
 - The rail always shows each project's favicon or logo, keeping the
   initials for a project without one; **View → Project Icons** and the
   `projectIcons` setting are gone.
+- A remote folder's square on the rail has a server badge in its corner,
+  colored by how its host is connected, and its tip says so.
+- The rail labels each project with two letters, telling apart those that
+  start alike: Downloads and Documents show as "Dw" and "Dc" rather than
+  both "D".
+- A square's context menu has **Rename Tab…**, which shows up to two
+  characters of your own, an emoji too, in place of its initials or logo,
+  and **Tab Color**. They're kept in `projectTabStyle` in `settings.json`,
+  on each machine.
 
 ## 0.9.1
 

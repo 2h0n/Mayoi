@@ -383,6 +383,11 @@ Each folder gets its own window.
   well-known icon files, `favicon.ico` included, a mygo app's icon (`mygo.json`'s `icon`, or `resources/icon.png`),
   the icon its sources declare (`site/index.html` and `docs/index.html` among them), or a macOS app's `.icns` or Xcode
   AppIcon, also on a connected host over SSH.
+- Initials are two letters, and projects that would share them are told apart by the first letter that differs:
+  Downloads and Documents show as "Dw" and "Dc". A folder on another machine has a server badge in the square's
+  lower corner, gray while its host is connected, amber while connecting and red while not.
+- **Rename Tab…** in a square's context menu shows up to two characters of your own, an emoji too, in place of
+  its initials or logo; empty brings them back. **Tab Color** tints the square in one of the terminal's colors.
 - Drag a square along the rail to reorder the projects, and drop a folder from the Finder on the rail to add it.
 - Clicking a square shows that project, with its tabs, columns, terminals, Explorer and source control as it left
   them, each editor with its caret and scroll position. Each project keeps its own layout: what its sidebar shows,
@@ -390,7 +395,8 @@ Each folder gets its own window.
   Project**) step along the rail, and ⌃⌘1…9 (Ctrl+Alt+1…9 on Windows and Linux) show one by its place.
 - Opening a folder, with ⌘O, ⌥⌘O, Open Recent, the welcome page or `mayoi <dir>`, adds it to the rail, or shows
   it if it is there already. The `+` after the squares opens one too.
-- A square's context menu reveals the folder in the Finder, copies its path, and closes the project or the others.
+- A square's context menu reveals the folder in the Finder, copies its path, renames or colors the square, and
+  closes the project or the others.
 - **File → Close Project**, the square's context menu, or ⌘W with no tab left closes a project, asking about its
   unsaved changes first. Closing the window closes them all, and they open again at the next start, in the rail's
   order.

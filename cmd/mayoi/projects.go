@@ -20,6 +20,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -397,11 +398,17 @@ func (f *frame) railView(c *ui.Context, a *app) {
 	f.railDrop(rail, a, nil)
 	_, atEnd := ui.DragOver[railDrag](rail)
 	folders := rail.FileDragOver()
+	tabs := slices.Clone(f.tabs)
+	names := make([]string, len(tabs))
+	for i, h := range tabs {
+		names[i], _ = railName(h.a.folder())
+	}
+	labels := railLabels(names)
 	rail.Children(func() {
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(8, 0, 10, 0).Gap(6).AlignItems(ui.Center).Children(func() {
-				for i, h := range slices.Clone(f.tabs) {
-					f.railTab(c, a, h, i)
+				for i, h := range tabs {
+					f.railTab(c, a, h, i, labels[i])
 				}
 				if atEnd {
 					ui.Box(c).Size(24, 2).Radius(1).Background(p.accent)
@@ -467,16 +474,50 @@ const (
 	railRadius = 9
 )
 
+// railName is the name of the project of dir on the rail, and where its
+// folder is.
+func railName(dir string) (name, where string) {
+	if dir == "" {
+		return locales.RailUntitled(), locales.RailNoFolder()
+	}
+	return filepath.Base(dir), shortenHome(dir)
+}
+
 // railTab is a project's square on the rail, which shows it, with a pill
 // along the rail's edge that grows from under the pointer to the project
-// shown, a dot of unsaved changes, and one of a terminal's bell or
-// notification while the project was out of sight.
-func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
+// shown, a dot of unsaved changes, one of a terminal's bell or
+// notification while the project was out of sight, and a badge of a
+// remote folder's connection. label is what it shows without a logo,
+// unless the project has a label of its own.
+func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int, label string) {
 	p := a.pal
 	dir := h.a.folder()
-	name, where := locales.RailUntitled(), locales.RailNoFolder()
+	name, where := railName(dir)
+	var style settings.TabStyle
 	if dir != "" {
-		name, where = filepath.Base(dir), shortenHome(dir)
+		style = f.m.s.ProjectTabStyle[dir]
+	}
+	own := railLabel(style.Label)
+	if own != "" {
+		label = own
+	}
+	// The connection of a remote folder: its badge's color, and what the
+	// tip says of it.
+	var conn string
+	var connCol ui.Color
+	if host := remote.HostOf(dir); host != "" {
+		state := remote.Offline
+		if h.a.conn != nil {
+			state = h.a.connState
+		}
+		switch state {
+		case remote.Connected:
+			conn, connCol = locales.RemoteConnectedTo(host), p.muted
+		case remote.Connecting:
+			conn, connCol = locales.RemoteConnectingTip(host), p.modified
+		default:
+			conn, connCol = locales.RemoteDisconnectedTip(host), p.danger
+		}
 	}
 	var keys []string
 	if i < 9 {
@@ -493,12 +534,15 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 	}
 	alert := h.a.alert
 	col := avatarColor(p, dir)
+	if k, ok := railColor(p, style.Color); ok {
+		col = k
+	}
 	if dir != "" && h.needsLogoScan(dir) {
 		f.scanProjectLogo(a, h, dir)
 	}
 	b := ui.ButtonBase(c.Key(fmt.Sprintf("project-%d", h.a.window.ID))).Width(railW).Height(railSquare + 4).Shrink(0).
 		Label(name).Description(where).Drag(railDrag{h})
-	f.railTip(c, a, b, name, where, keys, dirty, alert)
+	f.railTip(c, a, b, name, where, keys, dirty, alert, conn, connCol)
 	f.railDrop(b, a, h)
 	_, over := ui.DragOver[railDrag](b)
 	hovered, pressed, dragged := b.Hovered(), b.Pressed(), b.Dragging()
@@ -542,13 +586,21 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 		if !on && !hovered {
 			ink = col.Mix(p.muted, 0.25)
 		}
-		if src := h.logoSrc; src != nil && !dragged {
+		if src := h.logoSrc; src != nil && own == "" && !dragged {
 			// Shrinking with the square as it is pressed.
 			ls := sq.W - 8
 			logo := ui.Rect{X: sq.X + (sq.W-ls)/2, Y: sq.Y + (sq.H-ls)/2, W: ls, H: ls}
 			pt.Clip(logo, 6, func() { pt.Image(src, logo, ui.Contain) })
 		} else {
-			paintInitials(pt, sq, projectWords(name), 12, ink.Alpha(alpha))
+			paintLabel(pt, sq, label, 12, ink.Alpha(alpha))
+		}
+		if conn != "" {
+			// At the corner the dots leave, cut out as they are, the
+			// glyph of a server in the rail's ground.
+			d := ui.Rect{X: sq.X - 3, Y: sq.Y + sq.H - 10, W: 13, H: 13}
+			pt.Fill(ui.Rect{X: d.X - 2, Y: d.Y - 2, W: d.W + 4, H: d.H + 4}, ground, 8.5)
+			pt.Fill(d, connCol.Alpha(alpha), 6.5)
+			pt.Icon(iconServer, ui.Rect{X: d.X + 2.5, Y: d.Y + 2.5, W: 8, H: 8}, ground)
 		}
 		if alert != "" {
 			// Below the dot of unsaved changes, in the accent.
@@ -571,6 +623,21 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 			a.services.WriteClipboard(hostPath(dir))
 		}
 		mn.Separator()
+		if mn.Item(locales.RailRename()).Disabled(dir == "").Chosen() {
+			a.post(func() { f.askRailLabel(a, dir, name) })
+		}
+		mn.Submenu(locales.RailColor(), func(mn *ui.Menu) {
+			if mn.Item(locales.RailColorAuto()).Checked(style.Color == "").Chosen() {
+				f.setTabStyle(dir, func(st *settings.TabStyle) { st.Color = "" })
+			}
+			mn.Separator()
+			for _, rc := range railColors {
+				if mn.Item(rc.label()).Checked(style.Color == rc.name).Chosen() {
+					f.setTabStyle(dir, func(st *settings.TabStyle) { st.Color = rc.name })
+				}
+			}
+		}).Disabled(dir == "")
+		mn.Separator()
 		if mn.Item(locales.CmdFileCloseProject()).Chosen() {
 			h.closeProject()
 		}
@@ -585,8 +652,9 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 
 // railTip is the tip of a project's square, to its right, where the
 // window's buttons above it leave it room: the project's name, its folder,
-// the keys that show it and whether it has unsaved changes.
-func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string, keys []string, dirty bool, alert string) {
+// the keys that show it, how a remote folder's host is connected, in the
+// color of its badge, and whether it has unsaved changes.
+func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string, keys []string, dirty bool, alert, conn string, connCol ui.Color) {
 	p := a.pal
 	ui.TooltipBase(c, b, func(tip ui.Element) {
 		tip.AttachTo(b, ui.AnchorRight, ui.AnchorLeft).Margin(0, 0, 0, 4)
@@ -605,6 +673,9 @@ func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string,
 					ui.Text(c, s).FontSize(11.5).TextColor(p.muted)
 				})
 			}
+			if conn != "" {
+				note(connCol, conn)
+			}
 			if alert != "" {
 				note(p.accent, alert)
 			}
@@ -613,6 +684,165 @@ func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string,
 			}
 		})
 	})
+}
+
+// railColorName is a color a project's square may be chosen in: its name
+// in a TabStyle, the terminal's color it is, and its name in the menu.
+type railColorName struct {
+	name  string
+	ansi  int
+	label func() string
+}
+
+// railColors are the colors a project's square may be chosen in, those
+// of the terminal, which each theme gives its own shades.
+var railColors = []railColorName{
+	{"red", 1, locales.RailColorRed},
+	{"green", 2, locales.RailColorGreen},
+	{"yellow", 3, locales.RailColorYellow},
+	{"blue", 4, locales.RailColorBlue},
+	{"magenta", 5, locales.RailColorMagenta},
+	{"cyan", 6, locales.RailColorCyan},
+}
+
+// railColor is the color of name in p, false for "" and names that are
+// none of railColors.
+func railColor(p *palette, name string) (ui.Color, bool) {
+	for _, rc := range railColors {
+		if rc.name == name {
+			return p.ansi[rc.ansi], true
+		}
+	}
+	return ui.Color{}, false
+}
+
+// setTabStyle changes the look of the project of dir on the rail, in the
+// settings, as edit has it.
+func (f *frame) setTabStyle(dir string, edit func(st *settings.TabStyle)) {
+	if dir == "" {
+		return
+	}
+	st := f.m.s.ProjectTabStyle[dir]
+	edit(&st)
+	f.m.s.SetTabStyle(dir, st)
+	if f.win != nil {
+		f.win.Invalidate()
+	}
+}
+
+// askRailLabel asks for the label of the project of dir, named name, on
+// the rail: up to two characters, or nothing for its own.
+func (f *frame) askRailLabel(a *app, dir, name string) {
+	a.prompt = &prompt{title: locales.RailRename(), hint: locales.RailRenameHint(name), value: f.m.s.ProjectTabStyle[dir].Label, done: func(v string) string {
+		v = strings.TrimSpace(v)
+		if len(labelChars(v)) > 2 {
+			return locales.RailRenameTooLong()
+		}
+		f.setTabStyle(dir, func(st *settings.TabStyle) { st.Label = v })
+		return ""
+	}}
+	a.invalidate()
+}
+
+// railLabel is a project's own label as the rail shows it: its first two
+// characters, "" for none.
+func railLabel(s string) string {
+	cs := labelChars(strings.TrimSpace(s))
+	return strings.Join(cs[:min(len(cs), 2)], "")
+}
+
+// labelChars splits s into the characters a person sees: a letter with
+// its accents, an emoji with its modifiers and those it joins, a flag of
+// its two letters.
+func labelChars(s string) []string {
+	var out []string
+	var prev rune
+	start, flag := 0, false
+	for i, r := range s {
+		joined := i > 0 && (unicode.Is(unicode.Mn, r) || unicode.Is(unicode.Me, r) ||
+			r == 0x200d || prev == 0x200d || r == 0xfe0f || r == 0xfe0e ||
+			r >= 0x1f3fb && r <= 0x1f3ff || r >= 0xe0020 && r <= 0xe007f)
+		regional := r >= 0x1f1e6 && r <= 0x1f1ff
+		if regional && flag {
+			joined, flag = true, false
+		} else {
+			flag = regional
+		}
+		if i > 0 && !joined {
+			out = append(out, s[start:i])
+			start = i
+		}
+		prev = r
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
+}
+
+// railLabels are the labels of the projects named names on the rail, in
+// their order: the initials of a name of words, the first two letters of
+// a name of one, and where two names would have the same, their first
+// letter and the first after it that tells them apart, as "Dw" and "Dc"
+// for Downloads and Documents. Names the same keep the same label.
+func railLabels(names []string) []string {
+	labels := make([]string, len(names))
+	letters := make([][]rune, len(names))
+	same := map[string][]int{}
+	for i, name := range names {
+		labels[i], letters[i] = railInitials(name)
+		same[labels[i]] = append(same[labels[i]], i)
+	}
+	for _, group := range same {
+		if len(group) < 2 {
+			continue
+		}
+		for _, i := range group {
+			for j := 1; j < len(letters[i]); j++ {
+				r := letters[i][j]
+				clash := false
+				for _, o := range group {
+					// A name the same as this one is labeled alike.
+					if slices.Equal(letters[o], letters[i]) {
+						continue
+					}
+					if j < len(letters[o]) && letters[o][j] == r {
+						clash = true
+						break
+					}
+				}
+				if !clash {
+					labels[i] = string(unicode.ToUpper(letters[i][0])) + string(r)
+					break
+				}
+			}
+		}
+	}
+	return labels
+}
+
+// railInitials is the label of a project named name on its own, and the
+// letters of the name, in lower case, which railLabels tells it apart
+// from others' by.
+func railInitials(name string) (string, []rune) {
+	words := strings.Fields(projectWords(name))
+	var letters []rune
+	for _, w := range words {
+		for _, r := range w {
+			if unicode.IsLetter(r) || unicode.IsDigit(r) {
+				letters = append(letters, unicode.ToLower(r))
+			}
+		}
+	}
+	switch {
+	case len(words) >= 2:
+		return initials(strings.Join(words, " ")), letters
+	case len(letters) >= 2:
+		return string(unicode.ToUpper(letters[0])) + string(letters[1]), letters
+	case len(letters) == 1:
+		return string(unicode.ToUpper(letters[0])), letters
+	}
+	return initials(name), letters
 }
 
 // railAdd is the button after the squares that opens another folder: a

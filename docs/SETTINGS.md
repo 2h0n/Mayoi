@@ -53,6 +53,7 @@ takes its default.
 | `sidebarRight`          | `false`       | `true`, `false`                                             | **View → Sidebar on Right**                    |
 | `panelPosition`         | `""`          | `""` (bottom), `"left"`, `"right"`                          | **View → Panel Position**                      |
 | `projectTabs`           | `false`       | `true`, `false`                                             | **View → Project Tabs**                        |
+| `projectTabStyle`       | none          | A label and color for each folder                           | **Rename Tab…** and **Tab Color** on the rail  |
 | `locale`                | `""`          | `""` (follow the system), `"en"`, `"zh-Hans"`, `"ja"`       | **View → Language**                            |
 | `autoSave`              | `true`        | `true`, `false`                                             | **File → Auto Save**                           |
 | `wordWrap`              | `false`       | `true`, `false`                                             | **View → Word Wrap**                           |
@@ -93,6 +94,10 @@ differ in width lines them up only roughly.
   of the two.
 - **`projectTabs`** keeps every folder open in one window, as project tabs on a rail on its left, rather than a
   window for each. Changing it gathers the windows into one, or parts them, at once.
+- **`projectTabStyle`** gives a project's square on the rail its own label, up to two characters, in place of its
+  initials or logo, and its own color, one of `"red"`, `"green"`, `"yellow"`, `"blue"`, `"magenta"` and `"cyan"`, by
+  the project's folder: `{"/Users/me/Downloads": {"label": "DL", "color": "cyan"}}`. A remote folder's key is
+  `/ssh:host/path`. It doesn't sync, as the folders are this machine's.
 - **`terminalCopyOnSelect`** copies what you select in a terminal to the clipboard as you let go of the pointer,
   and what Select All selects. Changing it applies to the terminals already open.
 - **`autoSave`** saves a changed file a moment after you stop typing, and when you leave it.
@@ -157,7 +162,7 @@ code and approve it. The dialog counts down until the code expires.
 What syncs:
 
 - **`settings.json`**: every preference, except `scmRepositoryOpen` and `scmRemotes`, which remember Source Control's
-  panels on each machine, and `syncIgnored`. When two machines change different preferences, both changes stay. When
+  panels on each machine, `projectTabStyle`, kept by this machine's folders, and `syncIgnored`. When two machines change different preferences, both changes stay. When
   they change the same one, the machine that syncs last wins.
 - **`keybindings.json`**, as text, comments and all. When it changed on this machine and on another since they last
   synced, this machine's stays and the other's is saved beside it as `keybindings.sync-conflict.json`. A toast and the

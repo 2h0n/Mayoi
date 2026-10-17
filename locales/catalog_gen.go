@@ -5477,6 +5477,86 @@ func (msgs Messages) QuickTypeForCommands() string {
 	return Catalog.Format(msgs.locale, "quickTypeForCommands", nil)
 }
 
+// RailColor says "Tab Color"
+// in the language the app shows.
+func RailColor() string { return In(i18n.Locale()).RailColor() }
+
+// RailColor says "Tab Color"
+// in the language of msgs.
+func (msgs Messages) RailColor() string {
+	return Catalog.Format(msgs.locale, "railColor", nil)
+}
+
+// RailColorAuto says "Automatic"
+// in the language the app shows.
+func RailColorAuto() string { return In(i18n.Locale()).RailColorAuto() }
+
+// RailColorAuto says "Automatic"
+// in the language of msgs.
+func (msgs Messages) RailColorAuto() string {
+	return Catalog.Format(msgs.locale, "railColorAuto", nil)
+}
+
+// RailColorBlue says "Blue"
+// in the language the app shows.
+func RailColorBlue() string { return In(i18n.Locale()).RailColorBlue() }
+
+// RailColorBlue says "Blue"
+// in the language of msgs.
+func (msgs Messages) RailColorBlue() string {
+	return Catalog.Format(msgs.locale, "railColorBlue", nil)
+}
+
+// RailColorCyan says "Cyan"
+// in the language the app shows.
+func RailColorCyan() string { return In(i18n.Locale()).RailColorCyan() }
+
+// RailColorCyan says "Cyan"
+// in the language of msgs.
+func (msgs Messages) RailColorCyan() string {
+	return Catalog.Format(msgs.locale, "railColorCyan", nil)
+}
+
+// RailColorGreen says "Green"
+// in the language the app shows.
+func RailColorGreen() string { return In(i18n.Locale()).RailColorGreen() }
+
+// RailColorGreen says "Green"
+// in the language of msgs.
+func (msgs Messages) RailColorGreen() string {
+	return Catalog.Format(msgs.locale, "railColorGreen", nil)
+}
+
+// RailColorMagenta says "Magenta"
+// in the language the app shows.
+func RailColorMagenta() string { return In(i18n.Locale()).RailColorMagenta() }
+
+// RailColorMagenta says "Magenta"
+// in the language of msgs.
+func (msgs Messages) RailColorMagenta() string {
+	return Catalog.Format(msgs.locale, "railColorMagenta", nil)
+}
+
+// RailColorRed says "Red"
+// in the language the app shows.
+func RailColorRed() string { return In(i18n.Locale()).RailColorRed() }
+
+// RailColorRed says "Red"
+// in the language of msgs.
+func (msgs Messages) RailColorRed() string {
+	return Catalog.Format(msgs.locale, "railColorRed", nil)
+}
+
+// RailColorYellow says "Yellow"
+// in the language the app shows.
+func RailColorYellow() string { return In(i18n.Locale()).RailColorYellow() }
+
+// RailColorYellow says "Yellow"
+// in the language of msgs.
+func (msgs Messages) RailColorYellow() string {
+	return Catalog.Format(msgs.locale, "railColorYellow", nil)
+}
+
 // RailNoFolder says "No folder"
 // in the language the app shows.
 func RailNoFolder() string { return In(i18n.Locale()).RailNoFolder() }
@@ -5485,6 +5565,36 @@ func RailNoFolder() string { return In(i18n.Locale()).RailNoFolder() }
 // in the language of msgs.
 func (msgs Messages) RailNoFolder() string {
 	return Catalog.Format(msgs.locale, "railNoFolder", nil)
+}
+
+// RailRename says "Rename Tab…"
+// in the language the app shows.
+func RailRename() string { return In(i18n.Locale()).RailRename() }
+
+// RailRename says "Rename Tab…"
+// in the language of msgs.
+func (msgs Messages) RailRename() string {
+	return Catalog.Format(msgs.locale, "railRename", nil)
+}
+
+// RailRenameHint says "Up to two characters in place of {name}'s initials or logo. Leave it empty for its own."
+// in the language the app shows.
+func RailRenameHint(name string) string { return In(i18n.Locale()).RailRenameHint(name) }
+
+// RailRenameHint says "Up to two characters in place of {name}'s initials or logo. Leave it empty for its own."
+// in the language of msgs.
+func (msgs Messages) RailRenameHint(name string) string {
+	return Catalog.Format(msgs.locale, "railRenameHint", map[string]any{"name": name})
+}
+
+// RailRenameTooLong says "Up to two characters"
+// in the language the app shows.
+func RailRenameTooLong() string { return In(i18n.Locale()).RailRenameTooLong() }
+
+// RailRenameTooLong says "Up to two characters"
+// in the language of msgs.
+func (msgs Messages) RailRenameTooLong() string {
+	return Catalog.Format(msgs.locale, "railRenameTooLong", nil)
 }
 
 // RailUntitled says "Untitled"

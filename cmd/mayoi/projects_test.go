@@ -17,6 +17,7 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"mayoi/locales"
 )
@@ -237,16 +238,69 @@ func TestProjectWords(t *testing.T) {
 	}
 }
 
+// The rail tells projects apart by their labels where their initials
+// are the same, and labels names the same alike.
+func TestRailLabels(t *testing.T) {
+	for _, tc := range []struct{ names, want []string }{
+		{[]string{"mayoi", "my-app", "go"}, []string{"Ma", "MA", "Go"}},
+		{[]string{"Downloads", "Documents", "Desktop"}, []string{"Dw", "Dc", "De"}},
+		{[]string{"Downloads", "Downloads", "Desktop"}, []string{"Do", "Do", "De"}},
+		{[]string{"Downloads", "Documents", "Downloads"}, []string{"Dw", "Dc", "Dw"}},
+		{[]string{"app", "apps"}, []string{"Ap", "As"}},
+		{[]string{"my-app", "my-api"}, []string{"Mp", "Mi"}},
+		{[]string{"x", "", "下载"}, []string{"X", "?", "下载"}},
+	} {
+		if got := railLabels(tc.names); !slices.Equal(got, tc.want) {
+			t.Errorf("%q: %q, want %q", tc.names, got, tc.want)
+		}
+	}
+}
+
+// A project's own label is up to two characters as a person sees them.
+func TestRailOwnLabel(t *testing.T) {
+	for s, want := range map[string]string{
+		"": "", " DL ": "DL", "abc": "ab", "🚀x": "🚀x", "👍🏽👋🏻z": "👍🏽👋🏻",
+		"🇯🇵🇨🇳🇺🇸": "🇯🇵🇨🇳", "👩‍💻!": "👩‍💻!", "é1": "é1",
+	} {
+		if got := railLabel(s); got != want {
+			t.Errorf("%q: %q, want %q", s, got, want)
+		}
+	}
+}
+
+// A project's own label and color are kept by its folder, and forgotten
+// once both are its own again.
+func TestRailTabStyle(t *testing.T) {
+	dir := workspaceFixture(t)
+	f, _, _ := railFixture(t, dir, workspaceFixture(t))
+	f.setTabStyle(dir, func(st *settings.TabStyle) { st.Label = "DL" })
+	f.setTabStyle(dir, func(st *settings.TabStyle) { st.Color = "cyan" })
+	if got := f.m.s.ProjectTabStyle[dir]; got != (settings.TabStyle{Label: "DL", Color: "cyan"}) {
+		t.Fatalf("style: %+v", got)
+	}
+	if _, ok := railColor(darkPalette(), "cyan"); !ok {
+		t.Error("cyan is not a color")
+	}
+	if _, ok := railColor(darkPalette(), "plaid"); ok {
+		t.Error("plaid is a color")
+	}
+	f.setTabStyle(dir, func(st *settings.TabStyle) { *st = settings.TabStyle{} })
+	if f.m.s.ProjectTabStyle != nil {
+		t.Fatalf("styles left: %v", f.m.s.ProjectTabStyle)
+	}
+}
+
 // The rail of a window of project tabs, in both themes, at twice the
 // scale: the project shown with unsaved changes, and another under the
-// pointer.
+// pointer, two folders named alike, one of them on a host, and a project
+// with a label and color of its own.
 func TestShotRail(t *testing.T) {
 	if os.Getenv("SHOTS") == "" {
 		t.Skip()
 	}
 	for _, dark := range []bool{true, false} {
 		var dirs []string
-		for _, name := range []string{"mayoi", "my-app", "webServer", "docs", "go"} {
+		for _, name := range []string{"mayoi", "my-app", "webServer", "Downloads", "Documents", "Downloads"} {
 			dir := filepath.Join(t.TempDir(), name)
 			os.MkdirAll(dir, 0o755)
 			os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644)
@@ -256,6 +310,8 @@ func TestShotRail(t *testing.T) {
 		tt.SetDark(dark)
 		tt.SetScale(2)
 		a := hs[0].a
+		hs[5].a.root = remote.Path("vps", "/home/me/Downloads")
+		hs[1].f.setTabStyle(dirs[1], func(st *settings.TabStyle) { *st = settings.TabStyle{Label: "🚀", Color: "cyan"} })
 		a.openFile(filepath.Join(dirs[0], "main.go"), true)
 		for range 10 {
 			step(tt)
