@@ -26,6 +26,8 @@ needs a `## <version>` section here, or its build fails.
   `terminalFontFamily`.
 - The breadcrumbs of a file outside the folder no longer start with an
   empty segment, and show the home folder as `~`.
+- Typing in a long file highlights with less work: only the lines near the
+  edit go to the lexer, not the rest of the file.
 
 - **Submodules in Source Control:** each initialized submodule, nested ones
   and those of linked worktrees too, lists its own changes to stage and

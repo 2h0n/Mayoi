@@ -507,6 +507,11 @@ func lexRange(l chroma.Lexer, src Source, first, end int) []Line {
 	return Lex(l, src.Slice(start, stop))
 }
 
+// relexAhead is how many lines below a change relex first gives the
+// lexer, and relexMargin how far above where the text was cut its lexing
+// must settle to be kept.
+const relexAhead, relexMargin = 160, 32
+
 // relex lexes the lines of request r again, given those of the same lines
 // of an earlier text: only the lines that changed, and around them.
 //
@@ -539,39 +544,60 @@ func relex(l chroma.Lexer, r request, prev []Line) ([]Line, bool) {
 	}
 	shift := n - len(prev)
 	const settle = 3 // the lines with tokens alike that end the lexing
-	_, hi := r.src.LineRange(r.last)
 	for back := 16; ; back *= 4 {
 		s := max(0, a-back)
 		for s > 0 && prev[s-1].open {
 			s--
 		}
 		lo, _ := r.src.LineRange(r.first + s)
-		wrong, seen, run := false, 0, 0
-		lines, stop := lex(l, r.src.Slice(lo, hi), func(k int, lines []Line) bool {
-			ln := lines[k]
-			switch i := s + k; {
-			case i < a:
-				// From the start of the text the state is known; from further
-				// down, these lines tell whether it was guessed right.
-				if s == 0 {
-					return false
+		var lines []Line
+		var wrong bool
+		stop := -1
+		// The text goes to the lexer as far as some lines below the change,
+		// rather than to the end of the request: Chroma reads all the text
+		// it is given before it lexes, and the lexing mostly settles a few
+		// lines below. Lexing that settles too near where the text was cut
+		// may have been misled by the cut, and goes on with more.
+		for ahead := relexAhead; ; ahead *= 4 {
+			end := min(n-1, n-b+ahead)
+			_, hi := r.src.LineRange(r.first + end)
+			seen, run := 0, 0
+			wrong = false
+			lines, stop = lex(l, r.src.Slice(lo, hi), func(k int, lines []Line) bool {
+				ln := lines[k]
+				switch i := s + k; {
+				case i < a:
+					// From the start of the text the state is known; from further
+					// down, these lines tell whether it was guessed right.
+					if s == 0 {
+						return false
+					}
+					if len(ln.Tokens) > 0 {
+						seen++
+					}
+					wrong = !slices.Equal(ln.Tokens, prev[i].Tokens) || ln.open != prev[i].open || i == a-1 && seen < 2
+					return wrong
+				case i >= n-b:
+					switch old := prev[i-shift]; {
+					case !slices.Equal(ln.Tokens, old.Tokens) || ln.open || old.open:
+						run = 0
+					case len(old.Tokens) > 0:
+						run++
+					}
+					return run == settle
 				}
-				if len(ln.Tokens) > 0 {
-					seen++
-				}
-				wrong = !slices.Equal(ln.Tokens, prev[i].Tokens) || ln.open != prev[i].open || i == a-1 && seen < 2
-				return wrong
-			case i >= n-b:
-				switch old := prev[i-shift]; {
-				case !slices.Equal(ln.Tokens, old.Tokens) || ln.open || old.open:
-					run = 0
-				case len(old.Tokens) > 0:
-					run++
-				}
-				return run == settle
+				return false
+			})
+			if end == n-1 || !wrong && stop >= 0 && s+stop <= end-relexMargin {
+				break
 			}
-			return false
-		})
+			if wrong {
+				// The cut may have misled the lines above as well, if a
+				// token runs past it: they are checked with all the text,
+				// before lexing starts further up.
+				ahead = n
+			}
+		}
 		if wrong {
 			continue
 		}
