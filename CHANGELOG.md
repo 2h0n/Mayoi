@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.10.0
 
 - **Settings sync:** **Mayoi → Sign In to Sync Settings…** (**Help** on
   Windows and Linux) signs in to a mon.sorrycc.dev account with GitHub or
