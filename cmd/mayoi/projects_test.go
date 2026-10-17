@@ -47,8 +47,7 @@ func railFixture(t testing.TB, dirs ...string) (*frame, []*desktop, *ui.Tester) 
 	return f, hs, tt
 }
 
-// The rail has a square for each project, named by its folder, which a
-// window of one project has none of.
+// The rail has a square for each project, named by its folder.
 func TestRailShowsTheProjects(t *testing.T) {
 	root, other := workspaceFixture(t), workspaceFixture(t)
 	f, hs, tt := railFixture(t, root, other)
@@ -67,36 +66,23 @@ func TestRailShowsTheProjects(t *testing.T) {
 		t.Errorf("the square's menu: %v", menu)
 	}
 	tt.CloseMenu()
-	f.tabs = f.tabs[:1]
-	step(tt)
-	if _, ok := tt.Find(filepath.Base(other)); ok {
-		t.Error("a window of one project has a rail")
-	}
 }
 
-// The rail keeps its square for the project shown, and its button that
-// opens another folder, while the window has one project, with Always
-// Show Project Tabs, and goes without it.
-func TestAlwaysShowProjectTabs(t *testing.T) {
-	root, other := workspaceFixture(t), workspaceFixture(t)
-	f, _, tt := railFixture(t, root, other)
-	f.tabs = f.tabs[:1]
-	step(tt)
-	if _, ok := tt.Find(locales.CmdFileOpenFolder()); ok {
-		t.Fatal("a window of one project has a rail")
-	}
-	f.m.s.AlwaysShowProjectTabs = true
-	step(tt)
+// A window of one project keeps the rail, with its square and the button
+// that opens another folder, while Project Tabs is on, and has none off.
+func TestRailWithOneProject(t *testing.T) {
+	root := workspaceFixture(t)
+	f, _, tt := railFixture(t, root)
 	if _, ok := tt.Find(filepath.Base(root)); !ok {
 		t.Errorf("no square for %s on the rail: %v", root, tt.Texts())
 	}
 	if _, ok := tt.Find(locales.CmdFileOpenFolder()); !ok {
 		t.Errorf("no button that opens another folder on the rail: %v", tt.Texts())
 	}
-	f.m.s.AlwaysShowProjectTabs = false
+	f.m.s.ProjectTabs = false
 	step(tt)
 	if _, ok := tt.Find(locales.CmdFileOpenFolder()); ok {
-		t.Error("the rail is still there with Always Show Project Tabs off")
+		t.Error("the rail is still there with Project Tabs off")
 	}
 }
 
@@ -838,31 +824,24 @@ func TestLoadProjectLogoICO(t *testing.T) {
 	}
 }
 
-// Project icons are off by default, leaving the initials; on, a decoded
-// logo is what the rail shows.
+// The rail looks for a project's logo on its own, finding none in an
+// empty folder, which keeps its initials, and the one a folder has.
 func TestProjectIcons(t *testing.T) {
-	if settings.Default().ProjectIcons {
-		t.Error("project icons are on by default")
-	}
-	root := t.TempDir()
-	f, hs, _ := railFixture(t, root)
-	h := hs[0]
-	if h.projectLogo() != nil {
-		t.Error("no logo scanned, yet one shows")
-	}
-	h.logoSrc = loadProjectLogo(t.TempDir())
-	if h.projectLogo() != nil {
-		t.Error("project icons off, yet a logo shows")
-	}
-	f.m.s.ProjectIcons = true
+	root, bare := t.TempDir(), t.TempDir()
 	logo := filepath.Join(root, "public", "logo.png")
 	if err := os.MkdirAll(filepath.Dir(logo), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	writePNG(t, logo, 32, 32)
-	h.logoSrc = loadProjectLogo(root)
-	if h.projectLogo() == nil {
-		t.Error("project icons on with a logo, yet the initials show")
+	_, hs, tt := railFixture(t, root, bare)
+	for end := time.Now().Add(5 * time.Second); hs[0].logoSrc == nil || !hs[1].logoDone; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(end) {
+			t.Fatal("no logo found for a folder with one")
+		}
+		step(tt)
+	}
+	if hs[1].logoSrc != nil {
+		t.Error("a logo for a folder without one")
 	}
 }
 
@@ -874,8 +853,7 @@ func TestRailShowsProjectLogo(t *testing.T) {
 		t.Fatal(err)
 	}
 	writePNG(t, logo, 32, 32)
-	f, hs, tt := railFixture(t, root, other)
-	f.m.s.ProjectIcons = true
+	_, hs, tt := railFixture(t, root, other)
 	hs[0].logoDone, hs[0].logoDir = true, root
 	hs[0].logoSrc = loadProjectLogo(root)
 	step(tt)
@@ -1107,11 +1085,10 @@ func TestScanProjectLogoDropsOldLogo(t *testing.T) {
 func TestRailScansProjectsNotShown(t *testing.T) {
 	root, other := t.TempDir(), t.TempDir()
 	writePNG(t, filepath.Join(other, "logo.png"), 16, 16)
-	f, hs, tt := railFixture(t, root, other)
+	_, hs, tt := railFixture(t, root, other)
 	if hs[1].a.started {
 		t.Fatal("the second project started")
 	}
-	f.m.s.ProjectIcons = true
 	step(tt)
 	if !hs[1].logoDone || hs[1].logoDir != other {
 		t.Fatal("no scan for a project not shown")

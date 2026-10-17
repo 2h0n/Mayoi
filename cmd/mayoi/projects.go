@@ -381,14 +381,14 @@ func (m *mayoi) projectTabsChanged() {
 }
 
 // railView is the rail of project tabs, left of the sidebar: a square of
-// each project's initials, the one shown marked, and after them a button
-// that opens another folder. A window of one project has none, unless
-// AlwaysShowProjectTabs keeps it. a is the project it is built in, which
-// the frame goes on building as a click shows another. A square is
-// dragged along the rail to reorder it, and a folder dropped on the rail
-// opens as a project.
+// each project's logo or initials, the one shown marked, and after them a
+// button that opens another folder. It shows with Project Tabs on, a
+// window of one project too. a is the project it is built in, which the
+// frame goes on building as a click shows another. A square is dragged
+// along the rail to reorder it, and a folder dropped on the rail opens
+// as a project.
 func (f *frame) railView(c *ui.Context, a *app) {
-	if !f.m.s.ProjectTabs || (len(f.tabs) < 2 && !f.m.s.AlwaysShowProjectTabs) {
+	if !f.m.s.ProjectTabs {
 		return
 	}
 	p := a.pal
@@ -493,7 +493,7 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 	}
 	alert := h.a.alert
 	col := avatarColor(p, dir)
-	if f.m.s.ProjectIcons && dir != "" && h.needsLogoScan(dir) {
+	if dir != "" && h.needsLogoScan(dir) {
 		f.scanProjectLogo(a, h, dir)
 	}
 	b := ui.ButtonBase(c.Key(fmt.Sprintf("project-%d", h.a.window.ID))).Width(railW).Height(railSquare + 4).Shrink(0).
@@ -542,7 +542,7 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int) {
 		if !on && !hovered {
 			ink = col.Mix(p.muted, 0.25)
 		}
-		if src := h.projectLogo(); src != nil && !dragged {
+		if src := h.logoSrc; src != nil && !dragged {
 			// Shrinking with the square as it is pressed.
 			ls := sq.W - 8
 			logo := ui.Rect{X: sq.X + (sq.W-ls)/2, Y: sq.Y + (sq.H-ls)/2, W: ls, H: ls}
@@ -1394,15 +1394,6 @@ func decodeDIB(data []byte) (image.Image, error) {
 		}
 	}
 	return img, nil
-}
-
-// projectLogo is the project's favicon or logo for the rail, or nil for
-// its initials: when project icons are off, or none was found.
-func (h *desktop) projectLogo() ui.ImageSource {
-	if h.m.s.ProjectIcons {
-		return h.logoSrc
-	}
-	return nil
 }
 
 // needsLogoScan reports whether the logo of dir is yet to be looked for:

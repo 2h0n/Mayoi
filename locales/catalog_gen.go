@@ -1817,16 +1817,6 @@ func (msgs Messages) CmdSelSortDesc() string {
 	return Catalog.Format(msgs.locale, "cmdSelSortDesc", nil)
 }
 
-// CmdViewAlwaysShowProjectTabs says "Always Show Project Tabs"
-// in the language the app shows.
-func CmdViewAlwaysShowProjectTabs() string { return In(i18n.Locale()).CmdViewAlwaysShowProjectTabs() }
-
-// CmdViewAlwaysShowProjectTabs says "Always Show Project Tabs"
-// in the language of msgs.
-func (msgs Messages) CmdViewAlwaysShowProjectTabs() string {
-	return Catalog.Format(msgs.locale, "cmdViewAlwaysShowProjectTabs", nil)
-}
-
 // CmdViewAppearanceDark says "Dark"
 // in the language the app shows.
 func CmdViewAppearanceDark() string { return In(i18n.Locale()).CmdViewAppearanceDark() }
@@ -1965,16 +1955,6 @@ func CmdViewPrevColumn() string { return In(i18n.Locale()).CmdViewPrevColumn() }
 // in the language of msgs.
 func (msgs Messages) CmdViewPrevColumn() string {
 	return Catalog.Format(msgs.locale, "cmdViewPrevColumn", nil)
-}
-
-// CmdViewProjectIcons says "Project Icons"
-// in the language the app shows.
-func CmdViewProjectIcons() string { return In(i18n.Locale()).CmdViewProjectIcons() }
-
-// CmdViewProjectIcons says "Project Icons"
-// in the language of msgs.
-func (msgs Messages) CmdViewProjectIcons() string {
-	return Catalog.Format(msgs.locale, "cmdViewProjectIcons", nil)
 }
 
 // CmdViewProjectTabs says "Project Tabs"

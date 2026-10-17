@@ -155,10 +155,12 @@ needs a `## <version>` section here, or its build fails.
   stays where it is. Let go of it off the tab, and the tab stays open.
 - A diff no longer crashes Mayoi when files leave it, as when changes
   are committed or discarded, while it is scrolled down to them.
-- **View → Always Show Project Tabs** (or `"alwaysShowProjectTabs": true`
-  in `settings.json`) keeps a window's project tabs shown while it has one
-  project, rather than only once it has two, so the project shown and the
-  button that opens another folder stay in view.
+- With **View → Project Tabs** on, the rail of project tabs shows while
+  a window has one project too, rather than only once it has two, so the
+  project shown and the button that opens another folder stay in view.
+- The rail always shows each project's favicon or logo, keeping the
+  initials for a project without one; **View → Project Icons** and the
+  `projectIcons` setting are gone.
 
 ## 0.9.1
 
