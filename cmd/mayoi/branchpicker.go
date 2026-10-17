@@ -242,6 +242,7 @@ func (a *gitContext) branchRow(c *ui.Context, ch branchChoice, i int) {
 	if row.Clicked() {
 		a.app.post(func() { a.chooseBranch(ch) })
 	}
+	row.Transition(hoverFade)
 	row.Children(func() {
 		a.app.pickMark(c, i == b.sel, "branches")
 		if ch.create != "" {

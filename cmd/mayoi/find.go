@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
@@ -37,7 +38,9 @@ type findState struct {
 	pending    uint64
 	pendingDoc int
 
-	input  ui.Handle
+	input ui.Handle
+	// shook is when Return found no match, which shakes the box.
+	shook  time.Time
 	reveal bool // select the current match
 	// back is set when the last step went to the match before, which
 	// rolls the count down.
@@ -331,8 +334,9 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			f.stale = true
 		}
 	}
-	box := a.floating(c, ui.Column(c).Absolute().Top(4).Right(22).Width(430).Padding(5, 6).Gap(4).Radius(8), false).Transition(popIn).
-		Role(ui.RoleToolbar).Label(locales.FindLabel())
+	box := a.floating(c, ui.Column(c).Absolute().Top(4).Right(22).Width(430).Padding(5, 6).Gap(4).Radius(8), false).Transition(popIn)
+	shake(c, box, f.shook)
+	box.Role(ui.RoleToolbar).Label(locales.FindLabel())
 	box.Children(func() {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
 			b := ui.ButtonBase(c).Size(18, 22).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(locales.FindToggleReplace())
@@ -345,7 +349,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 				f.replacing = !f.replacing
 			}
 			field := ui.Row(c).Grow(1).Height(26).Padding(0, 4, 0, 8).Gap(2).AlignItems(ui.Center).Radius(5).
-				Background(p.editor).Border(1, p.border)
+				Background(p.editor).Border(1, p.border).Transition(fieldFocus)
 			field.Children(func() {
 				in := a.textKeys(ui.TextInputBase(c.Key("find-query"), &f.query)).Bind(&f.input).Grow(1).FontSize(12.5).
 					Placeholder(locales.FindLabel()).Label(locales.FindLabel())
@@ -358,6 +362,9 @@ func (a *app) findView(c *ui.Context, d *editor) {
 				if in.Shortcut(ui.Shift, ui.KeyEnter) {
 					a.step(d, -1)
 				} else if in.Submitted() {
+					if len(f.matches) == 0 && f.query != "" {
+						f.shook = c.Now()
+					}
 					a.step(d, 1)
 				}
 				toggle(iconCase, locales.FindMatchCase(), &f.matchCase)
@@ -397,7 +404,7 @@ func (a *app) findView(c *ui.Context, d *editor) {
 		}
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Padding(0, 0, 0, 22).Children(func() {
 			field := ui.Row(c).Grow(1).Height(26).Padding(0, 8).AlignItems(ui.Center).Radius(5).
-				Background(p.editor).Border(1, p.border)
+				Background(p.editor).Border(1, p.border).Transition(fieldFocus)
 			field.Children(func() {
 				in := a.textKeys(ui.TextInputBase(c.Key("find-with"), &f.with)).Grow(1).FontSize(12.5).Placeholder(locales.FindReplace()).Label(locales.FindReplace())
 				if in.Focused() {

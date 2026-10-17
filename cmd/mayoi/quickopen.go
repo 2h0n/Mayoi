@@ -5,6 +5,7 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
@@ -26,6 +27,8 @@ type quickOpen struct {
 	stale   bool
 	moved   bool     // the choice moved by keys, to scroll into view
 	used    []string // the commands the palette ran last, the last first
+	// shook is when Return found nothing to open, which shakes the box.
+	shook time.Time
 }
 
 func (a *app) openQuick(query string) {
@@ -85,6 +88,7 @@ func (a *app) quickOpenView(c *ui.Context) {
 	}
 	choose := func(i int) {
 		if i < 0 || i >= len(q.results) {
+			q.shook = c.Now()
 			return
 		}
 		rel := a.index[q.results[i].Index]
@@ -94,7 +98,9 @@ func (a *app) quickOpenView(c *ui.Context) {
 	ui.Overlay(c, func() {
 		back := a.dialogBack(c, "quick")
 		back.Children(func() {
-			box := a.floating(c, ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
+			box := a.floating(c, ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip()
+			shake(c, box, q.shook)
+			box.
 				Role(ui.RoleDialog).Label(locales.QuickOpenLabel())
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
@@ -118,6 +124,8 @@ func (a *app) quickOpenView(c *ui.Context) {
 							if line > 0 {
 								q.open = false
 								a.goToLine(line, col)
+							} else {
+								q.shook = c.Now()
 							}
 						} else {
 							choose(q.sel)
@@ -179,6 +187,7 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 			if row.Clicked() {
 				choose(i)
 			}
+			row.Transition(hoverFade)
 			row.Children(func() { a.pickMark(c, i == q.sel, "quick"); a.quickRow(c, rel, m.Positions) })
 		}
 	})
@@ -328,6 +337,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 	}
 	choose := func(i int) {
 		if i < 0 || i >= len(q.results) {
+			q.shook = c.Now()
 			return
 		}
 		q.open = false
@@ -344,7 +354,9 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 	ui.Overlay(c, func() {
 		back := a.dialogBack(c, "quick")
 		back.Children(func() {
-			box := a.floating(c, ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip().
+			box := a.floating(c, ui.Column(c).Width(600).MaxWidthPercent(92).Margin(titleBarH+8, 0, 0, 0).Radius(10), true).Clip()
+			shake(c, box, q.shook)
+			box.
 				Role(ui.RoleDialog).Label(locales.SymbolLabel())
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
@@ -381,6 +393,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 							if row.Clicked() {
 								choose(i)
 							}
+							row.Transition(hoverFade)
 							row.Children(func() { a.pickMark(c, i == q.sel, "symbols"); a.symbolRow(c, sym, m.Positions, query == "") })
 						}
 					})

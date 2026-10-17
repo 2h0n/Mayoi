@@ -729,6 +729,7 @@ func (a *app) pickRow(c *ui.Context, i int, key string, icon *ui.SVG, label []ui
 	if row.Clicked() {
 		a.post(func() { choose(i) })
 	}
+	row.Transition(hoverFade)
 	row.Children(func() {
 		a.pickMark(c, sel, "remote")
 		col := p.muted

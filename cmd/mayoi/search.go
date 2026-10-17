@@ -872,7 +872,7 @@ func (a *app) searchField(c *ui.Context, key string, value *string, placeholder 
 	p := a.pal
 	var in ui.Element
 	field := ui.Row(c).Height(26).Padding(0, 4, 0, 8).Gap(2).AlignItems(ui.Center).Radius(5).
-		Background(p.editor).Border(1, p.border)
+		Background(p.editor).Border(1, p.border).Transition(fieldFocus)
 	field.Children(func() {
 		in = a.textKeys(ui.TextInputBase(c.Key(key), value)).Grow(1).MinWidth(0).FontSize(12.5).Placeholder(placeholder).Label(placeholder)
 		if bind != nil {

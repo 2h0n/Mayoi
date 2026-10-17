@@ -62,6 +62,7 @@ func (a *app) repositoryButton(c *ui.Context, status bool) bool {
 	if b.Hovered() {
 		b.Background(a.pal.hover)
 	}
+	b.Transition(hoverFade)
 	b.Children(func() {
 		ui.Icon(c, iconFolder).FontSize(12).TextColor(fg)
 		ui.Text(c, label).FontSize(11).TextColor(fg).SingleLine().Shrink(1)
@@ -131,6 +132,7 @@ func (a *app) repositoryPickerView(c *ui.Context) {
 						if i == pick.sel || b.Hovered() {
 							b.Background(p.hover)
 						}
+						b.Transition(hoverFade)
 						b.Children(func() {
 							ui.Column(c).FillWidth().Gap(3).Children(func() {
 								ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {

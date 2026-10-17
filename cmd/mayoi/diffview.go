@@ -1538,6 +1538,8 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 		case b.Hovered():
 			b.Background(p.hover)
 		}
+		b.Transition(hoverFade)
+		pressPose(b)
 		b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(p.muted) })
 		return b
 	}

@@ -130,6 +130,8 @@ func (a *app) hunkButtons(c *ui.Context, v *diffView, i int, right, contentW, y 
 				btn.Background(p.hover.Over(p.editor))
 				col = p.text
 			}
+			btn.Transition(hoverFade)
+			pressPose(btn)
 			btn.Children(func() {
 				ui.Icon(c, b.icon).FontSize(12).TextColor(col)
 				ui.Text(c, b.label).FontSize(11.5).TextColor(col).SingleLine()

@@ -486,6 +486,8 @@ func (a *gitContext) scmPanelTabsView(c *ui.Context, r scmRow, action *func()) {
 				button.Background(p.hover)
 				color = p.text
 			}
+			button.Transition(hoverFade)
+			pressPose(button)
 			button.Children(func() { ui.Icon(c, tab.icon).FontSize(16).TextColor(color) })
 			if button.Clicked() {
 				*action = func() { a.switchScmPanelTab(tab.id) }
@@ -536,6 +538,7 @@ func (a *gitContext) scmPanelRowView(c *ui.Context, r scmRow, action *func()) {
 		row.Background(p.chrome)
 	}
 	row.ContextMenu(func(m *ui.Menu) { a.scmPanelMenu(m, r, action) })
+	row.Transition(hoverFade)
 	row.Children(func() {
 		switch q.kind {
 		case "branch", "remote", "range":
@@ -582,6 +585,8 @@ func (a *gitContext) scmPanelRowView(c *ui.Context, r scmRow, action *func()) {
 					buttonHovered = true
 					btn.Background(p.active)
 				}
+				btn.Transition(hoverFade)
+				pressPose(btn)
 				btn.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(col) })
 				if btn.Clicked() {
 					*action = run

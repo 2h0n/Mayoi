@@ -292,12 +292,24 @@ func (a *app) splitter(c *ui.Context, at edge, drag func(d float32)) {
 	default:
 		h.Top(0).Bottom(0).Right(0).Width(5).Cursor(ui.CursorResizeEW)
 	}
-	lit := h.Hovered() || h.Dragging()
+	// The line shows once the pointer rests on the edge, as one crossing
+	// it on its way elsewhere does not light it, and fades in and out.
+	// Held, it shows at once.
+	var lit float32
+	if h.Pressed() || h.Dragging() {
+		lit = h.Jump("lit", 1)
+	} else {
+		show := ui.Animation{Duration: 150 * time.Millisecond}
+		if h.Hovered() {
+			show.Delay = 250 * time.Millisecond
+		}
+		lit = h.AnimateTo("lit", unit(h.Hovered()), show)
+	}
 	h.Children(func() {
-		if !lit {
+		if lit < 0.01 {
 			return
 		}
-		line := ui.Box(c).Absolute().Background(a.pal.accentDim)
+		line := ui.Box(c).Absolute().Background(a.pal.accentDim.Alpha(lit))
 		switch at {
 		case edgeTop:
 			line.Top(0).Left(0).Right(0).Height(2)
@@ -450,7 +462,7 @@ func (a *app) iconButton(c *ui.Context, icon *ui.SVG, label string, on bool) ui.
 	if on {
 		col = p.text
 	}
-	b.Transition(hoverFade)
+	b.Transition(revealFade)
 	pressPose(b)
 	b.Children(func() { ui.Icon(c, icon).FontSize(15).TextColor(col) })
 	return b

@@ -801,6 +801,7 @@ func (a *app) layOutCommitCard(c *ui.Context, v *diffView, w float32) *commitCar
 			if b.Clicked() {
 				a.post(func() { a.copyCommitHash(h) })
 			}
+			b.Transition(hoverFade)
 			b.Children(func() { ui.RichText(c, hash).SingleLine() })
 		}}
 	}

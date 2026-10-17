@@ -65,49 +65,54 @@ func (a *app) sidebar(c *ui.Context) {
 				return
 			}
 		})
-		if a.root == "" {
-			a.noFolder(c)
-			return
-		}
-		if scm {
-			a.scmView(c)
-			return
-		}
-		if search {
-			a.searchView(c)
-			return
-		}
-		// The folder's row, with the explorer's actions while the pointer
-		// is over the sidebar or the tree has the keyboard: on the title's
-		// row, they would leave the title no room.
-		ui.Row(c).Height(24).Padding(0, 6, 0, 16).Gap(2).AlignItems(ui.Center).Children(func() {
-			ui.Text(c, strings.ToUpper(filepath.Base(a.root))).FontSize(11).FontWeight(700).LetterSpacing(0.4).
-				TextColor(p.text).SingleLine().Grow(1)
-			if !hovered && !a.files.List.FocusWithin(c) {
+		// The view chosen fades in as the switches change it.
+		pane := ui.Column(c.Key("view:" + view)).Grow(1).MinHeight(0)
+		pane.Opacity(pane.Keyframes("in", []ui.Keyframe{{Value: 0}, {At: 150 * time.Millisecond, Value: 1, Ease: ui.EaseOut}}))
+		pane.Children(func() {
+			if a.root == "" {
+				a.noFolder(c)
 				return
 			}
-			if a.iconButton(c, iconFilePlus, locales.NewFileEllipsis(), false).Clicked() {
-				a.askNewEntry(a.targetDir(), false)
+			if scm {
+				a.scmView(c)
+				return
 			}
-			if a.iconButton(c, iconFolderPlus, locales.NewFolderEllipsis(), false).Clicked() {
-				a.askNewEntry(a.targetDir(), true)
+			if search {
+				a.searchView(c)
+				return
 			}
-			if a.iconButton(c, iconRefresh, locales.RefreshExplorer(), false).Clicked() {
-				a.tree.Refresh()
-				a.indexStale = true
+			// The folder's row, with the explorer's actions while the pointer
+			// is over the sidebar or the tree has the keyboard: on the title's
+			// row, they would leave the title no room.
+			ui.Row(c).Height(24).Padding(0, 6, 0, 16).Gap(2).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, strings.ToUpper(filepath.Base(a.root))).FontSize(11).FontWeight(700).LetterSpacing(0.4).
+					TextColor(p.text).SingleLine().Grow(1)
+				if !hovered && !a.files.List.FocusWithin(c) {
+					return
+				}
+				if a.iconButton(c, iconFilePlus, locales.NewFileEllipsis(), false).Clicked() {
+					a.askNewEntry(a.targetDir(), false)
+				}
+				if a.iconButton(c, iconFolderPlus, locales.NewFolderEllipsis(), false).Clicked() {
+					a.askNewEntry(a.targetDir(), true)
+				}
+				if a.iconButton(c, iconRefresh, locales.RefreshExplorer(), false).Clicked() {
+					a.tree.Refresh()
+					a.indexStale = true
+				}
+				if a.iconButton(c, iconCollapse, locales.CollapseFolders(), false).Clicked() {
+					a.files.Open.Clear()
+				}
+			})
+			if t := a.tree; t.Loaded(a.root) && len(t.Children(a.root)) == 0 {
+				a.emptyFolder(c)
 			}
-			if a.iconButton(c, iconCollapse, locales.CollapseFolders(), false).Clicked() {
-				a.files.Open.Clear()
+			if a.conn != nil && !a.tree.Loaded(a.root) {
+				a.remoteTreeWaits(c)
+				return
 			}
+			a.fileTree(c)
 		})
-		if t := a.tree; t.Loaded(a.root) && len(t.Children(a.root)) == 0 {
-			a.emptyFolder(c)
-		}
-		if a.conn != nil && !a.tree.Loaded(a.root) {
-			a.remoteTreeWaits(c)
-			return
-		}
-		a.fileTree(c)
 	})
 }
 
@@ -116,7 +121,7 @@ func (a *app) sidebar(c *ui.Context) {
 func (a *app) emptyFolder(c *ui.Context) {
 	p := a.pal
 	ui.Column(c.Key("empty-folder")).Padding(28, 20, 8, 20).Gap(8).AlignItems(ui.Center).Shrink(0).Children(func() {
-		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+		popUp(ui.Box(c.Key("badge")).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center)).Children(func() {
 			ui.Icon(c, iconFolderOpen).FontSize(20).TextColor(p.muted)
 		})
 		ui.Text(c, locales.FolderEmpty()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
@@ -202,7 +207,7 @@ func (a *app) noFolder(c *ui.Context) {
 	p := a.pal
 	// As source control shows a folder without a repository.
 	ui.Column(c).Padding(28, 20, 16, 20).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+		popUp(ui.Box(c.Key("badge")).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center)).Children(func() {
 			ui.Icon(c, iconFolderOpen).FontSize(20).TextColor(p.muted)
 		})
 		ui.Text(c, locales.NoFolderOpen()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)

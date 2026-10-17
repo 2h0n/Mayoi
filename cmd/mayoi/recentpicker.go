@@ -144,6 +144,7 @@ func (a *app) recentRow(c *ui.Context, i int) {
 		newWin := row.ClickModifiers()&ui.Cmd != 0
 		a.post(func() { a.chooseRecent(i, newWin) })
 	}
+	row.Transition(hoverFade)
 	row.Children(func() {
 		a.pickMark(c, i == r.sel, "recent")
 		ui.Icon(c, iconFolder).FontSize(15).TextColor(p.accent)

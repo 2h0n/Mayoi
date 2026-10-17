@@ -635,6 +635,7 @@ func (a *gitContext) commitButton(c *ui.Context) {
 		case main.Hovered():
 			main.Background(hover)
 		}
+		main.Transition(hoverFade)
 		main.Children(func() {
 			if committing {
 				ui.Spinner(c).Size(12, 12)
@@ -656,6 +657,7 @@ func (a *gitContext) commitButton(c *ui.Context) {
 		case more.Hovered():
 			more.Background(hover)
 		}
+		more.Transition(hoverFade)
 		more.Children(func() { ui.Icon(c, iconChevronDown).FontSize(14).TextColor(fg) })
 		more.Menu(a.commitMenu)
 	})
@@ -693,7 +695,7 @@ func (a *gitContext) commitMenu(m *ui.Menu) {
 func (a *app) scmNoRepo(c *ui.Context) {
 	p := a.pal
 	ui.Column(c).Padding(28, 20, 16, 20).Gap(8).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+		popUp(ui.Box(c.Key("badge")).Size(44, 44).Radius(22).Background(p.text.Alpha(0.06)).Justify(ui.Center).AlignItems(ui.Center)).Children(func() {
 			ui.Icon(c, iconBranch).FontSize(20).TextColor(p.muted)
 		})
 		ui.Text(c, locales.ScmNoRepo()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(4, 0, 0, 0)
@@ -714,7 +716,7 @@ func (a *gitContext) scmClean(c *ui.Context) {
 	g := a.git
 	st := g.status
 	ui.Column(c).Padding(24, 20, 16, 20).Gap(6).AlignItems(ui.Center).Children(func() {
-		ui.Box(c).Size(44, 44).Radius(22).Background(p.added.Alpha(0.13)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+		popUp(ui.Box(c.Key("badge")).Size(44, 44).Radius(22).Background(p.added.Alpha(0.13)).Justify(ui.Center).AlignItems(ui.Center)).Children(func() {
 			ui.Icon(c, iconCheck).FontSize(20).TextColor(p.added)
 		})
 		ui.Text(c, locales.DiffNoChanges()).FontSize(13).FontWeight(600).TextColor(p.text).Margin(6, 0, 0, 0)
@@ -826,12 +828,15 @@ func (a *gitContext) scmHeader(c *ui.Context, r scmRow, action *func()) {
 			if all {
 				col = p.accent
 			}
+			b.Transition(hoverFade)
+			pressPose(b)
 			b.Children(func() { ui.Icon(c, iconBranch).FontSize(13).TextColor(col) })
 			if b.Clicked() {
 				*action = a.toggleAllBranches
 			}
 		}
-		ui.Text(c, fmt.Sprint(r.count)).FontSize(10.5).TextColor(p.muted).Padding(0, 5).Radius(8).Background(p.hover)
+		ui.Text(c, fmt.Sprint(r.count)).FontSize(10.5).TextColor(p.muted).Padding(0, 5).Radius(8).Background(p.hover).
+			ContentTransition(ui.ContentTransition{Numeric: true})
 	})
 	if clicked && *action == nil {
 		*action = func() { a.scm.collapsed[r.group] = !a.scm.collapsed[r.group] }
@@ -1536,6 +1541,8 @@ func (a *app) smallButton(c *ui.Context, icon *ui.SVG, label string) bool {
 		b.Background(p.hover)
 		col = p.text
 	}
+	b.Transition(revealFade)
+	pressPose(b)
 	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(col) })
 	return b.Clicked()
 }
@@ -1954,6 +1961,7 @@ func (a *gitContext) scmBranchRow(c *ui.Context) {
 		if b.Hovered() || b.Pressed() {
 			b.Background(p.hover)
 		}
+		b.Transition(hoverFade)
 		b.Children(func() {
 			ui.Icon(c, iconBranch).FontSize(13).TextColor(p.muted)
 			ui.Text(c, branch).FontSize(12.5).FontWeight(500).TextColor(col).SingleLine().Shrink(1)
@@ -2025,6 +2033,8 @@ func (a *app) syncButton(c *ui.Context, key string, icon *ui.SVG, label string, 
 			col = p.text
 		}
 	}
+	b.Transition(hoverFade)
+	pressPose(b)
 	b.Children(func() {
 		ui.Icon(c, icon).FontSize(14).TextColor(col)
 		if count > 0 {

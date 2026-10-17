@@ -5,6 +5,27 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Find, quick open and the command palette shake their heads when
+  Return finds nothing to go to, as a Mac's password field does.
+- The find box goes back up as it fades out when closed, as do the peek
+  of a change and the box of a review comment.
+- The fields of find and search fade their accent border in and out as
+  they take and leave the keyboard.
+- The rows of quick open, the command palette and the pickers, the
+  buttons of Source Control, its commit button and branch, the buttons
+  of diffs and reviews, and the sync panel fade their hovers rather than
+  blink, and their small buttons sink as they are pressed.
+- The buttons that show only under the pointer, as those of a group of
+  changes or the Explorer's folder row, fade in and out.
+- The line along a splitter shows once the pointer rests on it, and
+  fades, rather than flashing as the pointer crosses it; a drag shows it
+  at once.
+- The badges of an empty folder, of no folder, of a folder with no
+  repository and of No Changes pop in, so a commit that leaves nothing
+  to commit ends with a check.
+- Switching between Explorer, Search and Source Control fades the view
+  in.
+- The counts of Source Control's groups roll to their new numbers.
 - Tabs move: a new tab grows in, a closed one folds away while the
   others slide over, the line over the tab shown slides to the next one,
   the cross fades in under the pointer, and the dot of unsaved changes

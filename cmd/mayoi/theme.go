@@ -752,12 +752,18 @@ func (a *app) applyTheme(c *ui.Context) *palette {
 }
 
 // popIn is how a box over an editor comes in, as find's: it fades in,
-// from a little above where it settles. Only its colors follow it after.
-var popIn = ui.ElementTransition{Duration: 130 * time.Millisecond, Colors: true, Enter: &ui.Motion{Y: -6}}
+// from a little above where it settles, and goes back up as it fades out.
+// Only its colors follow it after.
+var popIn = ui.ElementTransition{Duration: 130 * time.Millisecond, Colors: true, Enter: &ui.Motion{Y: -6}, Exit: &ui.Motion{Y: -4}}
 
 // hoverFade is how a button's background follows the pointer: it fades
 // in and out rather than blinks.
 var hoverFade = ui.ElementTransition{Colors: true, Duration: 110 * time.Millisecond}
+
+// revealFade is hoverFade for a small button that shows only while the
+// pointer is over its row, as the actions of a group of changes: it fades
+// in and out too, rather than pops.
+var revealFade = ui.ElementTransition{Colors: true, Duration: 110 * time.Millisecond, Enter: &ui.Motion{}, Exit: &ui.Motion{}}
 
 // tabMotion is how a tab moves along its strip: it grows in as it opens,
 // folds away as it closes, and the others slide to their places.
@@ -816,6 +822,39 @@ func pressPose(b ui.Element) {
 	}
 	b.AnimatePose(pose, ui.Snappy)
 }
+
+// shakeFor is how long a box shakes its head, as a password field of the
+// Mac does at a wrong password.
+const shakeFor = 360 * time.Millisecond
+
+// shake moves a box side to side for a moment from at, as it finds
+// nothing for the Return pressed in it, and settles where it was. A box
+// shaken long ago, or never, stays put; with less motion, it does too.
+func shake(c *ui.Context, e ui.Element, at time.Time) ui.Element {
+	since := c.Now().Sub(at)
+	if at.IsZero() || since < 0 || since >= shakeFor || c.Preferences().ReduceMotion {
+		return e
+	}
+	c.AnimationFrame()
+	t := float64(since) / float64(shakeFor)
+	return e.Translate(float32(7*(1-t)*math.Sin(t*6*math.Pi)), 0)
+}
+
+// popUp brings the badge of an empty view in as the view shows: it grows
+// from a little smaller, past its size and back, and fades in.
+func popUp(e ui.Element) ui.Element {
+	k := e.Keyframes("pop", []ui.Keyframe{{Value: 0}, {At: 320 * time.Millisecond, Value: 1, Ease: backOut}})
+	o := min(1, 2*k)
+	return e.Opacity(o).Scale(0.6+0.4*k, 0.6+0.4*k)
+}
+
+// backOut goes a little past its end and comes back to it, as CSS's
+// easeOutBack does.
+var backOut = ui.CubicBezier(0.34, 1.56, 0.64, 1)
+
+// fieldFocus is how a field's border follows the keyboard: the accent
+// fades in as the field takes it, and out as it leaves.
+var fieldFocus = ui.ElementTransition{Colors: true, Duration: 120 * time.Millisecond}
 
 // floating styles a box that floats over the window: a dialog, as quick
 // open's, a picker's or a prompt's, or a smaller box over an editor, as
