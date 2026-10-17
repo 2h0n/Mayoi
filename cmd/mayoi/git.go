@@ -60,6 +60,8 @@ type gitState struct {
 	// commands running, named or not.
 	busy    string
 	pending int
+	// writing is set while the AI writes the commit message.
+	writing *aiWriting
 	// message is the commit message being written, and amend set while
 	// it is to amend the last commit.
 	message string

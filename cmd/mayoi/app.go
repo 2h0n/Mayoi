@@ -15,6 +15,7 @@ import (
 
 	"mayoi/internal/highlight"
 	"mayoi/internal/keymap"
+	"mayoi/internal/mon"
 	"mayoi/internal/remote"
 	"mayoi/internal/settings"
 	"mayoi/internal/workspace"
@@ -86,6 +87,11 @@ type host interface {
 	syncInfo() syncInfo
 	syncPicture() *ui.Bitmap
 	syncConflictResolved()
+	// ai is a client of Mon's AI gateway, as the account signed in, nil
+	// while signed out. aiSignedOut says Mon refused its token: the
+	// account was signed out elsewhere.
+	ai() *mon.Client
+	aiSignedOut()
 	// With project tabs, stepProject shows the project by steps along the
 	// rail, showProject the one at i, the last for -1, and closeProject
 	// closes the window's, as the window closes when it is its only one.

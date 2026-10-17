@@ -3,6 +3,18 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **AI commit messages:** signed in to your mon.sorrycc.dev account, the ✨
+  button at the corner of Source Control's message box writes the commit
+  message from the staged changes, or from every change when nothing is
+  staged, in the style of the last commits. It streams into the box, and a
+  second click stops it; text already in the box goes along as notes.
+  **Git: Write Commit Message with AI** in the command palette does the same,
+  and the `aiModel` setting picks another of Mon's models.
+- **Mayoi → Sign In…** is the new name of **Sign In to Sync Settings…**, as
+  the account now does more than sync.
+
 ## 0.10.0
 
 - **Settings sync:** **Mayoi → Sign In to Sync Settings…** (**Help** on

@@ -115,6 +115,7 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		{"git.commit", t.CmdGitCommit(), "", func() { a.commit(false) }},
 		{"git.commitPush", t.CmdGitCommitPush(), "", func() { a.commit(true) }},
 		{"git.amend", t.CmdGitAmend(), "", func() { a.showSourceControl(); a.startAmend() }},
+		{"git.writeMessage", t.CmdGitWriteMessage(), "", func() { a.showSourceControl(); a.writeMessage() }},
 		{"git.openChanges", t.CmdGitOpenChanges(), "", a.openChanges},
 		{"git.openAllChanges", t.CmdGitOpenAllChanges(), "", func() { a.openChangesTab(true) }},
 		{"git.nextChange", t.CmdGitNextChange(), "Alt+F5", func() { a.stepChange(1) }},

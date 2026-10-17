@@ -323,11 +323,23 @@ func (a *app) scmView(c *ui.Context) {
 		if branch != "" {
 			hint = locales.ScmMessageHintOn(enter, branch)
 		}
-		box := a.textKeys(ui.TextArea(c.Key("commit-message"), &g.message)).Placeholder(hint).FontSize(12.5).
-			MinHeight(60).MaxHeight(160).Label(locales.ScmCommitMessage())
-		if box.Shortcut(ui.Cmd, ui.KeyEnter) {
-			a.commit(false)
+		if g.writing != nil {
+			hint = locales.ScmWritingHint()
 		}
+		ui.Box(c.Key("commit-box")).Children(func() {
+			box := a.textKeys(ui.TextArea(c.Key("commit-message"), &g.message)).Placeholder(hint).FontSize(12.5).
+				MinHeight(60).MaxHeight(160).Label(locales.ScmCommitMessage())
+			if g.writing != nil {
+				box.ReadOnly(true)
+			}
+			if a.host.ai() != nil || g.writing != nil {
+				box.PaddingEnd(28) // clear of the button at its corner
+			}
+			if box.Shortcut(ui.Cmd, ui.KeyEnter) {
+				a.commit(false)
+			}
+			a.writeButton(c)
+		})
 		a.subjectLength(c)
 		a.commitButton(c)
 	})
@@ -1739,7 +1751,7 @@ func (a *app) undoCommitOf(hash string) {
 // first. Changed files are saved before.
 func (a *app) commit(push bool) {
 	g := &a.git
-	if g.repo == nil || g.busy != "" {
+	if g.repo == nil || g.busy != "" || g.writing != nil {
 		return
 	}
 	msg := strings.TrimSpace(g.message)

@@ -149,6 +149,9 @@ type Prefs struct {
 	// Locale is the language Mayoi shows, as "en", "zh-Hans" or "ja", or ""
 	// for the one the system's languages prefer.
 	Locale string `json:"locale,omitempty"`
+	// AIModel is the model of Mon's AI gateway that writes commit
+	// messages, "" for Mayoi's choice.
+	AIModel string `json:"aiModel,omitempty"`
 	// SyncIgnored is what settings sync leaves on this machine: keys of
 	// the preferences, "settings.json" for all of them, and
 	// "keybindings.json" for the keyboard shortcuts.

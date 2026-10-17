@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/png"
+	"mayoi/internal/mon"
 	"mayoi/internal/settings"
 	"os"
 	"path/filepath"
@@ -50,6 +51,10 @@ type fakeHost struct {
 	image     []byte
 	// chosen are the paths the dialog of choosePaths answers.
 	chosen []string
+	// aiClient is what ai returns, and aiSignOuts counts the tokens Mon
+	// refused.
+	aiClient   *mon.Client
+	aiSignOuts int
 }
 
 func (h *fakeHost) openFolder(done func(string)) { done(h.folder) }
@@ -106,6 +111,8 @@ func (h *fakeHost) syncInfo() syncInfo {
 }
 func (h *fakeHost) syncPicture() *ui.Bitmap { return nil }
 func (h *fakeHost) syncConflictResolved()   { h.resolved++ }
+func (h *fakeHost) ai() *mon.Client         { return h.aiClient }
+func (h *fakeHost) aiSignedOut()            { h.aiSignOuts++ }
 func (h *fakeHost) stepProject(int)         {}
 func (h *fakeHost) showProject(int)         {}
 func (h *fakeHost) closeProject()           {}

@@ -768,6 +768,22 @@ func (h *desktop) syncNow() {
 	}
 }
 
+func (h *desktop) ai() *mon.Client {
+	c := h.m.cloud
+	if c.account() == "" || c.client.Token == "" {
+		return nil
+	}
+	client := *c.client
+	return &client
+}
+
+func (h *desktop) aiSignedOut() {
+	if c := h.m.cloud; c.account() != "" {
+		c.forget()
+		h.m.toast(locales.SyncSessionEnded())
+	}
+}
+
 func (h *desktop) syncConflictResolved() {
 	if h.m.cloud != nil {
 		h.m.cloud.checkConflict()

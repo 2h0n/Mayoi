@@ -115,6 +115,56 @@ func (msgs Messages) AgoYears(count int) string {
 	return Catalog.Format(msgs.locale, "agoYears", map[string]any{"count": count})
 }
 
+// AiFailed says "Couldn't write the message: {error}"
+// in the language the app shows.
+func AiFailed(error string) string { return In(i18n.Locale()).AiFailed(error) }
+
+// AiFailed says "Couldn't write the message: {error}"
+// in the language of msgs.
+func (msgs Messages) AiFailed(error string) string {
+	return Catalog.Format(msgs.locale, "aiFailed", map[string]any{"error": error})
+}
+
+// AiLimitLater says "You've used today's AI tokens. Try again after {time}."
+// in the language the app shows.
+func AiLimitLater(time_ string) string { return In(i18n.Locale()).AiLimitLater(time_) }
+
+// AiLimitLater says "You've used today's AI tokens. Try again after {time}."
+// in the language of msgs.
+func (msgs Messages) AiLimitLater(time_ string) string {
+	return Catalog.Format(msgs.locale, "aiLimitLater", map[string]any{"time": time_})
+}
+
+// AiLimitReached says "The AI limit is reached: {reason}"
+// in the language the app shows.
+func AiLimitReached(reason string) string { return In(i18n.Locale()).AiLimitReached(reason) }
+
+// AiLimitReached says "The AI limit is reached: {reason}"
+// in the language of msgs.
+func (msgs Messages) AiLimitReached(reason string) string {
+	return Catalog.Format(msgs.locale, "aiLimitReached", map[string]any{"reason": reason})
+}
+
+// AiLimitSoon says "{count, plural, one {Too many AI requests: try again in # second.} other {Too many AI requests: try again in # second…"
+// in the language the app shows.
+func AiLimitSoon(count int) string { return In(i18n.Locale()).AiLimitSoon(count) }
+
+// AiLimitSoon says "{count, plural, one {Too many AI requests: try again in # second.} other {Too many AI requests: try again in # second…"
+// in the language of msgs.
+func (msgs Messages) AiLimitSoon(count int) string {
+	return Catalog.Format(msgs.locale, "aiLimitSoon", map[string]any{"count": count})
+}
+
+// AiTimedOut says "The AI took too long to answer. Try again."
+// in the language the app shows.
+func AiTimedOut() string { return In(i18n.Locale()).AiTimedOut() }
+
+// AiTimedOut says "The AI took too long to answer. Try again."
+// in the language of msgs.
+func (msgs Messages) AiTimedOut() string {
+	return Catalog.Format(msgs.locale, "aiTimedOut", nil)
+}
+
 // AlreadyUpToDate says "Already up to date"
 // in the language the app shows.
 func AlreadyUpToDate() string { return In(i18n.Locale()).AlreadyUpToDate() }
@@ -917,11 +967,11 @@ func (msgs Messages) CmdAccountShow() string {
 	return Catalog.Format(msgs.locale, "cmdAccountShow", nil)
 }
 
-// CmdAccountSignIn says "Sign In to Sync Settings…"
+// CmdAccountSignIn says "Sign In…"
 // in the language the app shows.
 func CmdAccountSignIn() string { return In(i18n.Locale()).CmdAccountSignIn() }
 
-// CmdAccountSignIn says "Sign In to Sync Settings…"
+// CmdAccountSignIn says "Sign In…"
 // in the language of msgs.
 func (msgs Messages) CmdAccountSignIn() string {
 	return Catalog.Format(msgs.locale, "cmdAccountSignIn", nil)
@@ -1455,6 +1505,16 @@ func CmdGitUnstageFile() string { return In(i18n.Locale()).CmdGitUnstageFile() }
 // in the language of msgs.
 func (msgs Messages) CmdGitUnstageFile() string {
 	return Catalog.Format(msgs.locale, "cmdGitUnstageFile", nil)
+}
+
+// CmdGitWriteMessage says "Write Commit Message with AI"
+// in the language the app shows.
+func CmdGitWriteMessage() string { return In(i18n.Locale()).CmdGitWriteMessage() }
+
+// CmdGitWriteMessage says "Write Commit Message with AI"
+// in the language of msgs.
+func (msgs Messages) CmdGitWriteMessage() string {
+	return Catalog.Format(msgs.locale, "cmdGitWriteMessage", nil)
 }
 
 // CmdGoBracket says "Go to Bracket"
@@ -7251,6 +7311,16 @@ func (msgs Messages) ScmStopAmending() string {
 	return Catalog.Format(msgs.locale, "scmStopAmending", nil)
 }
 
+// ScmStopWriting says "Stop Writing"
+// in the language the app shows.
+func ScmStopWriting() string { return In(i18n.Locale()).ScmStopWriting() }
+
+// ScmStopWriting says "Stop Writing"
+// in the language of msgs.
+func (msgs Messages) ScmStopWriting() string {
+	return Catalog.Format(msgs.locale, "scmStopWriting", nil)
+}
+
 // ScmSummary says "Summary"
 // in the language the app shows.
 func ScmSummary() string { return In(i18n.Locale()).ScmSummary() }
@@ -7309,6 +7379,26 @@ func ScmViewAsTree() string { return In(i18n.Locale()).ScmViewAsTree() }
 // in the language of msgs.
 func (msgs Messages) ScmViewAsTree() string {
 	return Catalog.Format(msgs.locale, "scmViewAsTree", nil)
+}
+
+// ScmWriteMessage says "Write the Message with AI"
+// in the language the app shows.
+func ScmWriteMessage() string { return In(i18n.Locale()).ScmWriteMessage() }
+
+// ScmWriteMessage says "Write the Message with AI"
+// in the language of msgs.
+func (msgs Messages) ScmWriteMessage() string {
+	return Catalog.Format(msgs.locale, "scmWriteMessage", nil)
+}
+
+// ScmWritingHint says "Reading the changes…"
+// in the language the app shows.
+func ScmWritingHint() string { return In(i18n.Locale()).ScmWritingHint() }
+
+// ScmWritingHint says "Reading the changes…"
+// in the language of msgs.
+func (msgs Messages) ScmWritingHint() string {
+	return Catalog.Format(msgs.locale, "scmWritingHint", nil)
 }
 
 // SearchClearResults says "Clear Search Results"
