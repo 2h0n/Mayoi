@@ -5,6 +5,12 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- In Vim mode, the status bar shows the mode as a badge, colored by
+  mode: plain in normal mode, the accent color in insert mode, and amber in visual
+  mode, in place of `-- NORMAL --`.
+- The command palette and the welcome page's Command Palette… row show a
+  ⌘ icon instead of a chevron, and the welcome page's logo lines up with
+  the icons of the rows below it.
 - Source Control's message box starts one line high and grows with the
   message, up to eight lines; a hint that wraps in a narrow sidebar shows
   whole.

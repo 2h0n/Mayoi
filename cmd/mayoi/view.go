@@ -886,7 +886,11 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 		n := snap.LineCount()
 		used += measure(locales.StatusPos(n, 999), false)
 		if a.settings.Vim {
-			used += measure(d.vim.label(), false)
+			// The mode's badge, and the keys typed after it.
+			used += measure(d.vim.mode.String(), false) + 2*6
+			if k := d.vim.pending(); k != "" {
+				used += measure(k, false)
+			}
 		}
 		if d.diskGone {
 			used += measure(locales.DeletedOnDisk(), true)
@@ -921,6 +925,27 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 		used -= p.w
 	}
 	return v
+}
+
+// vimBadge shows vim mode's mode in the status bar, as a badge colored
+// by it: plain in normal mode, the accent in insert mode, and the color
+// of a change in visual mode; then the keys of a command typed so far.
+func (a *app) vimBadge(c *ui.Context, v *vimState, text func(string) ui.Element) {
+	p := a.pal
+	bg, fg := p.text.Alpha(0.09), p.statusFg
+	switch {
+	case v.mode == vimInsert:
+		bg, fg = p.fill, p.fillText
+	case v.mode.visual():
+		bg, fg = p.modified.Alpha(0.22), p.modifiedFg
+	}
+	ui.Row(c.Key("status:vim")).Height(statusBarH).Padding(0, 6).Gap(6).AlignItems(ui.Center).Children(func() {
+		ui.Text(c, v.mode.String()).FontSize(10.5).FontWeight(650).LetterSpacing(0.6).TextColor(fg).SingleLine().
+			Padding(1, 6).Radius(4).Background(bg)
+		if k := v.pending(); k != "" {
+			text(k)
+		}
+	})
 }
 
 func (a *app) statusBar(c *ui.Context) {
@@ -1063,7 +1088,7 @@ func (a *app) statusBar(c *ui.Context) {
 			pos += locales.StatusSelected(n)
 		}
 		if a.settings.Vim {
-			item("vim", d.vim.label(), "", nil, nil)
+			a.vimBadge(c, &d.vim, text)
 		}
 		item("pos", pos, a.withKey(locales.GoToLineLabel(), "go.line"), nil, func() { a.openQuick(":") })
 		if visible.lines {
@@ -1162,7 +1187,8 @@ func (a *app) welcome(c *ui.Context) {
 				content.Width(380+2*24).Padding(24).Radius(12).Background(p.editor.Alpha(0.88)).Border(1, p.border)
 			}
 			content.Children(func() {
-				ui.Row(c).Gap(16).AlignItems(ui.Center).Children(func() {
+				// Inset as the rows below, so the logo lines up with their icons.
+				ui.Row(c).Padding(0, 10).Gap(16).AlignItems(ui.Center).Children(func() {
 					if m := a.themeMascot(); m != nil {
 						a.welcomeMascot(c, m)
 					} else {
@@ -1186,7 +1212,7 @@ func (a *app) welcome(c *ui.Context) {
 						a.welcomeAction(c, iconFileSearch, locales.CmdGoQuickOpen(), a.keyHint("go.quickOpen"), func() { a.openQuick("") })
 						a.welcomeAction(c, iconSearch, locales.CmdEditFindInFiles(), a.keyHint("edit.findInFiles"), func() { a.showSearch(false) })
 					}
-					a.welcomeAction(c, iconChevronRight, locales.CmdGoCommands(), a.keyHint("go.commands"), func() { a.openQuick(">") })
+					a.welcomeAction(c, iconCommand, locales.CmdGoCommands(), a.keyHint("go.commands"), func() { a.openQuick(">") })
 					a.welcomeAction(c, iconFilePlus, locales.CmdFileNew(), a.keyHint("file.new"), a.newFile)
 					a.welcomeAction(c, iconTerminal, locales.CmdViewTerminal(), a.keyHint("view.terminal"), a.togglePanel)
 					a.welcomeAction(c, iconSidebar, locales.CmdViewSidebar(), a.keyHint("view.sidebar"), a.toggleSidebar)

@@ -240,7 +240,7 @@ func (a *app) quickCommands(c *ui.Context, query string) {
 				Role(ui.RoleDialog).Label(locales.PaletteLabel())
 			box.Children(func() {
 				ui.Row(c).Padding(10, 14).Gap(10).AlignItems(ui.Center).BorderWidth(0, 0, 1, 0).BorderColor(p.border).Children(func() {
-					ui.Icon(c, iconChevronRight).FontSize(15).TextColor(p.muted)
+					ui.Icon(c, iconCommand).FontSize(15).TextColor(p.muted)
 					in := a.textKeys(ui.TextInputBase(c.Key("quick-input"), &q.query)).Grow(1).FontSize(14).AutoFocus().
 						Placeholder(locales.PalettePlaceholder()).Label(locales.PaletteLabel())
 					if in.Shortcut(0, ui.KeyDown) {
