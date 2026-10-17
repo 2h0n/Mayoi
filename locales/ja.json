@@ -241,6 +241,8 @@
   "createBranchEllipsis": "ブランチを作成…",
   "createdRef": "{tag, select, true {{commit} にタグ {name} を作成しました} other {{commit} にブランチ {name} を作成しました}}",
   "createTagEllipsis": "タグを作成…",
+  "crumbsEmpty": "ファイルはありません",
+  "crumbsFolderTip": "{name} のファイル",
   "deletedOnDisk": "ディスク上で削除されました",
   "deletePermanently": "完全に削除…",
   "deleteQuestion": "{name} を削除しますか?",

@@ -142,6 +142,8 @@ type app struct {
 	// which is done again at most every remoteIndexEvery.
 	indexed time.Time
 	files   ui.OutlineState[string]
+	// crumbs is the box a folder of the breadcrumbs opens.
+	crumbs  crumbsPicker
 	fileRow int
 	// filesView is the explorer's list, which focusFiles has take the
 	// keyboard as it next shows.

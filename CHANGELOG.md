@@ -18,6 +18,11 @@ needs a `## <version>` section here, or its build fails.
   quotes, as GitHub does.
 - The welcome page gives Quick Open an icon of its own, apart from Find in
   Files.
+- **Breadcrumb folders:** click a folder in the breadcrumbs to browse its
+  files in a tree below it, without the sidebar. Its folders open in
+  place, and the file you choose shows in that column; the arrows, Enter
+  and Esc work too. It works for files outside the folder and on SSH
+  hosts, and leaves the Explorer as it was (#38).
 - In light themes, the names of changed, added and deleted files, and
   error messages, are drawn darker so they meet WCAG AA contrast (4.5:1);
   the gutter marks keep their brighter colors.

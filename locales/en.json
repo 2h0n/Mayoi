@@ -241,6 +241,8 @@
   "createBranchEllipsis": "Create Branch…",
   "createdRef": "{tag, select, true {Created tag {name} at {commit}} other {Created branch {name} at {commit}}}",
   "createTagEllipsis": "Create Tag…",
+  "crumbsEmpty": "No files",
+  "crumbsFolderTip": "Files in {name}",
   "deletedOnDisk": "Deleted on disk",
   "deletePermanently": "Delete Permanently…",
   "deleteQuestion": "Delete {name}?",

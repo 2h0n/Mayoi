@@ -523,7 +523,7 @@ func (a *app) columnView(c *ui.Context, col *column) {
 	a.tabStrip(c, col)
 	shown := col.tab()
 	if shown != nil && shown.term == nil {
-		a.breadcrumbs(c, shown)
+		a.breadcrumbs(c, col, shown)
 	}
 	for _, t := range col.tabs {
 		if t != shown && t.ed != nil {
@@ -677,33 +677,25 @@ func (a *app) dropMark(c *ui.Context) {
 		Background(a.pal.accent.Alpha(0.14)).Border(1, a.pal.accentDim)
 }
 
-// breadcrumbs name the file a tab shows and, in an editor, the blocks
-// its caret is in. An SVG has a button there to show it as a picture or
-// as text.
-func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
+// breadcrumbs name the file a tab of column col shows and, in an editor,
+// the blocks its caret is in. A folder of the file's path shows its files
+// in a box, as clicked. An SVG has a button there to show it as a picture
+// or as text.
+func (a *app) breadcrumbs(c *ui.Context, col *column, t *colTab) {
 	p := a.pal
 	d := t.ed
-	var parts []string
+	var parts []crumb
 	if path := t.path(); path != "" {
-		rel := path
-		if a.root != "" && strings.HasPrefix(path, a.root+string(filepath.Separator)) {
-			rel = path[len(a.root)+1:]
-		} else {
-			// A file outside the folder, from the home folder on, as ~.
-			rel = shortenHome(path)
-		}
-		for _, part := range strings.Split(filepath.ToSlash(rel), "/") {
-			// The root of an absolute path has no name to show.
-			if part != "" {
-				parts = append(parts, part)
-			}
-		}
+		parts = crumbsOf(path, a.root, homeDir())
 	} else if t.diff != nil && t.diff.commit != nil && t.diff.commit.from != "" {
-		parts = []string{locales.Comparison(), t.name()}
+		parts = []crumb{{locales.Comparison(), ""}, {t.name(), ""}}
 	} else if t.diff != nil && t.diff.commit != nil {
-		parts = []string{locales.DiffCommitName(git.ShortHash(t.diff.commit.hash)), t.name()}
+		parts = []crumb{{locales.DiffCommitName(git.ShortHash(t.diff.commit.hash)), ""}, {t.name(), ""}}
 	} else {
-		parts = []string{t.name()}
+		parts = []crumb{{t.name(), ""}}
+	}
+	if k := &a.crumbs; k.open && k.col == col && !a.crumbsValid() {
+		a.closeCrumbs()
 	}
 	// The blocks the caret is in, after the file: the innermost two.
 	var snap ui.TextSnapshot
@@ -717,7 +709,7 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 		for i, part := range parts {
 			last := i == len(parts)-1
 			if last {
-				icon, col := fileIcon(p, part)
+				icon, col := fileIcon(p, part.name)
 				switch {
 				case t.diff != nil && t.diff.commit != nil:
 					icon, col = iconCommit, p.accent
@@ -726,10 +718,34 @@ func (a *app) breadcrumbs(c *ui.Context, t *colTab) {
 				}
 				ui.Icon(c, icon).FontSize(13).TextColor(col)
 			}
-			t := ui.Text(c, part).FontSize(12).SingleLine().TextColor(p.muted).Shrink(0)
-			if last {
-				// A long name, as a commit's subject, ends in an ellipsis.
-				t.TextColor(p.text).Shrink(1).MinWidth(24)
+			if part.dir != "" && t.diff == nil {
+				// A folder: its files in a box below it.
+				k := &a.crumbs
+				on := k.open && k.tab == t && k.dir == part.dir
+				b := ui.ButtonBase(c.Key("crumb:"+part.dir)).Height(crumbsH-6).Padding(0, 4).Margin(0, -4).Radius(4).
+					AlignItems(ui.Center).Shrink(0).Label(locales.CrumbsFolderTip(part.name))
+				if on || b.Hovered() {
+					b.Background(p.hover)
+				}
+				b.Children(func() {
+					col := p.muted
+					if on || b.Hovered() {
+						col = p.text
+					}
+					ui.Text(c, part.name).FontSize(12).SingleLine().TextColor(col)
+				})
+				if b.Clicked() {
+					a.openCrumbs(col, t, part.dir)
+				}
+				if on {
+					a.crumbsBox(c, b)
+				}
+			} else {
+				t := ui.Text(c, part.name).FontSize(12).SingleLine().TextColor(p.muted).Shrink(0)
+				if last {
+					// A long name, as a commit's subject, ends in an ellipsis.
+					t.TextColor(p.text).Shrink(1).MinWidth(24)
+				}
 			}
 			if !last || len(scope) > 0 {
 				ui.Icon(c, iconChevronRight).FontSize(11).TextColor(p.faint)

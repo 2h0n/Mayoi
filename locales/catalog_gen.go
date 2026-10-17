@@ -2453,6 +2453,26 @@ func (msgs Messages) CreateTagEllipsis() string {
 	return Catalog.Format(msgs.locale, "createTagEllipsis", nil)
 }
 
+// CrumbsEmpty says "No files"
+// in the language the app shows.
+func CrumbsEmpty() string { return In(i18n.Locale()).CrumbsEmpty() }
+
+// CrumbsEmpty says "No files"
+// in the language of msgs.
+func (msgs Messages) CrumbsEmpty() string {
+	return Catalog.Format(msgs.locale, "crumbsEmpty", nil)
+}
+
+// CrumbsFolderTip says "Files in {name}"
+// in the language the app shows.
+func CrumbsFolderTip(name string) string { return In(i18n.Locale()).CrumbsFolderTip(name) }
+
+// CrumbsFolderTip says "Files in {name}"
+// in the language of msgs.
+func (msgs Messages) CrumbsFolderTip(name string) string {
+	return Catalog.Format(msgs.locale, "crumbsFolderTip", map[string]any{"name": name})
+}
+
 // DeletedOnDisk says "Deleted on disk"
 // in the language the app shows.
 func DeletedOnDisk() string { return In(i18n.Locale()).DeletedOnDisk() }

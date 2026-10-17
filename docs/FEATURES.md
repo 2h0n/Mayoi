@@ -87,6 +87,8 @@ reloading from disk can all be undone. Undoing back to the saved text marks the 
   elsewhere.
 - Sticky scroll pins the lines that open the blocks in view to the top, and breadcrumbs name the blocks around the
   caret. Click either to jump there.
+- A folder in the breadcrumbs, clicked, shows its files in a tree below it, apart from the Explorer's: open its
+  folders, and choose a file to show it in that column, with the mouse or the arrows and Enter.
 
 ### Git
 

@@ -241,6 +241,8 @@
   "createBranchEllipsis": "创建分支…",
   "createdRef": "{tag, select, true {已在 {commit} 创建标签 {name}} other {已在 {commit} 创建分支 {name}}}",
   "createTagEllipsis": "创建标签…",
+  "crumbsEmpty": "没有文件",
+  "crumbsFolderTip": "{name} 中的文件",
   "deletedOnDisk": "已在磁盘上删除",
   "deletePermanently": "永久删除…",
   "deleteQuestion": "要删除 {name} 吗？",
