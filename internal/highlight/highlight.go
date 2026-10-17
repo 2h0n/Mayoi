@@ -388,6 +388,7 @@ func (h *Highlighter) run() {
 			}
 		}
 		var lines []Line
+		var over patch   // lines written over prev's, rather than new ones
 		var rest request // the lines left for after the first in view
 		if !full && prev == nil && r.last-r.first > 2*(Context+Below) {
 			// Opened: the lines around the view first, the rest after.
@@ -395,12 +396,23 @@ func (h *Highlighter) run() {
 			r.first, r.last = max(r.first, r.view[0]-Context), min(r.last, r.view[1]+Below)
 			lines = lexRange(h.lexer, r.src, r.first, r.last+1)
 		} else if !full && prev != nil && prevFirst == r.first {
-			var exact bool
-			lines, exact = relex(h.lexer, r, prev)
-			if !exact {
+			p := relexPatch(h.lexer, r, prev)
+			switch {
+			case !p.exact:
 				check = r
-			} else if &lines[0] == &prev[0] {
+			case p.same:
 				check = request{}
+			}
+			switch {
+			case p.same:
+				lines = prev
+			case p.inPlace():
+				// A keystroke within a line: its lines go over the old
+				// ones, under the lock, rather than into a copy of them
+				// all. Only this goroutine writes h.lines.
+				lines, over = prev, p
+			default:
+				lines = p.apply(prev)
 			}
 		} else {
 			lines = lexRange(h.lexer, r.src, r.first, r.last+1)
@@ -411,6 +423,7 @@ func (h *Highlighter) run() {
 		}
 
 		h.mu.Lock()
+		copy(lines[over.from:], over.lines)
 		h.version, h.first, h.lines = r.src.Version(), r.first, lines
 		h.total, h.shift = r.src.LineCount(), 0
 		if w := h.want; w.src != nil {
@@ -526,6 +539,36 @@ const relexAhead, relexMargin = 160, 32
 // It reports whether the lines are surely as lexing all of them makes
 // them: when they are those of the earlier text, or lexed from the start.
 func relex(l chroma.Lexer, r request, prev []Line) ([]Line, bool) {
+	p := relexPatch(l, r, prev)
+	if p.same {
+		return prev, true
+	}
+	return p.apply(prev), p.exact
+}
+
+// patch is what relex changes in the earlier lines: lines takes the place
+// of prev[from:to], or none when same.
+type patch struct {
+	from, to int
+	lines    []Line
+	same     bool
+	// exact is relex's report: the lines are as lexing all of them makes
+	// them.
+	exact bool
+}
+
+// apply returns the lines of prev patched, new ones, leaving prev as it is.
+func (p patch) apply(prev []Line) []Line {
+	out := append(slices.Clip(prev[:p.from]), p.lines...)
+	return append(out, prev[p.to:]...)
+}
+
+// inPlace reports whether the patch keeps the number of lines, so that it
+// can be written over them.
+func (p patch) inPlace() bool { return !p.same && len(p.lines) == p.to-p.from }
+
+// relexPatch does relex's work, returning the lines it changes.
+func relexPatch(l chroma.Lexer, r request, prev []Line) patch {
 	n := r.last - r.first + 1
 	text := func(i int) string {
 		s, e := r.src.LineRange(r.first + i)
@@ -536,7 +579,7 @@ func relex(l chroma.Lexer, r request, prev []Line) ([]Line, bool) {
 		a++
 	}
 	if a == len(prev) && a == n {
-		return prev, true
+		return patch{same: true, exact: true}
 	}
 	b := 0 // the lines alike at the end
 	for b < len(prev)-a && b < n-a && prev[len(prev)-1-b].Text == text(n-1-b) {
@@ -602,10 +645,9 @@ func relex(l chroma.Lexer, r request, prev []Line) ([]Line, bool) {
 			continue
 		}
 		if stop < 0 {
-			return append(slices.Clip(prev[:s]), lines...), s == 0
+			return patch{from: s, to: len(prev), lines: lines, exact: s == 0}
 		}
-		out := append(slices.Clip(prev[:s]), lines[:stop+1]...)
-		return append(out, prev[s+stop-shift+1:]...), false
+		return patch{from: s, to: s + stop - shift + 1, lines: lines[:stop+1]}
 	}
 }
 
