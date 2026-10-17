@@ -54,7 +54,7 @@ func crumbsHarness(t *testing.T) *harness {
 func TestCrumbsBrowseAndOpen(t *testing.T) {
 	hs := crumbsHarness(t)
 	a, tt := hs.a, hs.tt
-	explorerOpen := slices.Collect(a.files.Open.All())
+	explorerOpen := slices.Sorted(a.files.Open.All())
 	if err := tt.Click("internal"); err != nil {
 		t.Fatal(err)
 	}
@@ -86,7 +86,7 @@ func TestCrumbsBrowseAndOpen(t *testing.T) {
 	if a.crumbs.open {
 		t.Error("the box stays open after a file is chosen")
 	}
-	if got := slices.Collect(a.files.Open.All()); !slices.Equal(got, explorerOpen) {
+	if got := slices.Sorted(a.files.Open.All()); !slices.Equal(got, explorerOpen) {
 		t.Errorf("the Explorer's open folders changed: %v, were %v", got, explorerOpen)
 	}
 }

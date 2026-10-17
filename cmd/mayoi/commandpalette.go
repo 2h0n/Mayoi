@@ -262,10 +262,7 @@ func (a *app) quickCommands(c *ui.Context, query string) {
 							// As tall with keys as without.
 							row := ui.ButtonBase(c.Key("cmd:"+e.id)).MinHeight(30).Padding(5, 10).Gap(10).Radius(6).
 								Justify(ui.Start).AlignItems(ui.Center).Label(e.title)
-							switch {
-							case i == q.sel:
-								row.Background(p.active)
-							case row.Hovered():
+							if i != q.sel && row.Hovered() {
 								row.Background(p.hover)
 							}
 							if i == q.sel && q.moved {
@@ -274,7 +271,7 @@ func (a *app) quickCommands(c *ui.Context, query string) {
 							if row.Clicked() {
 								choose(i)
 							}
-							row.Children(func() { a.commandRow(c, e, m.Positions) })
+							row.Children(func() { a.pickMark(c, i == q.sel, "commands"); a.commandRow(c, e, m.Positions) })
 						}
 					})
 				}

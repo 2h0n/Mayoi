@@ -155,6 +155,10 @@ func fitTitle(c *ui.Context, title, short string, room float32) string {
 	return short
 }
 
+// switchMark is the identity of the mark under the sidebar's switch of
+// the view shown, which goes from one switch to another.
+type switchMark struct{}
+
 // sidebarSwitch is a button at the top of the sidebar that shows a view
 // of it, with a count of what it has when count is more than 0.
 func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, count int, show func()) {
@@ -164,21 +168,29 @@ func (a *app) sidebarSwitch(c *ui.Context, icon *ui.SVG, label string, on bool, 
 	b := ui.ButtonBase(c.Key(label)).Size(26, 24).Radius(5).Justify(ui.Center).AlignItems(ui.Center).Label(label)
 	col := p.muted
 	if on {
-		b.Background(p.active)
 		col = p.text
 	} else if b.Hovered() {
 		b.Background(p.hover)
 		col = p.text
 	}
+	b.Transition(hoverFade)
+	pressPose(b)
 	b.Children(func() {
+		if on {
+			// The mark of the view shown slides from the switch before.
+			ui.Box(c.Key("on")).Absolute().Left(0).Right(0).Top(0).Bottom(0).Radius(5).Background(p.active).
+				Transition(ui.ElementTransition{Animation: &ui.Snappy, Match: switchMark{}})
+		}
 		ui.Icon(c, icon).FontSize(14).TextColor(col)
 		if count > 0 {
 			label := fmt.Sprint(count)
 			if count > 99 {
 				label = "99+"
 			}
-			ui.Text(c, label).Absolute().Top(-2).Right(-3).FontSize(9).FontWeight(600).Padding(0, 3).Radius(6).
-				MinWidth(13).TextAlign(ui.Center).Background(p.fill).TextColor(p.fillText)
+			// The count rolls to a new one, as a counter's digits do.
+			ui.Text(c.Key("count"), label).Absolute().Top(-2).Right(-3).FontSize(9).FontWeight(600).Padding(0, 3).Radius(6).
+				MinWidth(13).TextAlign(ui.Center).Background(p.fill).TextColor(p.fillText).
+				ContentTransition(ui.ContentTransition{Numeric: true}).Transition(dotPop)
 		}
 	})
 	if b.Clicked() {

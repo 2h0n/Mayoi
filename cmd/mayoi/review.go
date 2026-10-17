@@ -1432,6 +1432,7 @@ func (a *app) reviewStatus(c *ui.Context, text func(string) ui.Element) {
 	if b.Hovered() {
 		b.Background(p.hover)
 	}
+	b.Transition(hoverFade)
 	b.Children(func() {
 		ui.Icon(c, iconComment).FontSize(12).TextColor(p.statusFg)
 		text(fmt.Sprint(k))

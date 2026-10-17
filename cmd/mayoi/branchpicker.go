@@ -233,10 +233,7 @@ func (a *gitContext) branchRow(c *ui.Context, ch branchChoice, i int) {
 		key, label = "branch:"+br.Name, br.Name
 	}
 	row := ui.ButtonBase(c.Key(key)).Padding(5, 10).Gap(10).Radius(6).Justify(ui.Start).AlignItems(ui.Center).Label(label)
-	switch {
-	case i == b.sel:
-		row.Background(p.active)
-	case row.Hovered():
+	if i != b.sel && row.Hovered() {
 		row.Background(p.hover)
 	}
 	if i == b.sel && b.moved {
@@ -246,6 +243,7 @@ func (a *gitContext) branchRow(c *ui.Context, ch branchChoice, i int) {
 		a.app.post(func() { a.chooseBranch(ch) })
 	}
 	row.Children(func() {
+		a.app.pickMark(c, i == b.sel, "branches")
 		if ch.create != "" {
 			ui.Icon(c, iconPlus).FontSize(14).TextColor(p.accent)
 			ui.RichText(c, ui.Span{Text: locales.BranchCreatePrefix()}, ui.Span{Text: ch.create, Weight: 650}).FontSize(13).

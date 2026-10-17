@@ -806,16 +806,13 @@ func (a *app) searchView(c *ui.Context) {
 	}
 	ui.Column(c).Padding(0, 12, 6, 6).Gap(5).Children(func() {
 		ui.Row(c).Gap(2).AlignItems(ui.Stretch).Children(func() {
-			arrow := iconChevronRight
-			if s.replacing {
-				arrow = iconChevronDown
-			}
 			b := ui.ButtonBase(c.Key("toggle-replace")).Width(18).Radius(4).Justify(ui.Center).AlignItems(ui.Center).
 				Label(locales.SearchToggleReplace()).Tooltip(a.withKey(locales.SearchToggleReplace(), "edit.replaceInFiles"))
 			if b.Hovered() {
 				b.Background(p.hover)
 			}
-			b.Children(func() { ui.Icon(c, arrow).FontSize(13).TextColor(p.muted) })
+			b.Transition(hoverFade)
+			b.Children(func() { chevron(c, s.replacing).FontSize(13).TextColor(p.muted) })
 			if b.Clicked() {
 				s.replacing = !s.replacing
 			}
@@ -1039,11 +1036,7 @@ func (a *app) searchHeader(c *ui.Context, f *searchFile, action *func()) {
 	clicked := row.Clicked()
 	a.dragFile(row, &fileDrag{path: f.path})
 	row.Children(func() {
-		icon := iconChevronDown
-		if s.collapsed[f.rel] {
-			icon = iconChevronRight
-		}
-		ui.Icon(c, icon).FontSize(12).TextColor(p.muted)
+		chevron(c, !s.collapsed[f.rel]).FontSize(12).TextColor(p.muted)
 		name := filepath.Base(f.path)
 		fi, col := fileIcon(p, name)
 		ui.Icon(c, fi).FontSize(14).TextColor(col)

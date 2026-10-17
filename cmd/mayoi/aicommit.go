@@ -208,6 +208,7 @@ func (a *gitContext) writeButton(c *ui.Context) {
 	if b.Hovered() {
 		b.Background(p.hover)
 	}
+	b.Transition(hoverFade)
 	b.Children(func() {
 		switch {
 		case g.writing != nil && b.Hovered():

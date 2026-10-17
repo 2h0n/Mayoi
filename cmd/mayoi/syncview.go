@@ -237,6 +237,7 @@ func (a *app) syncRow(c *ui.Context, key string, icon *ui.SVG, label, detail str
 	if row.Hovered() {
 		row.Background(p.hover)
 	}
+	row.Transition(hoverFade)
 	was := on
 	row.Children(func() {
 		ui.Icon(c, icon).FontSize(14).TextColor(p.muted).Shrink(0)

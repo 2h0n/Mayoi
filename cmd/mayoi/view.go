@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -379,6 +380,7 @@ func (a *app) commandCenter(c *ui.Context) {
 	case hovered:
 		b.Background(p.surfaceHover).Border(1, mix(p.border, p.muted, 0.3))
 	}
+	b.Transition(hoverFade)
 	room := b.Bounds().W - 2*10 - 12 - 2*8 // its padding, the icon and the gaps
 	b.Children(func() {
 		col := p.faint
@@ -414,7 +416,8 @@ func (a *app) commandCenter(c *ui.Context) {
 		case name != "" && a.root != "":
 			// A short name, as a terminal's "zsh", keeps its own width
 			// rather than a gap after it.
-			ui.Text(c, name).FontSize(12).FontWeight(550).TextColor(p.text).SingleLine().Shrink(1).MinWidth(min(32, nameW))
+			ui.Text(c, name).FontSize(12).FontWeight(550).TextColor(p.text).SingleLine().Shrink(1).MinWidth(min(32, nameW)).
+				ContentTransition(ui.ContentTransition{})
 			if folder == "" {
 				break
 			}
@@ -447,6 +450,8 @@ func (a *app) iconButton(c *ui.Context, icon *ui.SVG, label string, on bool) ui.
 	if on {
 		col = p.text
 	}
+	b.Transition(hoverFade)
+	pressPose(b)
 	b.Children(func() { ui.Icon(c, icon).FontSize(15).TextColor(col) })
 	return b
 }
@@ -732,6 +737,7 @@ func (a *app) breadcrumbs(c *ui.Context, col *column, t *colTab) {
 				if on || b.Hovered() {
 					b.Background(p.hover)
 				}
+				b.Transition(hoverFade)
 				b.Children(func() {
 					col := p.muted
 					if on || b.Hovered() {
@@ -763,6 +769,7 @@ func (a *app) breadcrumbs(c *ui.Context, col *column, t *colTab) {
 			if b.Hovered() {
 				b.Background(p.hover)
 			}
+			b.Transition(hoverFade)
 			b.Children(func() {
 				ui.Text(c, label).FontSize(12).Font(a.font.family).SingleLine().TextColor(p.muted)
 			})
@@ -796,7 +803,10 @@ func (a *app) previewButton(c *ui.Context, t *colTab, d *editor) {
 	if b.Hovered() {
 		b.Background(p.hover)
 	}
-	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(p.muted) })
+	b.Transition(hoverFade)
+	pressPose(b)
+	// The icon turns into the other's, the preview's or the source's.
+	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(p.muted).ContentTransition(ui.ContentTransition{}) })
 	if b.Clicked() {
 		a.post(func() {
 			a.setPreview(d, d.preview == nil)
@@ -944,9 +954,13 @@ func (a *app) vimBadge(c *ui.Context, v *vimState, text func(string) ui.Element)
 	case v.mode.visual():
 		bg, fg = p.modified.Alpha(0.22), p.modifiedFg
 	}
-	ui.Row(c.Key("status:vim")).Height(statusBarH).Padding(0, 6).Gap(6).AlignItems(ui.Center).Children(func() {
+	row := ui.Row(c.Key("status:vim")).Height(statusBarH).Padding(0, 6).Gap(6).AlignItems(ui.Center)
+	// From mode to mode, the badge's colors and name cross over.
+	fade := ui.Animation{Duration: 140 * time.Millisecond}
+	bg, fg = row.AnimateColor("bg", bg, fade), row.AnimateColor("fg", fg, fade)
+	row.Children(func() {
 		ui.Text(c, v.mode.String()).FontSize(10.5).FontWeight(650).LetterSpacing(0.6).TextColor(fg).SingleLine().
-			Padding(1, 6).Radius(4).Background(bg)
+			Padding(1, 6).Radius(4).Background(bg).ContentTransition(ui.ContentTransition{})
 		if k := v.pending(); k != "" {
 			text(k)
 		}
@@ -978,6 +992,7 @@ func (a *app) statusBar(c *ui.Context) {
 			if b.Hovered() {
 				b.Background(p.hover)
 			}
+			b.Transition(hoverFade)
 			b.Children(func() {
 				if icon != nil {
 					ui.Icon(c, icon).FontSize(12).TextColor(p.statusFg)
@@ -998,6 +1013,7 @@ func (a *app) statusBar(c *ui.Context) {
 			if b.Hovered() {
 				b.Background(p.hover)
 			}
+			b.Transition(hoverFade)
 			b.Children(func() { text(label) })
 			b.Menu(build)
 		}
@@ -1016,10 +1032,12 @@ func (a *app) statusBar(c *ui.Context) {
 			if bb.Hovered() {
 				bb.Background(p.hover)
 			}
+			bb.Transition(hoverFade)
 			bb.Children(func() {
 				ui.Icon(c, iconBranch).FontSize(12).TextColor(p.statusFg)
 				if visible.branchLabel {
-					text(a.branchLabel())
+					// Switched to another, the name rolls to it.
+					text(a.branchLabel()).ContentTransition(ui.ContentTransition{})
 				}
 			})
 			bb.Menu(a.branchMenu)
@@ -1193,7 +1211,7 @@ func (a *app) welcome(c *ui.Context) {
 			}
 			content.Children(func() {
 				// Inset as the rows below, so the logo lines up with their icons.
-				ui.Row(c).Padding(0, 10).Gap(16).AlignItems(ui.Center).Children(func() {
+				riseIn(ui.Row(c.Key("welcome:head")).Padding(0, 10).Gap(16).AlignItems(ui.Center), 0).Children(func() {
 					if m := a.themeMascot(); m != nil {
 						a.welcomeMascot(c, m)
 					} else {
@@ -1207,7 +1225,7 @@ func (a *app) welcome(c *ui.Context) {
 						ui.Text(c, locales.WelcomeTagline()).FontSize(13).TextColor(p.muted)
 					})
 				})
-				a.welcomeSection(c, locales.WelcomeStart(), func() {
+				a.welcomeSection(c, locales.WelcomeStart(), 60*time.Millisecond, func() {
 					if a.root == "" {
 						a.welcomeAction(c, iconFolderOpen, locales.CmdFileOpenFolder(), a.keyHint("file.openFolder"), a.chooseFolder)
 						if remoteSupported {
@@ -1230,13 +1248,14 @@ func (a *app) welcome(c *ui.Context) {
 					recent = a.settings.RecentExcept("")
 				}
 				if len(recent) > 0 {
-					a.welcomeSection(c, locales.WelcomeRecent(), func() {
+					a.welcomeSection(c, locales.WelcomeRecent(), 120*time.Millisecond, func() {
 						for _, dir := range recent[:min(6, len(recent))] {
 							r := ui.ButtonBase(c.Key("recent:"+dir)).FillWidth().Height(welcomeRowH).Padding(0, 10).Radius(6).Gap(10).
 								Justify(ui.Start).AlignItems(ui.Center).Label(locales.RecentOpenLabel(dir)).Tooltip(shortenHome(dir))
 							if r.Hovered() {
 								r.Background(p.hover)
 							}
+							r.Transition(hoverFade)
 							r.Children(func() {
 								icon := iconFolder
 								if remote.Is(dir) {
@@ -1274,9 +1293,10 @@ func (a *app) welcome(c *ui.Context) {
 const welcomeRowH = 30
 
 // welcomeSection is a titled group of the welcome page.
-func (a *app) welcomeSection(c *ui.Context, title string, rows func()) {
+// It rises in after delay as the page shows.
+func (a *app) welcomeSection(c *ui.Context, title string, delay time.Duration, rows func()) {
 	p := a.pal
-	ui.Column(c).Gap(2).Children(func() {
+	riseIn(ui.Column(c.Key("welcome:"+title)).Gap(2), delay).Children(func() {
 		// As the sidebar titles its views.
 		ui.Text(c, strings.ToUpper(title)).FontSize(11).FontWeight(600).LetterSpacing(0.7).TextColor(p.muted).Padding(0, 10, 6)
 		rows()
@@ -1293,11 +1313,13 @@ func (a *app) welcomeAction(c *ui.Context, icon *ui.SVG, label, keys string, fn 
 	if hovered {
 		r.Background(p.hover)
 	}
+	r.Transition(hoverFade)
+	col := p.muted
+	if hovered {
+		col = p.accent
+	}
+	col = r.AnimateColor("icon", col, ui.Animation{Duration: hoverFade.Duration})
 	r.Children(func() {
-		col := p.muted
-		if hovered {
-			col = p.accent
-		}
 		ui.Icon(c, icon).FontSize(15).TextColor(col)
 		ui.Text(c, label).FontSize(13).TextColor(p.text).Grow(1).SingleLine()
 		a.keycaps(c, keys)

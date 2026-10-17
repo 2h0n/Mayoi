@@ -316,6 +316,7 @@ func (a *gitContext) scmView(c *ui.Context) {
 				if b.Hovered() {
 					b.Background(p.hover)
 				}
+				b.Transition(hoverFade)
 				b.Children(func() { ui.Text(c, locales.ButtonCancel()).FontSize(11.5).FontWeight(500).TextColor(p.accent) })
 				if b.Clicked() {
 					g.amend, g.message = false, ""
@@ -540,6 +541,7 @@ func (a *gitContext) scmOpBanner(c *ui.Context, op git.Op) {
 			if b.Hovered() {
 				b.Background(p.hover)
 			}
+			b.Transition(hoverFade)
 			b.Children(func() { ui.Text(c, text).FontSize(11.5).FontWeight(500).TextColor(p.accent) })
 			return b.Clicked()
 		}
@@ -773,11 +775,7 @@ func (a *gitContext) scmHeader(c *ui.Context, r scmRow, action *func()) {
 	hovered := row.Hovered()
 	clicked := row.Clicked()
 	row.Children(func() {
-		icon := iconChevronDown
-		if a.scm.collapsed[r.group] {
-			icon = iconChevronRight
-		}
-		ui.Icon(c, icon).FontSize(12).TextColor(p.muted)
+		chevron(c, !a.scm.collapsed[r.group]).FontSize(12).TextColor(p.muted)
 		ui.Text(c, strings.ToUpper(groupName(r.group))).FontSize(11).FontWeight(600).LetterSpacing(0.4).
 			TextColor(p.muted).SingleLine().Shrink(1)
 		ui.Spacer(c)
@@ -1389,11 +1387,11 @@ func (a *gitContext) scmFolder(c *ui.Context, r scmRow, action *func()) {
 	a.app.scmGuides(row, r.depth)
 	hovered, clicked := row.Hovered(), row.Clicked()
 	row.Children(func() {
-		chevron, folder := iconChevronDown, iconFolderOpen
+		folder := iconFolderOpen
 		if closed {
-			chevron, folder = iconChevronRight, iconFolder
+			folder = iconFolder
 		}
-		ui.Icon(c, chevron).FontSize(12).TextColor(p.muted)
+		chevron(c, !closed).FontSize(12).TextColor(p.muted)
 		ui.Icon(c, folder).FontSize(14).TextColor(p.accent).Margin(0, 2, 0, 0)
 		ui.Text(c, r.name).FontSize(13).TextColor(p.text).SingleLine().Shrink(1)
 		ui.Spacer(c)

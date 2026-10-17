@@ -755,6 +755,68 @@ func (a *app) applyTheme(c *ui.Context) *palette {
 // from a little above where it settles. Only its colors follow it after.
 var popIn = ui.ElementTransition{Duration: 130 * time.Millisecond, Colors: true, Enter: &ui.Motion{Y: -6}}
 
+// hoverFade is how a button's background follows the pointer: it fades
+// in and out rather than blinks.
+var hoverFade = ui.ElementTransition{Colors: true, Duration: 110 * time.Millisecond}
+
+// tabMotion is how a tab moves along its strip: it grows in as it opens,
+// folds away as it closes, and the others slide to their places.
+var tabMotion = ui.ElementTransition{
+	Duration: 140 * time.Millisecond,
+	Enter:    &ui.Motion{Collapse: true},
+	Exit:     &ui.Motion{Collapse: true},
+}
+
+// dotPop is how a small mark comes and goes, as the dot of a tab's
+// unsaved changes: it grows from nothing and shrinks away.
+var dotPop = ui.ElementTransition{
+	Animation: &ui.Snappy,
+	Enter:     &ui.Motion{Scale: 0.2},
+	Exit:      &ui.Motion{Scale: 0.2},
+}
+
+// pickMark is the identity of the mark under the row chosen in a list of
+// a box, as quick open's, which slides from row to row as the choice
+// moves.
+type pickMark struct{ list string }
+
+// pickMark marks the row chosen in a list, first in the row's children:
+// it slides from the row chosen before, as the keys move the choice.
+func (a *app) pickMark(c *ui.Context, on bool, list string) {
+	if !on {
+		return
+	}
+	ui.Box(c.Key("pick-mark")).Absolute().Left(0).Right(0).Top(0).Bottom(0).Radius(6).Background(a.pal.active).
+		Transition(ui.ElementTransition{Duration: 90 * time.Millisecond, Match: pickMark{list}})
+}
+
+// riseIn brings a block of a page in as the page shows: it fades in from
+// a little below, after delay, so that blocks delayed more follow.
+func riseIn(e ui.Element, delay time.Duration) ui.Element {
+	k := e.Keyframes("rise", []ui.Keyframe{{Value: 0}, {At: 240 * time.Millisecond, Value: 1, Ease: ui.EaseOut}},
+		ui.KeyframeOptions{Delay: delay})
+	return e.Opacity(k).Translate(0, 8*(1-k))
+}
+
+// chevron is the arrow of what folds: it points to the side while
+// closed, and turns down as it opens.
+func chevron(c *ui.Context, open bool) ui.Element {
+	turn := float32(0)
+	if open {
+		turn = 90
+	}
+	return ui.Icon(c.Key("chevron"), iconChevronRight).AnimatePose(ui.Pose{Rotate: turn}, ui.Snappy)
+}
+
+// pressPose sinks a button a little as it is held down, as a key does.
+func pressPose(b ui.Element) {
+	pose := ui.Pose{}
+	if b.Pressed() {
+		pose.Scale = 0.92
+	}
+	b.AnimatePose(pose, ui.Snappy)
+}
+
 // floating styles a box that floats over the window: a dialog, as quick
 // open's, a picker's or a prompt's, or a smaller box over an editor, as
 // find's. The shadow is lighter on a light window, where a dark one looks

@@ -145,10 +145,14 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		// Back in sight, where it was.
 		d.hidden, d.pinFrame, d.resync, d.shownFrame = false, 0, true, a.frame
 		d.vscroll.Y = d.hiddenY
-	case d.pinFrame != 0 && a.frame > d.pinFrame:
+	case d.pinFrame != 0 && a.frame > d.pinFrame+1:
 		d.pinFrame = 0
+	case d.pinFrame != 0 && a.frame > d.pinFrame:
+		// Every build of the frame after: a frame that animates builds the
+		// view again, after the area laid out where it was put back.
 		d.vscroll.Y = d.pinY
 	}
+
 	if !a.settings.Vim {
 		vimReset(d)
 	}
@@ -192,8 +196,9 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 		d.resync = d.resync || !d.caretSeen
 		jump := d.pending != nil
 		if r := d.pending; r != nil {
+			// A jump asked for goes where it goes: no pin puts it back.
 			area.SetTextSelection(r[0], r[1])
-			d.pending, d.resync, d.parked = nil, false, -1
+			d.pending, d.resync, d.parked, d.pinFrame = nil, false, -1, 0
 		}
 		if d.resync {
 			// The area scrolls to its caret when it is given one, and when

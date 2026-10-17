@@ -377,7 +377,7 @@ func (a *app) panel(c *ui.Context) {
 				ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
 					for i, s := range terms {
 						chip := ui.ButtonBase(c.Key(s.id)).Padding(3, 8).Gap(6).Radius(5).AlignItems(ui.Center).Label(s.title).
-							Drag(dragItem{term: s})
+							Drag(dragItem{term: s}).Transition(tabMotion)
 						if chip.Dragging() {
 							a.dragNow = true
 						}

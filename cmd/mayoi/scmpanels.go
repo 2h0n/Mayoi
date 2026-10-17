@@ -472,11 +472,7 @@ func (a *gitContext) scmPanelTabsView(c *ui.Context, r scmRow, action *func()) {
 	row := ui.Row(c).Grow(1).Height(26).Gap(4).Padding(0, 4, 0, 0).AlignItems(ui.Center).Background(p.chrome)
 	clicked := row.Clicked()
 	row.Children(func() {
-		chevron := iconChevronDown
-		if !a.app.settings.ScmRepositoryOpen {
-			chevron = iconChevronRight
-		}
-		ui.Icon(c, chevron).FontSize(12).TextColor(p.muted)
+		chevron(c, a.app.settings.ScmRepositoryOpen).FontSize(12).TextColor(p.muted)
 		ui.Text(c, r.panel.label).FontSize(11).FontWeight(600).LetterSpacing(0.4).TextColor(p.muted).SingleLine().Shrink(1)
 		ui.Spacer(c)
 		for _, tab := range scmPanelTabs {
@@ -543,11 +539,7 @@ func (a *gitContext) scmPanelRowView(c *ui.Context, r scmRow, action *func()) {
 	row.Children(func() {
 		switch q.kind {
 		case "branch", "remote", "range":
-			icon := iconChevronDown
-			if a.scm.panels.closed[r.key] {
-				icon = iconChevronRight
-			}
-			ui.Icon(c, icon).FontSize(12).TextColor(p.muted)
+			chevron(c, !a.scm.panels.closed[r.key]).FontSize(12).TextColor(p.muted)
 		}
 		switch q.kind {
 		case "branch":

@@ -210,12 +210,9 @@ func (a *app) scmView(c *ui.Context) {
 						if head.Hovered() {
 							head.Background(p.hover)
 						}
+						head.Transition(hoverFade)
 						head.Children(func() {
-							icon := iconChevronDown
-							if repo.closed || clean {
-								icon = iconChevronRight
-							}
-							ui.Icon(c, icon).FontSize(12).TextColor(p.muted)
+							chevron(c, !repo.closed && !clean).FontSize(12).TextColor(p.muted)
 							// The name goes last as the row narrows, then the branch;
 							// the folder it is in, as a file's row shows it, goes first.
 							ui.Text(c, repo.label()).FontSize(12).FontWeight(600).TextColor(p.text).SingleLine().Shrink(1)

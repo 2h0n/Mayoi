@@ -39,6 +39,9 @@ type findState struct {
 
 	input  ui.Handle
 	reveal bool // select the current match
+	// back is set when the last step went to the match before, which
+	// rolls the count down.
+	back bool
 }
 
 func (f *findState) pattern() string {
@@ -205,7 +208,7 @@ func (a *app) step(d *editor, by int) {
 	} else {
 		f.cur = (f.cur + by + len(f.matches)) % len(f.matches)
 	}
-	f.reveal = true
+	f.reveal, f.back = true, by < 0
 }
 
 // replaceOne replaces the current match, and goes to the next.
@@ -332,15 +335,12 @@ func (a *app) findView(c *ui.Context, d *editor) {
 		Role(ui.RoleToolbar).Label(locales.FindLabel())
 	box.Children(func() {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			arrow := iconChevronRight
-			if f.replacing {
-				arrow = iconChevronDown
-			}
 			b := ui.ButtonBase(c).Size(18, 22).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(locales.FindToggleReplace())
 			if b.Hovered() {
 				b.Background(p.hover)
 			}
-			b.Children(func() { ui.Icon(c, arrow).FontSize(13).TextColor(p.muted) })
+			b.Transition(hoverFade)
+			b.Children(func() { chevron(c, f.replacing).FontSize(13).TextColor(p.muted) })
 			if b.Clicked() {
 				f.replacing = !f.replacing
 			}
@@ -379,7 +379,9 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			if none || f.err != "" {
 				col = p.dangerFg
 			}
-			ui.Text(c, count).FontSize(11.5).TextColor(col).Width(findCountW).SingleLine().TextAlign(ui.Center)
+			// The count rolls from match to match, down going back.
+			ui.Text(c, count).FontSize(11.5).TextColor(col).Width(findCountW).SingleLine().TextAlign(ui.Center).
+				ContentTransition(ui.ContentTransition{Numeric: true, Down: f.back})
 			if a.iconButton(c, iconArrowUp, locales.FindPrevMatch(keyText("Shift+Enter")), false).Disabled(len(f.matches) == 0).Clicked() {
 				a.step(d, -1)
 			}
@@ -433,6 +435,8 @@ func (a *app) optionToggle(c *ui.Context, icon *ui.SVG, label string, on *bool) 
 	} else if b.Hovered() {
 		b.Background(p.hover)
 	}
+	b.Transition(hoverFade)
+	pressPose(b)
 	b.Children(func() { ui.Icon(c, icon).FontSize(13).TextColor(col) })
 	if b.Clicked() {
 		*on = !*on

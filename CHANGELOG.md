@@ -5,6 +5,26 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Tabs move: a new tab grows in, a closed one folds away while the
+  others slide over, the line over the tab shown slides to the next one,
+  the cross fades in under the pointer, and the dot of unsaved changes
+  pops in. Terminal chips in the panel grow and fold the same way.
+- Buttons, tabs, breadcrumbs, the status bar and the welcome page fade
+  their hover colors in and out rather than blink, and icon buttons sink
+  a little as they are pressed.
+- The mark under the sidebar's view switches slides to the view chosen,
+  and the mark of the row chosen in quick open, the command palette and
+  the pickers slides as the arrow keys move it.
+- Chevrons turn as their sections, folders and the replace fields open
+  and close, rather than swap.
+- Counts roll to their new numbers: the changes on the Source Control
+  switch, and find's match count, down when going back.
+- The Vim badge fades between its modes' colors, and the name of the
+  branch, the preview's icon and the name in the title bar cross-fade as
+  they change.
+- The welcome page's logo, Start and Recent rise in one after another.
+- Going back to a wrapped file's tab no longer jumps it up the file at
+  times; it shows where it was left.
 - The box in the middle of the title bar no longer leaves a gap after a
   short name, as a terminal's `zsh`, before the folder.
 - The welcome page's rows are all one height, with keys or without, so

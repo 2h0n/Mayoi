@@ -170,10 +170,7 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 		for i, m := range q.results {
 			rel := a.index[m.Index]
 			row := ui.ButtonBase(c.Key(rel)).Padding(5, 10).Gap(10).Radius(6).Justify(ui.Start).AlignItems(ui.Center).Label(rel)
-			switch {
-			case i == q.sel:
-				row.Background(p.active)
-			case row.Hovered():
+			if i != q.sel && row.Hovered() {
 				row.Background(p.hover)
 			}
 			if i == q.sel && q.moved {
@@ -182,7 +179,7 @@ func (a *app) quickBody(c *ui.Context, isLine bool, line, col int, choose func(i
 			if row.Clicked() {
 				choose(i)
 			}
-			row.Children(func() { a.quickRow(c, rel, m.Positions) })
+			row.Children(func() { a.pickMark(c, i == q.sel, "quick"); a.quickRow(c, rel, m.Positions) })
 		}
 	})
 	q.moved = false
@@ -375,10 +372,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 							sym := syms[m.Index]
 							row := ui.ButtonBase(c.Key(fmt.Sprint("sym:", sym.Line))).Padding(5, 10).Gap(10).Radius(6).
 								Justify(ui.Start).AlignItems(ui.Center).Label(sym.Name)
-							switch {
-							case i == q.sel:
-								row.Background(p.active)
-							case row.Hovered():
+							if i != q.sel && row.Hovered() {
 								row.Background(p.hover)
 							}
 							if i == q.sel && q.moved {
@@ -387,7 +381,7 @@ func (a *app) quickSymbols(c *ui.Context, query string) {
 							if row.Clicked() {
 								choose(i)
 							}
-							row.Children(func() { a.symbolRow(c, sym, m.Positions, query == "") })
+							row.Children(func() { a.pickMark(c, i == q.sel, "symbols"); a.symbolRow(c, sym, m.Positions, query == "") })
 						}
 					})
 					q.moved = false
