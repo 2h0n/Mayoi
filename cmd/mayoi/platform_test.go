@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/egoist/mygo/i18n"
 	"github.com/egoist/mygo/ui"
 
 	"mayoi/internal/keymap"
@@ -15,11 +16,15 @@ import (
 // written for, on any system: those of Windows and Linux ask for theirs
 // with onOS. They read English, whatever languages the system prefers,
 // unless MYGO_LOCALE asks for another, as for shots of a translation.
+// The language is worked out once: with no app running, MyGo would match
+// it again for every message, which the frame benchmarks would measure.
 func TestMain(m *testing.M) {
 	hostOS = "darwin"
 	if os.Getenv("MYGO_LOCALE") == "" {
 		os.Setenv("MYGO_LOCALE", "en")
 	}
+	locale := i18n.Locale()
+	i18n.SetLocaleFunc(func() string { return locale })
 	os.Exit(m.Run())
 }
 

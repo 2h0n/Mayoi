@@ -803,7 +803,13 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							}
 						})
 					default:
-						a.markdownText(c, b.runs, a.markdownSize(b), b.kind == markdownHeading && b.level == 6, m.root, v.doc.path, false)
+						// Quotes and the smallest headings are muted, as on GitHub.
+						muted := b.quote > 0 || b.kind == markdownHeading && b.level == 6
+						a.markdownText(c, b.runs, a.markdownSize(b), muted, m.root, v.doc.path, false)
+						if b.kind == markdownHeading && b.level <= 2 {
+							// A hairline under the largest headings, as GitHub draws it.
+							ui.Box(c).Height(1).WidthPercent(100).Background(p.border).Margin(size*0.3, 0, 0, 0)
+						}
 					}
 				})
 			})

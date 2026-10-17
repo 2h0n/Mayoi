@@ -11,6 +11,13 @@ needs a `## <version>` section here, or its build fails.
 - Cut with no selection cuts the caret's entire line,
   and can be undone in one step.
 - Splitting a diff to the right no longer closes the window (#20, #39).
+- Quick open and the command palette match a run of letters together:
+  `git` lights up the whole of **Git** in "Git: Fetch", rather than its
+  last t, and such names rank higher.
+- The Markdown preview draws a line under the largest headings and mutes
+  quotes, as GitHub does.
+- The welcome page gives Quick Open an icon of its own, apart from Find in
+  Files.
 
 - **Submodules in Source Control:** each initialized submodule, nested ones
   and those of linked worktrees too, lists its own changes to stage and

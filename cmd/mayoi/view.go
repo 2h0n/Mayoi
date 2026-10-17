@@ -1159,7 +1159,7 @@ func (a *app) welcome(c *ui.Context) {
 							a.welcomeAction(c, iconServer, locales.CmdRemoteConnect(), a.keyHint("remote.connect"), a.openRemotePicker)
 						}
 					} else {
-						a.welcomeAction(c, iconSearch, locales.CmdGoQuickOpen(), a.keyHint("go.quickOpen"), func() { a.openQuick("") })
+						a.welcomeAction(c, iconFileSearch, locales.CmdGoQuickOpen(), a.keyHint("go.quickOpen"), func() { a.openQuick("") })
 						a.welcomeAction(c, iconSearch, locales.CmdEditFindInFiles(), a.keyHint("edit.findInFiles"), func() { a.showSearch(false) })
 					}
 					a.welcomeAction(c, iconChevronRight, locales.CmdGoCommands(), a.keyHint("go.commands"), func() { a.openQuick(">") })
