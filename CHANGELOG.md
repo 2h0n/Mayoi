@@ -170,6 +170,12 @@ needs a `## <version>` section here, or its build fails.
   characters of your own, an emoji too, in place of its initials or logo,
   and **Tab Color**. They're kept in `projectTabStyle` in `settings.json`,
   on each machine.
+- Drop a picture on a project's square, from the Finder or the Explorer,
+  or pick one with **Choose Icon…** in its context menu, and the square
+  shows it in place of the project's logo: a PNG, JPEG, WebP, SVG, ICO or
+  ICNS, copied into `project-icons` beside `settings.json`. **Reset Icon**
+  brings the logo back, and a label given with **Rename Tab…** takes the
+  icon's place.
 
 ## 0.9.1
 

@@ -53,7 +53,7 @@ takes its default.
 | `sidebarRight`          | `false`       | `true`, `false`                                             | **View → Sidebar on Right**                    |
 | `panelPosition`         | `""`          | `""` (bottom), `"left"`, `"right"`                          | **View → Panel Position**                      |
 | `projectTabs`           | `false`       | `true`, `false`                                             | **View → Project Tabs**                        |
-| `projectTabStyle`       | none          | A label and color for each folder                           | **Rename Tab…** and **Tab Color** on the rail  |
+| `projectTabStyle`       | none          | A label, color and icon for each folder                     | A square's context menu on the rail            |
 | `locale`                | `""`          | `""` (follow the system), `"en"`, `"zh-Hans"`, `"ja"`       | **View → Language**                            |
 | `autoSave`              | `true`        | `true`, `false`                                             | **File → Auto Save**                           |
 | `wordWrap`              | `false`       | `true`, `false`                                             | **View → Word Wrap**                           |
@@ -97,7 +97,9 @@ differ in width lines them up only roughly.
 - **`projectTabStyle`** gives a project's square on the rail its own label, up to two characters, in place of its
   initials or logo, and its own color, one of `"red"`, `"green"`, `"yellow"`, `"blue"`, `"magenta"` and `"cyan"`, by
   the project's folder: `{"/Users/me/Downloads": {"label": "DL", "color": "cyan"}}`. A remote folder's key is
-  `/ssh:host/path`. It doesn't sync, as the folders are this machine's.
+  `/ssh:host/path`. `"icon"` names a picture in the `project-icons` folder beside `settings.json`, which **Choose
+  Icon…** and dropping a picture on the square copy there, shown in place of the project's logo. It doesn't sync,
+  as the folders and the pictures are this machine's.
 - **`terminalCopyOnSelect`** copies what you select in a terminal to the clipboard as you let go of the pointer,
   and what Select All selects. Changing it applies to the terminals already open.
 - **`autoSave`** saves a changed file a moment after you stop typing, and when you leave it.

@@ -143,8 +143,8 @@ type Prefs struct {
 	// ProjectTabs keeps the folders open in one window, a rail on its left
 	// choosing which shows, rather than a window for each.
 	ProjectTabs bool `json:"projectTabs,omitempty"`
-	// ProjectTabStyle is a project's own label and color on the rail of
-	// project tabs, by its folder.
+	// ProjectTabStyle is a project's own label, color and icon on the rail
+	// of project tabs, by its folder.
 	ProjectTabStyle map[string]TabStyle `json:"projectTabStyle,omitempty"`
 	// Locale is the language Mayoi shows, as "en", "zh-Hans" or "ja", or ""
 	// for the one the system's languages prefer.
@@ -156,12 +156,14 @@ type Prefs struct {
 }
 
 // TabStyle is a project's own look on the rail: Label, up to two
-// characters, in place of its initials or logo, and Color, a name of the
-// terminal's colors as "red" or "cyan", in place of its own. Either is ""
-// for the project's own.
+// characters, in place of its initials or logo, Color, a name of the
+// terminal's colors as "red" or "cyan", in place of its own, and Icon, the
+// name of a picture in the project-icons folder beside the settings, in
+// place of its logo. Each is "" for the project's own.
 type TabStyle struct {
 	Label string `json:"label,omitempty"`
 	Color string `json:"color,omitempty"`
+	Icon  string `json:"icon,omitempty"`
 }
 
 // SetTabStyle keeps st as the look of the project of folder, forgetting

@@ -388,6 +388,11 @@ Each folder gets its own window.
   lower corner, gray while its host is connected, amber while connecting and red while not.
 - **Rename Tab…** in a square's context menu shows up to two characters of your own, an emoji too, in place of
   its initials or logo; empty brings them back. **Tab Color** tints the square in one of the terminal's colors.
+- Drop a picture on a square, from the Finder or the Explorer, or pick one with **Choose Icon…** in its context
+  menu, and the square shows it in place of the project's logo: a PNG, JPEG, WebP, SVG, ICO or ICNS, a remote
+  project's too, even while its host is not connected. Mayoi keeps a copy in `project-icons` beside
+  `settings.json`, so the picture may move or go. **Reset Icon** brings the logo back. An icon and a label of your
+  own take each other's place.
 - Drag a square along the rail to reorder the projects, and drop a folder from the Finder on the rail to add it.
 - Clicking a square shows that project, with its tabs, columns, terminals, Explorer and source control as it left
   them, each editor with its caret and scroll position. Each project keeps its own layout: what its sidebar shows,
@@ -395,8 +400,8 @@ Each folder gets its own window.
   Project**) step along the rail, and ⌃⌘1…9 (Ctrl+Alt+1…9 on Windows and Linux) show one by its place.
 - Opening a folder, with ⌘O, ⌥⌘O, Open Recent, the welcome page or `mayoi <dir>`, adds it to the rail, or shows
   it if it is there already. The `+` after the squares opens one too.
-- A square's context menu reveals the folder in the Finder, copies its path, renames or colors the square, and
-  closes the project or the others.
+- A square's context menu reveals the folder in the Finder, copies its path, renames, colors or gives an icon to
+  the square, and closes the project or the others.
 - **File → Close Project**, the square's context menu, or ⌘W with no tab left closes a project, asking about its
   unsaved changes first. Closing the window closes them all, and they open again at the next start, in the rail's
   order.

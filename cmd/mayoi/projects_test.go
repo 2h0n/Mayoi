@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"fmt"
 	"image"
@@ -290,6 +291,180 @@ func TestRailTabStyle(t *testing.T) {
 	}
 }
 
+// tinyWebP is a lossless WebP of one pixel.
+const tinyWebP = "UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="
+
+// A picture chosen for a project is copied beside the settings under a
+// name of its bytes, an SVG as it is, and what does not decode is not.
+func TestImportProjectIcon(t *testing.T) {
+	src, icons := t.TempDir(), filepath.Join(t.TempDir(), "project-icons")
+	writePNG(t, filepath.Join(src, "a.png"), 16, 16)
+	data, _ := os.ReadFile(filepath.Join(src, "a.png"))
+	os.WriteFile(filepath.Join(src, "b.jpeg.png"), data, 0o644)
+	os.WriteFile(filepath.Join(src, "logo.svg"), []byte(testSVG), 0o644)
+	webp, _ := base64.StdEncoding.DecodeString(tinyWebP)
+	os.WriteFile(filepath.Join(src, "tiny.webp"), webp, 0o644)
+	os.WriteFile(filepath.Join(src, "fake.png"), []byte("not a picture"), 0o644)
+	os.WriteFile(filepath.Join(src, "notes.txt"), data, 0o644)
+
+	name, err := importProjectIcon(icons, filepath.Join(src, "a.png"))
+	if err != nil || !strings.HasSuffix(name, ".png") {
+		t.Fatalf("png: %q, %v", name, err)
+	}
+	if again, _ := importProjectIcon(icons, filepath.Join(src, "b.jpeg.png")); again != name {
+		t.Errorf("the same picture kept twice: %q and %q", name, again)
+	}
+	svg, err := importProjectIcon(icons, filepath.Join(src, "logo.svg"))
+	if err != nil || !strings.HasSuffix(svg, ".svg") {
+		t.Fatalf("svg: %q, %v", svg, err)
+	}
+	if got, _ := os.ReadFile(filepath.Join(icons, svg)); string(got) != testSVG {
+		t.Errorf("svg copied as %q", got)
+	}
+	if w, err := importProjectIcon(icons, filepath.Join(src, "tiny.webp")); err != nil || decodeProjectLogo(filepath.Join(icons, w)) == nil {
+		t.Errorf("webp: %q, %v", w, err)
+	}
+	for _, bad := range []string{"fake.png", "notes.txt", "missing.png"} {
+		if name, err := importProjectIcon(icons, filepath.Join(src, bad)); err == nil {
+			t.Errorf("%s imported as %q", bad, name)
+		}
+	}
+	entries, _ := os.ReadDir(icons)
+	if len(entries) != 3 {
+		t.Errorf("%d files kept, want 3", len(entries))
+	}
+	for _, p := range []string{"a.PNG", "x.jpg", "x.jpeg", "x.webp", "x.svg", "x.ico", "x.icns"} {
+		if !isIconFile(p) {
+			t.Errorf("%s is not an icon file", p)
+		}
+	}
+	for _, p := range []string{"x.gif", "x.txt", "dir"} {
+		if isIconFile(p) {
+			t.Errorf("%s is an icon file", p)
+		}
+	}
+}
+
+// settleIcon draws frames until the project of dir shows an icon of its
+// own, as the copy of it ends in the background.
+func settleIcon(t *testing.T, f *frame, tt *ui.Tester, dir string) string {
+	t.Helper()
+	for range 200 {
+		step(tt)
+		if icon := f.m.s.ProjectTabStyle[dir].Icon; icon != "" {
+			return icon
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("no icon set")
+	return ""
+}
+
+// A picture dropped on a project's square shows in place of its logo and
+// label, a label given after takes its place, and the copy is deleted
+// once no project shows it.
+func TestRailOwnIcon(t *testing.T) {
+	dir, other := workspaceFixture(t), workspaceFixture(t)
+	f, hs, tt := railFixture(t, dir, other)
+	f.m.icons = filepath.Join(t.TempDir(), "project-icons")
+	a := hs[0].a
+	pic := filepath.Join(t.TempDir(), "pic.png")
+	writePNG(t, pic, 16, 16)
+
+	f.setTabStyle(dir, func(st *settings.TabStyle) { st.Label, st.Color = "DL", "cyan" })
+	f.setProjectIcon(a, dir, pic)
+	icon := settleIcon(t, f, tt, dir)
+	if got := f.m.s.ProjectTabStyle[dir]; got != (settings.TabStyle{Color: "cyan", Icon: icon}) {
+		t.Fatalf("style after the icon: %+v", got)
+	}
+	path := f.m.iconPath(icon)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatal(err)
+	}
+	// The square shows it.
+	for range 200 {
+		step(tt)
+		if hs[0].logoSrc != nil && hs[0].logoIcon == path {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if hs[0].logoIcon != path || hs[0].logoSrc == nil {
+		t.Fatalf("the square shows %q, %v", hs[0].logoIcon, hs[0].logoSrc)
+	}
+
+	// Another project shows the same picture: the copy is shared.
+	f.setProjectIcon(a, other, pic)
+	if got := settleIcon(t, f, tt, other); got != icon {
+		t.Fatalf("other's icon %q, want %q", got, icon)
+	}
+	f.askRailLabel(a, dir, filepath.Base(dir))
+	if msg := a.prompt.done("🚀"); msg != "" {
+		t.Fatal(msg)
+	}
+	if got := f.m.s.ProjectTabStyle[dir]; got != (settings.TabStyle{Label: "🚀", Color: "cyan"}) {
+		t.Fatalf("style after the label: %+v", got)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("the copy other shows is gone: %v", err)
+	}
+
+	// Reset Icon on the last project that shows it deletes the copy.
+	if err := tt.RightClick(filepath.Base(other)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tt.ChooseMenuItem("Reset Icon"); err != nil {
+		t.Fatal(err)
+	}
+	step(tt)
+	if f.m.s.ProjectTabStyle[other].Icon != "" {
+		t.Error("other's icon is left")
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("the copy is left: %v", err)
+	}
+	// Without an icon, Reset Icon is disabled.
+	tt.RightClick(filepath.Base(other))
+	if err := tt.ChooseMenuItem("Reset Icon"); err == nil {
+		t.Error("Reset Icon without an icon")
+	}
+
+	// A picture that does not decode leaves the square as it was.
+	bad := filepath.Join(t.TempDir(), "bad.png")
+	os.WriteFile(bad, []byte("nope"), 0o644)
+	fails := a.fails
+	f.setProjectIcon(a, other, bad)
+	for range 200 {
+		step(tt)
+		if a.fails > fails {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if a.fails == fails || f.m.s.ProjectTabStyle[other].Icon != "" {
+		t.Errorf("a bad picture: %d fails, style %+v", a.fails-fails, f.m.s.ProjectTabStyle[other])
+	}
+}
+
+// Without settings, no project takes an icon.
+func TestRailOwnIconWithoutSettings(t *testing.T) {
+	dir := workspaceFixture(t)
+	f, hs, tt := railFixture(t, dir)
+	pic := filepath.Join(t.TempDir(), "pic.png")
+	writePNG(t, pic, 16, 16)
+	f.setProjectIcon(hs[0].a, dir, pic)
+	for range 20 {
+		step(tt)
+		time.Sleep(2 * time.Millisecond)
+	}
+	if f.m.s.ProjectTabStyle != nil {
+		t.Errorf("styles: %v", f.m.s.ProjectTabStyle)
+	}
+	if f.canSetIcon(dir) || f.canSetIcon("") {
+		t.Error("an icon may be set")
+	}
+}
+
 // The rail of a window of project tabs, in both themes, at twice the
 // scale: the project shown with unsaved changes, and another under the
 // pointer, two folders named alike, one of them on a host, and a project
@@ -312,6 +487,11 @@ func TestShotRail(t *testing.T) {
 		a := hs[0].a
 		hs[5].a.root = remote.Path("vps", "/home/me/Downloads")
 		hs[1].f.setTabStyle(dirs[1], func(st *settings.TabStyle) { *st = settings.TabStyle{Label: "🚀", Color: "cyan"} })
+		f := hs[0].f
+		f.m.icons = t.TempDir()
+		pic := filepath.Join(t.TempDir(), "pic.svg")
+		os.WriteFile(pic, []byte(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="14" fill="#e5484d"/><path d="M10 17l4 4 8-9" stroke="#fff" stroke-width="3" fill="none"/></svg>`), 0o644)
+		f.setProjectIcon(a, dirs[2], pic)
 		a.openFile(filepath.Join(dirs[0], "main.go"), true)
 		for range 10 {
 			step(tt)
@@ -1131,7 +1311,7 @@ func TestScanProjectLogoDropsOldLogo(t *testing.T) {
 	if h.logoSrc == nil {
 		t.Fatal("no logo to drop")
 	}
-	f.scanProjectLogo(h.a, h, t.TempDir())
+	f.scanProjectLogo(h.a, h, t.TempDir(), "")
 	if h.logoSrc != nil {
 		t.Error("the old folder's logo shows while the new folder is scanned")
 	}

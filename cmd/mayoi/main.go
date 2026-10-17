@@ -31,10 +31,12 @@ type desktop struct {
 	m *mayoi
 	a *app
 	f *frame // the window it is in
-	// logoDir is the folder the logo scan is for, logoSrc its favicon or
-	// logo once decoded, logoDone whether it was scanned, logoScannedAt
-	// when, and logoGen drops the scans a newer one superseded.
+	// logoDir is the folder the logo scan is for, logoIcon the icon of
+	// its own it tried first, logoSrc its favicon or logo once decoded,
+	// logoDone whether it was scanned, logoScannedAt when, and logoGen
+	// drops the scans a newer one superseded.
 	logoDir       string
+	logoIcon      string
 	logoSrc       ui.ImageSource
 	logoDone      bool
 	logoScannedAt time.Time
@@ -61,6 +63,9 @@ type mayoi struct {
 	// cloud syncs the settings with the person's account, nil without a
 	// settings file.
 	cloud *cloud
+	// icons is the folder of the icons chosen for projects on the rail,
+	// beside the settings, "" without a settings file.
+	icons string
 }
 
 func (h *desktop) openFolder(done func(string)) {
@@ -82,6 +87,27 @@ func (h *desktop) choosePaths(title, button, dir string, folders bool, done func
 		})
 		if err == nil && len(paths) > 0 {
 			h.a.post(func() { done(paths) })
+		}
+	}()
+}
+
+// chooseIcon asks for a picture to show for the project of dir on the
+// rail, starting in its folder.
+func (h *desktop) chooseIcon(dir string, done func(string)) {
+	exts := make([]string, len(iconExts))
+	for i, e := range iconExts {
+		exts[i] = strings.TrimPrefix(e, ".")
+	}
+	if remote.Is(dir) {
+		dir = ""
+	}
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: h.f.win, Title: locales.DialogChooseIcon(), ButtonLabel: locales.DialogChoose(), DefaultPath: dir,
+			Filters: []mygo.FileFilter{{Name: locales.DialogImages(), Extensions: exts}},
+		})
+		if err == nil && len(paths) > 0 {
+			h.a.post(func() { done(paths[0]) })
 		}
 	}()
 }
@@ -303,6 +329,9 @@ func main() {
 	})
 	mygo.App.WhenReady(func() {
 		m.s = settings.Load(settingsPath())
+		if p := settingsPath(); p != "" {
+			m.icons = filepath.Join(filepath.Dir(p), "project-icons")
+		}
 		mygo.Theme.SetSource(themeSource(m.s.Theme, m.s.Appearance))
 		// The language of the settings, unless MYGO_LOCALE (mygo dev -lang)
 		// chose one for the run.

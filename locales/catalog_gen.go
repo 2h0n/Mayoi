@@ -2423,6 +2423,36 @@ func (msgs Messages) DeleteRemoteDetail(host string) string {
 	return Catalog.Format(msgs.locale, "deleteRemoteDetail", map[string]any{"host": host})
 }
 
+// DialogChoose says "Choose"
+// in the language the app shows.
+func DialogChoose() string { return In(i18n.Locale()).DialogChoose() }
+
+// DialogChoose says "Choose"
+// in the language of msgs.
+func (msgs Messages) DialogChoose() string {
+	return Catalog.Format(msgs.locale, "dialogChoose", nil)
+}
+
+// DialogChooseIcon says "Choose Icon"
+// in the language the app shows.
+func DialogChooseIcon() string { return In(i18n.Locale()).DialogChooseIcon() }
+
+// DialogChooseIcon says "Choose Icon"
+// in the language of msgs.
+func (msgs Messages) DialogChooseIcon() string {
+	return Catalog.Format(msgs.locale, "dialogChooseIcon", nil)
+}
+
+// DialogImages says "Images"
+// in the language the app shows.
+func DialogImages() string { return In(i18n.Locale()).DialogImages() }
+
+// DialogImages says "Images"
+// in the language of msgs.
+func (msgs Messages) DialogImages() string {
+	return Catalog.Format(msgs.locale, "dialogImages", nil)
+}
+
 // DialogOpen says "Open"
 // in the language the app shows.
 func DialogOpen() string { return In(i18n.Locale()).DialogOpen() }
@@ -2895,6 +2925,16 @@ func (msgs Messages) ErrNotConnectedTo(host string) string {
 	return Catalog.Format(msgs.locale, "errNotConnectedTo", map[string]any{"host": host})
 }
 
+// ErrNotIcon says "it is not a PNG, JPEG, WebP, SVG, ICO or ICNS image"
+// in the language the app shows.
+func ErrNotIcon() string { return In(i18n.Locale()).ErrNotIcon() }
+
+// ErrNotIcon says "it is not a PNG, JPEG, WebP, SVG, ICO or ICNS image"
+// in the language of msgs.
+func (msgs Messages) ErrNotIcon() string {
+	return Catalog.Format(msgs.locale, "errNotIcon", nil)
+}
+
 // ErrNotImage says "it is not a PNG, JPEG, GIF, WebP or BMP image"
 // in the language the app shows.
 func ErrNotImage() string { return In(i18n.Locale()).ErrNotImage() }
@@ -3037,6 +3077,16 @@ func FailForwardPort(port int, err string) string {
 // in the language of msgs.
 func (msgs Messages) FailForwardPort(port int, err string) string {
 	return Catalog.Format(msgs.locale, "failForwardPort", map[string]any{"port": port, "err": err})
+}
+
+// FailIcon says "Could not set the icon of {name}: {err}"
+// in the language the app shows.
+func FailIcon(name string, err string) string { return In(i18n.Locale()).FailIcon(name, err) }
+
+// FailIcon says "Could not set the icon of {name}: {err}"
+// in the language of msgs.
+func (msgs Messages) FailIcon(name string, err string) string {
+	return Catalog.Format(msgs.locale, "failIcon", map[string]any{"name": name, "err": err})
 }
 
 // FailInvalidRemoteBranch says "Invalid remote branch “{name}”"
@@ -5477,6 +5527,16 @@ func (msgs Messages) QuickTypeForCommands() string {
 	return Catalog.Format(msgs.locale, "quickTypeForCommands", nil)
 }
 
+// RailChooseIcon says "Choose Icon…"
+// in the language the app shows.
+func RailChooseIcon() string { return In(i18n.Locale()).RailChooseIcon() }
+
+// RailChooseIcon says "Choose Icon…"
+// in the language of msgs.
+func (msgs Messages) RailChooseIcon() string {
+	return Catalog.Format(msgs.locale, "railChooseIcon", nil)
+}
+
 // RailColor says "Tab Color"
 // in the language the app shows.
 func RailColor() string { return In(i18n.Locale()).RailColor() }
@@ -5595,6 +5655,16 @@ func RailRenameTooLong() string { return In(i18n.Locale()).RailRenameTooLong() }
 // in the language of msgs.
 func (msgs Messages) RailRenameTooLong() string {
 	return Catalog.Format(msgs.locale, "railRenameTooLong", nil)
+}
+
+// RailResetIcon says "Reset Icon"
+// in the language the app shows.
+func RailResetIcon() string { return In(i18n.Locale()).RailResetIcon() }
+
+// RailResetIcon says "Reset Icon"
+// in the language of msgs.
+func (msgs Messages) RailResetIcon() string {
+	return Catalog.Format(msgs.locale, "railResetIcon", nil)
 }
 
 // RailUntitled says "Untitled"
