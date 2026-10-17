@@ -1253,6 +1253,10 @@ func (a *app) welcome(c *ui.Context) {
 								}
 							}
 						}
+						// The rest, in Open Recent's picker.
+						if len(recent) > 6 {
+							a.welcomeAction(c, iconMore, locales.MenuOpenRecentMore(), a.keyHint("file.openRecent"), a.openRecentPicker)
+						}
 					})
 				}
 			})

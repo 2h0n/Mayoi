@@ -2,6 +2,7 @@ package main
 
 import (
 	"mayoi/internal/settings"
+	"mayoi/locales"
 	"path/filepath"
 	"slices"
 	"testing"
@@ -94,6 +95,28 @@ func TestRecentFolderCmdEnter(t *testing.T) {
 	step(tt)
 	if !slices.Equal(h.windows, []string{root}) || a.root != "" {
 		t.Fatalf("Cmd+Enter: windows %v, folder %q", h.windows, a.root)
+	}
+}
+
+// The welcome page lists six recent folders, and More… opens the picker
+// of them all.
+func TestWelcomeMoreRecent(t *testing.T) {
+	s := settings.Default()
+	for range 8 {
+		s.Recent = append(s.Recent, t.TempDir())
+	}
+	a := newApp(&fakeHost{}, s, s.NewWindow())
+	tt := ui.NewTester(a.view, 1200, 760)
+	step(tt)
+	if _, ok := tt.Find("Open " + s.Recent[6]); ok {
+		t.Fatal("the welcome page lists a seventh recent folder")
+	}
+	if err := tt.Click(locales.MenuOpenRecentMore()); err != nil {
+		t.Fatal(err)
+	}
+	step(tt)
+	if !a.recents.open {
+		t.Fatal("More… does not open the recent folders")
 	}
 }
 

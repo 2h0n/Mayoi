@@ -11,6 +11,8 @@ needs a `## <version>` section here, or its build fails.
 - The command palette and the welcome page's Command Palette… row show a
   ⌘ icon instead of a chevron, and the welcome page's logo lines up with
   the icons of the rows below it.
+- With more than six recent folders, the welcome page ends its list with
+  More…, which opens Open Recent (⌃R) to show the rest.
 - Source Control's message box starts one line high and grows with the
   message, up to eight lines; a hint that wraps in a narrow sidebar shows
   whole.
