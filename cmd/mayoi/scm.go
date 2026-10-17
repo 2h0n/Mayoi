@@ -328,12 +328,27 @@ func (a *app) scmView(c *ui.Context) {
 		}
 		ui.Box(c.Key("commit-box")).Children(func() {
 			box := a.textKeys(ui.TextArea(c.Key("commit-message"), &g.message)).Placeholder(hint).FontSize(12.5).
-				MinHeight(60).MaxHeight(160).Label(locales.ScmCommitMessage())
+				Lines(1, 8).MinHeight(28).MaxHeight(160).Padding(5, 8).Label(locales.ScmCommitMessage())
+			button := a.host.ai() != nil || g.writing != nil
+			if button {
+				box.PaddingEnd(28) // clear of the button at its corner
+			}
+			if g.message == "" {
+				// Lines measures the text, not the placeholder: the hint, as it
+				// wraps, sets the height too, so a long branch name shows whole.
+				width := box.Bounds().W
+				if width <= 0 {
+					width = a.window.SidebarWidth - 24
+				}
+				inset := float32(8 + 8 + 2) // the padding and the border
+				if button {
+					inset += 28 - 8
+				}
+				_, height := c.MeasureText(max(width-inset, 1), ui.Span{Text: hint, Size: 12.5})
+				box.MinHeight(max(28, height+5+5+2))
+			}
 			if g.writing != nil {
 				box.ReadOnly(true)
-			}
-			if a.host.ai() != nil || g.writing != nil {
-				box.PaddingEnd(28) // clear of the button at its corner
 			}
 			if box.Shortcut(ui.Cmd, ui.KeyEnter) {
 				a.commit(false)
