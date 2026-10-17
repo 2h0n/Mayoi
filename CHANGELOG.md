@@ -5,6 +5,10 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- The box in the middle of the title bar no longer leaves a gap after a
+  short name, as a terminal's `zsh`, before the folder.
+- The welcome page's rows are all one height, with keys or without, so
+  Start and Recent keep one rhythm.
 - In Vim mode, the status bar shows the mode as a badge, colored by
   mode: plain in normal mode, the accent color in insert mode, and amber in visual
   mode, in place of `-- NORMAL --`.

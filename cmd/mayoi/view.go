@@ -399,9 +399,12 @@ func (a *app) commandCenter(c *ui.Context) {
 				folder = filepath.Base(hostPath(a.root)) + " [SSH: " + host + "]"
 			}
 		}
+		var nameW float32
+		if name != "" {
+			nameW, _ = c.MeasureText(0, ui.Span{Text: name, Size: 12, Weight: 550})
+		}
 		if name != "" && folder != "" && room > 0 {
 			// The folder goes before the name is cut short.
-			nameW, _ := c.MeasureText(0, ui.Span{Text: name, Size: 12, Weight: 550})
 			folderW, _ := c.MeasureText(0, ui.Span{Text: folder, Size: 12})
 			if nameW+8+folderW > room {
 				folder = ""
@@ -409,7 +412,9 @@ func (a *app) commandCenter(c *ui.Context) {
 		}
 		switch {
 		case name != "" && a.root != "":
-			ui.Text(c, name).FontSize(12).FontWeight(550).TextColor(p.text).SingleLine().Shrink(1).MinWidth(32)
+			// A short name, as a terminal's "zsh", keeps its own width
+			// rather than a gap after it.
+			ui.Text(c, name).FontSize(12).FontWeight(550).TextColor(p.text).SingleLine().Shrink(1).MinWidth(min(32, nameW))
 			if folder == "" {
 				break
 			}
@@ -1227,7 +1232,7 @@ func (a *app) welcome(c *ui.Context) {
 				if len(recent) > 0 {
 					a.welcomeSection(c, locales.WelcomeRecent(), func() {
 						for _, dir := range recent[:min(6, len(recent))] {
-							r := ui.ButtonBase(c.Key("recent:"+dir)).FillWidth().Padding(6, 10).Radius(6).Gap(10).
+							r := ui.ButtonBase(c.Key("recent:"+dir)).FillWidth().Height(welcomeRowH).Padding(0, 10).Radius(6).Gap(10).
 								Justify(ui.Start).AlignItems(ui.Center).Label(locales.RecentOpenLabel(dir)).Tooltip(shortenHome(dir))
 							if r.Hovered() {
 								r.Background(p.hover)
@@ -1264,6 +1269,10 @@ func (a *app) welcome(c *ui.Context) {
 	})
 }
 
+// welcomeRowH is the height of every row of the welcome page, with keys
+// or without, so that they keep one rhythm.
+const welcomeRowH = 30
+
 // welcomeSection is a titled group of the welcome page.
 func (a *app) welcomeSection(c *ui.Context, title string, rows func()) {
 	p := a.pal
@@ -1278,7 +1287,7 @@ func (a *app) welcomeSection(c *ui.Context, title string, rows func()) {
 // icon, its name and its keys.
 func (a *app) welcomeAction(c *ui.Context, icon *ui.SVG, label, keys string, fn func()) {
 	p := a.pal
-	r := ui.ButtonBase(c.Key("action:"+label)).FillWidth().Padding(6, 10).Radius(6).Gap(10).
+	r := ui.ButtonBase(c.Key("action:"+label)).FillWidth().Height(welcomeRowH).Padding(0, 10).Radius(6).Gap(10).
 		Justify(ui.Start).AlignItems(ui.Center).Label(label)
 	hovered := r.Hovered()
 	if hovered {
