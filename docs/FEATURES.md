@@ -62,7 +62,7 @@ mode, where the caret is a block.
 - **Motions:** `h j k l`, `w b e ge` and `W B E gE`, `0 ^ $ g_`, `gg G`, `f F t T` with `;` and `,`, `%`, `{ }`, Enter
   and `-`. Arrows, Home and End move too. A count goes before any of them.
 - **Operators:** `d c y`, `> <`, `gc` to comment, and `g~ gu gU` for case. They take a motion or a text object (`iw
-  aw iW aW`, `i" a"` and the other quotes, `i( a(`, `i[`, `i{`, `i<`), or apply to lines when typed twice, as `dd`.
+  aw iW aW`, `i" a"` and the other quotes, `i( a(`, `i[`, `i{`, `i<`, `ip ap`), or apply to lines when typed twice, as `dd`.
 - **Commands:** `x X D C Y s S r J ~ p P o O`, `i a I A` to insert, `u` and ⌃R to undo and redo, `.` to repeat the
   last change, ⌃D ⌃U ⌃F ⌃B to scroll by half a view or a view, and ⌃E ⌃Y by a line.
 - **Visual mode:** `v` selects characters and `V` lines. A selection made with the mouse is one too. Motions extend it,

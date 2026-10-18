@@ -5,6 +5,21 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Vim mode does as vim does in more places: `2D` and `d}` take whole
+  lines rather than leave a blank one, `$` in visual mode takes the end
+  of the line, `di(` and `ci[` find the next brackets along the line
+  when the cursor is outside any, `da"` takes the space before the
+  quotes when none follows, `di{` over lines leaves the cursor on the
+  closing brace, and a paste over lines leaves it on their first.
+- Vim mode's `ip` and `ap` take a paragraph, `r` and Enter breaks the
+  line, `3V` and `3v` select as many lines or characters, and `.`
+  repeats a change made in visual mode, as `Vj>`, over as much text.
+- In vim mode, `p` over a selection yanks what it replaces, as vim does,
+  and `P` keeps the register; with nothing to paste, the selection goes.
+- Esc after `o`, `O`, `S` or `cc` with nothing typed takes back the
+  indent, rather than leave a line of spaces.
+- Vim mode's keys work on keyboards of other scripts, as Cyrillic, from
+  where a US keyboard has them.
 - Find, quick open and the command palette shake their heads when
   Return finds nothing to go to, as a Mac's password field does.
 - The find box goes back up as it fades out when closed, as do the peek
