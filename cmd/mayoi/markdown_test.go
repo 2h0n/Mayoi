@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -150,8 +149,20 @@ func TestMarkdownBlocks(t *testing.T) {
 	if bs[len(bs)-2].marker != "•" || bs[len(bs)-1].marker != "☑" {
 		t.Fatal("task checkbox detection")
 	}
-	if markdownPath("", path, "https://example.com/a.png") != "" || markdownPath("", path, "//example.com/a.png") != "" || markdownPath("", path, "/tmp/a%20b.png") != "/tmp/a b.png" {
+	if markdownPath("", path, "https://example.com/a.png") != "" || markdownPath("", path, "//example.com/a.png") != "" || markdownPath("", path, "/tmp/a%20b.png") != filepath.FromSlash("/tmp/a b.png") {
 		t.Fatal("destination resolution")
+	}
+	// A leading slash is of the root on Windows too, and a whole path of
+	// a disk is that path.
+	if got := markdownPath(filepath.FromSlash("/r"), path, "/docs/a.png"); got != filepath.FromSlash("/r/docs/a.png") {
+		t.Errorf("root-relative destination: %q", got)
+	}
+	if runtime.GOOS == "windows" {
+		for _, dest := range []string{`C:\x\a.png`, "C:/x/a.png"} {
+			if got := markdownPath("", path, dest); got != `C:\x\a.png` {
+				t.Errorf("markdownPath(%q) = %q", dest, got)
+			}
+		}
 	}
 }
 
@@ -312,6 +323,7 @@ func TestMarkdownPreviewRestoreAndReopen(t *testing.T) {
 		t.Fatal("per-column preview state was not saved")
 	}
 	b := newApp(&fakeHost{folder: hs.root}, a.settings, a.window)
+	t.Cleanup(b.shutdown)
 	bt := ui.NewTester(b.view, 1200, 760)
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
@@ -517,11 +529,8 @@ func TestMarkdownLocalImagesAndLinks(t *testing.T) {
 func TestMarkdownDebounceAndClosedResult(t *testing.T) {
 	hs := newHarness(t, true)
 	a := hs.a
-	fifo := hs.path("fifo")
-	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range []string{fifo, "/dev/zero"} {
+	special := specialFiles(t, hs.root)
+	for _, path := range special {
 		done := make(chan error, 1)
 		var before, after runtime.MemStats
 		runtime.ReadMemStats(&before)
@@ -539,7 +548,11 @@ func TestMarkdownDebounceAndClosedResult(t *testing.T) {
 			t.Fatal("special file allocated too much")
 		}
 	}
-	os.WriteFile(hs.path("README.md"), []byte("![fifo]("+fifo+") ![zero](/dev/zero)"), 0o644)
+	md := "Special files:"
+	for _, path := range special {
+		md += " ![x](" + filepath.ToSlash(path) + ")"
+	}
+	os.WriteFile(hs.path("README.md"), []byte(md), 0o644)
 	a.openFile(hs.path("README.md"), true)
 	a.run("view.togglePreview")
 	hs.until("special-file preview", func() bool { return a.activeEditor().preview.loaded })

@@ -1466,8 +1466,23 @@ func shortenHome(p string) string {
 	if remote.Is(p) {
 		return remote.Display(p)
 	}
-	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(p, home) {
-		return "~" + p[len(home):]
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		return shortenIn(p, home)
+	}
+	return p
+}
+
+// shortenIn is p with ~ for the home folder home when p is in it, or is
+// it: of a folder, not of a name home only begins, and on Windows
+// whatever the case of its letters, as C: and c: are one disk.
+func shortenIn(p, home string) string {
+	same := func(a, b string) bool { return a == b || hostOS == "windows" && strings.EqualFold(a, b) }
+	home = strings.TrimSuffix(home, string(filepath.Separator))
+	if home == "" || len(p) < len(home) || !same(p[:len(home)], home) {
+		return p
+	}
+	if rest := p[len(home):]; rest == "" || strings.HasPrefix(rest, string(filepath.Separator)) {
+		return "~" + rest
 	}
 	return p
 }

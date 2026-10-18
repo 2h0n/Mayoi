@@ -5,6 +5,26 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Windows: a file opened from quick open, or by vim's `:e`, is the file
+  the Explorer shows, with backslashes, rather than a second tab of it
+  that the Explorer could not reveal.
+- Windows: renaming refuses a name with `/` in it, as it does one with
+  `\`, rather than moving the file into a folder of that name.
+- Windows: the Markdown preview finds an image or link that starts with
+  `/` in the repository's root, as on macOS, and shows one given as a
+  whole path, as `C:\pictures\art.png`.
+- Windows: Source Control's tree of changes keeps its folders for a work
+  tree at the top of a disk, as `D:\`, rather than listing every file
+  at its top.
+- Windows: a file given to `mayoi` in other letters than its folder's,
+  as `c:\proj\a.go` for `C:\Proj`, opens in that folder's window.
+- Windows: a terminal is named after its shell, `pwsh`, `powershell` or
+  `cmd`, rather than "shell".
+- The home folder shortens to `~` only for itself and the folders in it,
+  not for a folder whose name begins the same, as `/Users/me2`; on
+  Windows, whatever the case of its letters.
+- The Windows fixes follow @wowyuarm's port of Mayoi to Windows (#40),
+  and the tests now run on macOS and Windows too.
 - The Markdown preview's column is half as wide again, 120 digits
   rather than 80, so tables and images have room in a wide pane while
   lines stay short enough to read; a narrower pane still fits it.

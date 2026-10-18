@@ -103,11 +103,17 @@ func canPreview(d *document) bool { return isSVG(d) || isMarkdown(d) }
 // A leading / means root, as it means the repository's on GitHub, or the
 // filesystem's when there is no root.
 func markdownPath(root, path, dest string) string {
+	// A whole path of Windows, C:\ or C:/, which a URL would take for one
+	// of scheme c. Not a share, as //host/x is a URL without its scheme.
+	if len(dest) > 2 && filepath.VolumeName(dest) == dest[:2] && (dest[2] == '\\' || dest[2] == '/') {
+		return filepath.Clean(dest)
+	}
 	u, err := url.Parse(dest)
 	if err != nil || u.Scheme != "" || u.Host != "" || u.Path == "" {
 		return ""
 	}
-	if filepath.IsAbs(u.Path) {
+	// A URL's slash, which Windows does not take for a whole path.
+	if strings.HasPrefix(u.Path, "/") {
 		return filepath.Join(cmp.Or(root, "/"), filepath.FromSlash(u.Path))
 	}
 	return filepath.Join(filepath.Dir(path), filepath.FromSlash(u.Path))

@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,12 +21,22 @@ import (
 // it again for every message, which the frame benchmarks would measure.
 func TestMain(m *testing.M) {
 	hostOS = "darwin"
+	keepLineEndings()
 	if os.Getenv("MYGO_LOCALE") == "" {
 		os.Setenv("MYGO_LOCALE", "en")
 	}
 	locale := i18n.Locale()
 	i18n.SetLocaleFunc(func() string { return locale })
 	os.Exit(m.Run())
+}
+
+// keepLineEndings has every git the tests run, theirs and the app's, keep
+// the line endings of the files: Git for Windows turns them into CRLF by
+// its own settings, and the diffs and contents compared with them.
+func keepLineEndings() {
+	os.Setenv("GIT_CONFIG_COUNT", "1")
+	os.Setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
+	os.Setenv("GIT_CONFIG_VALUE_0", "false")
 }
 
 // onOS has the test run as Mayoi does on goos, its keys and its names.
@@ -42,6 +53,7 @@ func TestShortcutsDoNotCollide(t *testing.T) {
 		t.Run(goos, func(t *testing.T) {
 			onOS(t, goos)
 			a := newApp(&fakeHost{}, settings.Default(), settings.Default().NewWindow())
+			t.Cleanup(a.shutdown)
 			taken := map[keymap.Stroke]string{}
 			if goos != "darwin" {
 				for k := ui.Key1; k <= ui.Key9; k++ {
@@ -79,6 +91,7 @@ func TestShortcutsDoNotCollide(t *testing.T) {
 func TestWindowsKeyHints(t *testing.T) {
 	onOS(t, "windows")
 	a := newApp(&fakeHost{}, settings.Default(), settings.Default().NewWindow())
+	t.Cleanup(a.shutdown)
 	for id, want := range map[string]string{
 		"go.commands": "Ctrl+Shift+P", "edit.findNext": "F3", "edit.findPrev": "Shift+F3",
 		"edit.replace": "Ctrl+H", "go.line": "Ctrl+G", "view.scm": "Ctrl+Shift+G", "file.saveAll": "",
@@ -145,6 +158,7 @@ func TestWindowsMenuKeys(t *testing.T) {
 func TestShellSkip(t *testing.T) {
 	onOS(t, "linux")
 	a := newApp(&fakeHost{}, settings.Default(), settings.Default().NewWindow())
+	t.Cleanup(a.shutdown)
 	for _, c := range []struct {
 		mods ui.Modifiers
 		key  ui.Key
@@ -189,6 +203,7 @@ func TestVimCtrlKeys(t *testing.T) {
 	}
 	onOS(t, "windows")
 	a := newApp(&fakeHost{}, settings.Default(), settings.Default().NewWindow())
+	t.Cleanup(a.shutdown)
 	if a.vimCtrl() {
 		t.Error("vim takes Control's keys on Windows by default")
 	}
@@ -233,6 +248,84 @@ func TestSplitCaps(t *testing.T) {
 		if got := strings.Join(splitCaps(keys), "|"); got != want {
 			t.Errorf("splitCaps(%q) = %s, want %s", keys, got, want)
 		}
+	}
+}
+
+// A path typed after :e is of the folder, or of the home folder after ~/,
+// spelled as the system spells it: with backslashes on Windows, as the
+// Explorer has the file.
+func TestResolvePathIsTheSystems(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "proj")
+	a := &app{root: root}
+	if got, want := a.resolvePath("src/a.go"), filepath.Join(root, "src", "a.go"); got != want {
+		t.Errorf("resolvePath(src/a.go) = %q, want %q", got, want)
+	}
+	if got, want := a.resolvePath("~/notes/b.md"), filepath.Join(homeDir(), "notes", "b.md"); got != want {
+		t.Errorf("resolvePath(~/notes/b.md) = %q, want %q", got, want)
+	}
+	abs := filepath.Join(root, "c.go")
+	if got := a.resolvePath(abs); got != abs {
+		t.Errorf("resolvePath(%q) = %q", abs, got)
+	}
+}
+
+// A name to rename to has no folders in it: no slash on any system, and
+// on Windows no backslash either, which is a letter of a name elsewhere.
+func TestHasSlash(t *testing.T) {
+	if !hasSlash("a/b") || hasSlash("a.go") {
+		t.Error("a slash names a folder")
+	}
+	if got, want := hasSlash(`a\b`), filepath.Separator == '\\'; got != want {
+		t.Errorf(`hasSlash("a\b") = %v`, got)
+	}
+}
+
+// A terminal is named for its shell: $SHELL's, and on Windows the first
+// the terminal finds of PowerShell's and the command prompt.
+func TestShellName(t *testing.T) {
+	t.Setenv("SHELL", "/bin/fish")
+	if got := shellName(); got != "fish" {
+		t.Errorf("shellName = %q, want fish", got)
+	}
+	onOS(t, "windows")
+	t.Setenv("COMSPEC", "cmd.exe")
+	old := lookPath
+	t.Cleanup(func() { lookPath = old })
+	for have, want := range map[string]string{"pwsh.exe": "pwsh", "powershell.exe": "powershell", "cmd.exe": "cmd", "": "shell"} {
+		lookPath = func(name string) (string, error) {
+			if name == have {
+				return name, nil
+			}
+			return "", os.ErrNotExist
+		}
+		if got := shellName(); got != want {
+			t.Errorf("with %q, shellName = %q, want %q", have, got, want)
+		}
+	}
+}
+
+// The home folder reads as ~, and the folders in it from there: not one
+// whose name only begins as the home folder's, and on Windows whatever
+// the case of the letters.
+func TestShortenIn(t *testing.T) {
+	sep := string(filepath.Separator)
+	home := sep + "Users" + sep + "me"
+	for p, want := range map[string]string{
+		home:                      "~",
+		home + sep + "proj":       "~" + sep + "proj",
+		home + "2" + sep + "proj": home + "2" + sep + "proj",
+		sep + "tmp":               sep + "tmp",
+	} {
+		if got := shortenIn(p, home); got != want {
+			t.Errorf("shortenIn(%q) = %q, want %q", p, got, want)
+		}
+	}
+	if got := shortenIn(sep+"users"+sep+"ME"+sep+"proj", home); got != sep+"users"+sep+"ME"+sep+"proj" {
+		t.Errorf("off Windows the case of a folder counts: %q", got)
+	}
+	onOS(t, "windows")
+	if got := shortenIn(sep+"users"+sep+"ME"+sep+"proj", home); got != "~"+sep+"proj" {
+		t.Errorf("on Windows the case of a folder does not count: %q", got)
 	}
 }
 

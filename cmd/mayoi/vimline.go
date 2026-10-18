@@ -874,12 +874,12 @@ func (a *app) closeEditor(d *editor) {
 // whole.
 func (a *app) resolvePath(p string) string {
 	if strings.HasPrefix(p, "~/") && !remote.Is(a.root) {
-		p = homeDir() + p[1:]
+		return inDir(homeDir(), p[2:])
 	}
 	if path.IsAbs(filepath.ToSlash(p)) || filepath.IsAbs(p) || a.root == "" {
 		return p
 	}
-	return a.root + "/" + filepath.ToSlash(p)
+	return inDir(a.root, filepath.ToSlash(p))
 }
 
 // vimSubstitute runs :s/pattern/replacement/flags over lines l1 to l2.

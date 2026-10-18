@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -260,7 +261,8 @@ func TestTokenFile(t *testing.T) {
 	if got, err := c.loadToken(); err != nil || string(got) != "tok" {
 		t.Fatalf("loadToken() = %q, %v, want \"tok\"", got, err)
 	}
-	if fi, err := os.Stat(c.tokenFile); err != nil || fi.Mode().Perm() != 0o600 {
+	// Windows has no permission bits; the file is the user's by its folder.
+	if fi, err := os.Stat(c.tokenFile); err != nil || runtime.GOOS != "windows" && fi.Mode().Perm() != 0o600 {
 		t.Fatalf("the token file's mode = %v, %v, want 0600", fi.Mode().Perm(), err)
 	}
 	for range 2 {
