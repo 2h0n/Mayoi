@@ -2806,5 +2806,515 @@
   "keys": "jdab",
   "want": "  lead \"q\" tail\nx = 'a' + 'b'\n",
   "cursor": 16
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 6
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>n",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>nn",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 6
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>N",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "?alpha<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 44
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "?alpha<CR>n",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 17
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "G?beta<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/gam<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 11
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/Gam<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 11
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/a.p<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 17
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/\\<beta\\><CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 6
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/al\\|de<CR>n",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 25
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/x\\d<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 36
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/[gd]<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 11
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/a\\+<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 4
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/\\(be\\)ta<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 6
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "2/alpha<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 44
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/alpha<CR>2n",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "d/beta<CR>",
+  "want": "beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "y/de<CR>P",
+  "want": "alpha beta\nGamma alpha\n  alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "c/Gam<CR>z<Esc>",
+  "want": "z\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jd?beta<CR>",
+  "want": "alpha \nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 5
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "v/del<CR>d",
+  "want": "elta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "*",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 17
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "w*",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "#",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 44
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "w#",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "**",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 44
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jw*",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 44
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>/<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>dn",
+  "want": "alpha beta x1\nlast alpha 9\n",
+  "cursor": 6
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>u",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 6
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":2<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 11
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":$<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 39
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":3<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 25
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":+2<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 25
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":2,3d<CR>",
+  "want": "alpha beta\nlast alpha 9\n",
+  "cursor": 11
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%d<CR>",
+  "want": "",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":.,$d<CR>",
+  "want": "",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "j:d<CR>",
+  "want": "alpha beta\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 13
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":s/a/A/<CR>",
+  "want": "Alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":s/a/A/g<CR>",
+  "want": "AlphA betA\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/alpha/X/<CR>",
+  "want": "X beta\nGamma X\n  delta beta x1\nlast X 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/a/_/g<CR>",
+  "want": "_lph_ bet_\nG_mm_ _lph_\n  delt_ bet_ x1\nl_st _lph_ 9\n",
+  "cursor": 39
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/\\(\\w\\+\\) \\(\\w\\+\\)/\\2 \\1/<CR>",
+  "want": "beta alpha\nalpha Gamma\n  beta delta x1\nalpha last 9\n",
+  "cursor": 39
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/beta/[&]/<CR>",
+  "want": "alpha [beta]\nGamma alpha\n  delta [beta] x1\nlast alpha 9\n",
+  "cursor": 27
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/ /\\r/<CR>",
+  "want": "alpha\nbeta\nGamma\nalpha\n\n delta beta x1\nlast\nalpha 9\n",
+  "cursor": 44
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s#a#/#g<CR>",
+  "want": "/lph/ bet/\nG/mm/ /lph/\n  delt/ bet/ x1\nl/st /lph/ 9\n",
+  "cursor": 39
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/x1/x\\/2/<CR>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x/2\nlast alpha 9\n",
+  "cursor": 25
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/alpha/A/gi<CR>",
+  "want": "A beta\nGamma A\n  delta beta x1\nlast A 9\n",
+  "cursor": 31
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jVj:s/a/@/g<CR>",
+  "want": "alpha beta\nG@mm@ @lph@\n  delt@ bet@ x1\nlast alpha 9\n",
+  "cursor": 25
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "Vj:d<CR>",
+  "want": "  delta beta x1\nlast alpha 9\n",
+  "cursor": 2
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":2,3s/^/# /<CR>",
+  "want": "alpha beta\n# Gamma alpha\n#   delta beta x1\nlast alpha 9\n",
+  "cursor": 25
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/$/;/<CR>",
+  "want": "alpha beta;\nGamma alpha;\n  delta beta x1;\nlast alpha 9;\n",
+  "cursor": 42
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/beta//g<CR>",
+  "want": "alpha \nGamma alpha\n  delta  x1\nlast alpha 9\n",
+  "cursor": 21
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "/beta<CR>:s//B/<CR>",
+  "want": "alpha B\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":%s/alpha/A/<CR>u",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":2,3j<CR>",
+  "want": "alpha beta\nGamma alpha delta beta x1\nlast alpha 9\n",
+  "cursor": 11
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":j<CR>",
+  "want": "alpha beta Gamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": ":2,3y<CR>P",
+  "want": "Gamma alpha\n  delta beta x1\nalpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jj:<<CR>",
+  "want": "alpha beta\nGamma alpha\ndelta beta x1\nlast alpha 9\n",
+  "cursor": 23
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "3:d<CR>",
+  "want": "last alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "gJ",
+  "want": "alpha betaGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 10
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jgJ",
+  "want": "alpha beta\nGamma alpha  delta beta x1\nlast alpha 9\n",
+  "cursor": 22
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "3gJ",
+  "want": "alpha betaGamma alpha  delta beta x1\nlast alpha 9\n",
+  "cursor": 21
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jj$<C-a>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x2\nlast alpha 9\n",
+  "cursor": 37
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jj<C-a>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x2\nlast alpha 9\n",
+  "cursor": 37
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jj5<C-a>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x6\nlast alpha 9\n",
+  "cursor": 37
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jj<C-x>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x0\nlast alpha 9\n",
+  "cursor": 37
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "jj12<C-x>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x-11\nlast alpha 9\n",
+  "cursor": 39
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "G<C-a>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 10\n",
+  "cursor": 51
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "G$<C-x>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 8\n",
+  "cursor": 50
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "G10<C-x>",
+  "want": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha -1\n",
+  "cursor": 51
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "vjy0gvd",
+  "want": "amma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "vey$gvd",
+  "want": " beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "Vjyjgvd",
+  "want": "  delta beta x1\nlast alpha 9\n",
+  "cursor": 2
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "vjd.gvy",
+  "want": " delta beta x1\nlast alpha 9\n",
+  "cursor": 0
+ },
+ {
+  "text": "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n",
+  "keys": "vjy:'<,'>d<CR>",
+  "want": "  delta beta x1\nlast alpha 9\n",
+  "cursor": 2
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": ":sort<CR>",
+  "want": "alpha 10\nalpha 10\nbeta 2\ngamma -3\nzeta\n",
+  "cursor": 0
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": ":sort!<CR>",
+  "want": "zeta\ngamma -3\nbeta 2\nalpha 10\nalpha 10\n",
+  "cursor": 0
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": ":sort u<CR>",
+  "want": "alpha 10\nbeta 2\ngamma -3\nzeta\n",
+  "cursor": 0
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": ":sort n<CR>",
+  "want": "zeta\ngamma -3\nbeta 2\nalpha 10\nalpha 10\n",
+  "cursor": 0
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": ":2,4sort<CR>",
+  "want": "zeta\nalpha 10\nalpha 10\nbeta 2\ngamma -3\n",
+  "cursor": 5
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": "Vjj:sort<CR>",
+  "want": "alpha 10\nbeta 2\nzeta\nalpha 10\ngamma -3\n",
+  "cursor": 0
+ },
+ {
+  "text": "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n",
+  "keys": ":sort i<CR>",
+  "want": "alpha 10\nalpha 10\nbeta 2\ngamma -3\nzeta\n",
+  "cursor": 0
  }
 ]

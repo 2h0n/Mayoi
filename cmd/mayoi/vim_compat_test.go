@@ -22,6 +22,29 @@ type vimCase struct {
 func (hs *harness) vimPlay(d *editor, keys string) {
 	hs.t.Helper()
 	for len(keys) > 0 {
+		if hs.a.vimLine.d != nil {
+			// The command line takes the text, to Enter or Esc.
+			end := strings.IndexAny(keys, "<")
+			switch {
+			case strings.HasPrefix(keys, "<CR>"):
+				hs.tt.Key(0, ui.KeyEnter)
+				keys = keys[4:]
+			case strings.HasPrefix(keys, "<Esc>"):
+				hs.tt.Key(0, ui.KeyEscape)
+				keys = keys[5:]
+			case end == 0:
+				hs.tt.Type("<")
+				keys = keys[1:]
+			case end < 0:
+				hs.tt.Type(keys)
+				keys = ""
+			default:
+				hs.tt.Type(keys[:end])
+				keys = keys[end:]
+			}
+			hs.frames()
+			continue
+		}
 		if d.vim.mode != vimInsert {
 			n := 1
 			if keys[0] == '<' {
@@ -75,6 +98,7 @@ func TestVimLikeVim(t *testing.T) {
 			d.indent = detectIndent(d.buf.Snapshot(), d.path)
 			d.vim = vimState{}
 			hs.a.vimReg = vimRegister{}
+			hs.a.vimSearch = vimSearch{}
 			hs.tt.SetClipboard("")
 			d.selectRange(0, 0, false)
 			hs.frames()

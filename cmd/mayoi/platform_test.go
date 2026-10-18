@@ -173,9 +173,9 @@ func TestShellSkip(t *testing.T) {
 }
 
 // Vim's normal mode leaves ⌃F, ⌃B and ⌃R to Find, the sidebar and the
-// recent folders off macOS, unless vimCtrlKeys gives them to it.
+// recent folders off macOS, and ⌃A and ⌃X to Select All and Cut, unless vimCtrlKeys gives them to it.
 func TestVimCtrlKeys(t *testing.T) {
-	for _, k := range []ui.Key{ui.KeyF, ui.KeyB, ui.KeyR} {
+	for _, k := range []ui.Key{ui.KeyF, ui.KeyB, ui.KeyR, ui.KeyA, ui.KeyX} {
 		ev := ui.InputEvent{Kind: ui.InputKeyDown, Mods: ui.Ctrl, Key: k}
 		if _, ok := vimRune(ev, false); ok {
 			t.Errorf("vim took ⌃%c without its Ctrl keys", 'A'+rune(k-ui.KeyA))

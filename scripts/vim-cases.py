@@ -34,6 +34,20 @@ T7 = "  lead \"q\" tail\nx = 'a' + 'b'\n"
 keys[T6] = ["d}", "jd}", "jjjd}", "wd}", "y}P", "c}z<Esc>", "jdip", "jdap", "jjdap", "jjdip", "jyipP", "jvipd", "jvapd", "Gdap", "Gdip", "jd2ap", "2dap", "jcipz<Esc>", "j>ip", "di{", "jjjdi{", "Gdi{", "d{", "Gd{", "jjjd{", "jjjy{P", "jjjvi{d", "f{%d%", "jdj", "jd}u", "3jo<Esc>", "jo<Esc>.", "jcc<Esc>", "jS<Esc>", "jO<Esc>j.", "jox<Esc>", "jj2D", "jjD", "j^2D", "j$2D", "j0wd}", "jwdj", "jwd2j", "r<CR>", "jr<CR>", "w2r<CR>", "v$y$p", "Vjjd", "jv$d", "jv$jd", "j$vjd", "3vd", "2Vd", "3Vy", "jvj$y", "j3vU", "yiwwvep", "yiwwveP", "yiwwvePwvep", "Vjdj.", "vlldj.", "vjdj.", "Vj>jjj.", "vecz<Esc>w.", "v~w.", "vjrxj.", "vjlyGp", "jVyGp", "wvlcab<Esc>W."]
 keys[T7] = ["da\"", "di\"", "ca\"z<Esc>", "jda'", "jfbda'", "jdi'", "jfbci'z<Esc>", "di(", "ci[z<Esc>", "jdib", "jdab"]
 
+T8 = "alpha beta\nGamma alpha\n  delta beta x1\nlast alpha 9\n"
+T9 = "zeta\nalpha 10\nbeta 2\nalpha 10\ngamma -3\n"
+keys[T8] = ["/beta<CR>", "/beta<CR>n", "/beta<CR>nn", "/beta<CR>N", "?alpha<CR>", "?alpha<CR>n", "G?beta<CR>", "/gam<CR>",
+    "/Gam<CR>", "/a.p<CR>", "/\\<beta\\><CR>", "/al\\|de<CR>n", "/x\\d<CR>", "/[gd]<CR>", "/a\\+<CR>", "/\\(be\\)ta<CR>",
+    "2/alpha<CR>", "/alpha<CR>2n", "d/beta<CR>", "y/de<CR>P", "c/Gam<CR>z<Esc>", "jd?beta<CR>", "v/del<CR>d", "*", "w*", "#",
+    "w#", "**", "jw*", "/beta<CR>/<CR>", "/beta<CR>dn", "/beta<CR>u", ":2<CR>", ":$<CR>", ":3<CR>", ":+2<CR>", ":2,3d<CR>",
+    ":%d<CR>", ":.,$d<CR>", "j:d<CR>", ":s/a/A/<CR>", ":s/a/A/g<CR>", ":%s/alpha/X/<CR>", ":%s/a/_/g<CR>",
+    ":%s/\\(\\w\\+\\) \\(\\w\\+\\)/\\2 \\1/<CR>", ":%s/beta/[&]/<CR>", ":%s/ /\\r/<CR>", ":%s#a#/#g<CR>",
+    ":%s/x1/x\\/2/<CR>", ":%s/alpha/A/gi<CR>", "jVj:s/a/@/g<CR>", "Vj:d<CR>", ":2,3s/^/# /<CR>", ":%s/$/;/<CR>",
+    ":%s/beta//g<CR>", "/beta<CR>:s//B/<CR>", ":%s/alpha/A/<CR>u", ":2,3j<CR>", ":j<CR>", ":2,3y<CR>P",
+    "jj:<<CR>", "3:d<CR>", "gJ", "jgJ", "3gJ", "jj$<C-a>", "jj<C-a>", "jj5<C-a>", "jj<C-x>", "jj12<C-x>", "G<C-a>",
+    "G$<C-x>", "G10<C-x>", "vjy0gvd", "vey$gvd", "Vjyjgvd", "vjd.gvy", "vjy:'<,'>d<CR>"]
+keys[T9] = [":sort<CR>", ":sort!<CR>", ":sort u<CR>", ":sort n<CR>", ":2,4sort<CR>", "Vjj:sort<CR>", ":sort i<CR>"]
+
 
 def vim_keys(keys):
     out = keys.replace("\\", "\\\\").replace('"', '\\"')
@@ -47,12 +61,12 @@ def run(text, keys):
             f.write(text)
         subprocess.run([
             "vim", "-u", "NONE", "-i", "NONE", "-N", "-n", "-Es",
-            "-c", "set autoindent shiftwidth=4 expandtab tabstop=4 nojoinspaces",
+            "-c", "set autoindent shiftwidth=4 expandtab tabstop=4 nojoinspaces ignorecase smartcase",
             "-c", "call cursor(1, 1)",
             "-c", 'exe "normal! ' + vim_keys(keys) + '"',
             "-c", 'call writefile([line2byte(line(".")) + col(".") - 2], "' + pos + '")',
             "-c", "w!", "-c", "qa!", path,
-        ], timeout=10, stdin=subprocess.DEVNULL, check=False)
+        ], timeout=10, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=False)
         with open(path) as f:
             want = f.read()
         with open(pos) as f:

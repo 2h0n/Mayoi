@@ -117,6 +117,13 @@ type app struct {
 	// vimReg is what vim mode put on the clipboard last, which tells
 	// whether a paste of the same text pastes lines.
 	vimReg vimRegister
+	// vimLine is vim mode's command line, vimSearch the pattern searched
+	// last, vimHist the searches and the commands typed, and vimMsg what
+	// a command said.
+	vimLine   vimLine
+	vimSearch vimSearch
+	vimHist   [2][]string
+	vimMsg    vimMessage
 
 	// queue holds the functions other goroutines post for the main thread,
 	// which the next frame runs.

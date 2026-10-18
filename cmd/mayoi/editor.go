@@ -155,6 +155,9 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 
 	if !a.settings.Vim {
 		vimReset(d)
+		if a.vimLine.d == d {
+			a.vimCloseLine(false)
+		}
 	}
 	// What was typed since the last frame, for undo.
 	d.observe()
@@ -322,6 +325,9 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			}
 		}
 		matches := a.visibleMatches(d, first, last)
+		if matches == nil {
+			matches = a.vimMatches(d, snap, first, last)
+		}
 		deco := a.decorate(d, snap, first, last)
 		d.git.Refresh(d.path, d.buf.Snapshot(), a.post)
 		marks := d.git.Lines

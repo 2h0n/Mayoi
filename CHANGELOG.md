@@ -5,6 +5,17 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Vim mode searches: `/` and `?` open a command line over the bottom
+  of the editor, which moves to the first match as you type, highlights
+  every one and counts them; `n`, `N`, `*` and `#` search again, a
+  search is a motion as in `d/end`, and the status bar says when a
+  search went round the end or found nothing. Patterns are vim's.
+- Vim mode's `:` runs commands: `:w`, `:q`, `:wq`, `:x`, a line number,
+  `:s` and `:%s` over a range or the selection, `:d`, `:y`, `:j`,
+  `:sort`, `:noh`, `:e`, `:vs` and more, with ↑ and ↓ for the commands
+  typed before.
+- Vim mode adds `gv`, `gi`, `gJ`, `H M L`, `zz zt zb`, ⌃A and ⌃X to add
+  to a number, and `ZZ` and `ZQ`.
 - Vim mode does as vim does in more places: `2D` and `d}` take whole
   lines rather than leave a blank one, `$` in visual mode takes the end
   of the line, `di(` and `ci[` find the next brackets along the line

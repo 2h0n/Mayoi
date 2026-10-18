@@ -577,6 +577,7 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					if col == a.column() {
 						a.findView(c, shown.ed)
 					}
+					a.vimLineView(c, shown.ed)
 				}
 			})
 		}
@@ -918,6 +919,9 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 			if k := d.vim.pending(); k != "" {
 				used += measure(k, false)
 			}
+			if m := a.vimMsg; m.text != "" && time.Since(m.at) < vimMessageFor {
+				used += min(measure(m.text, false), 420) + 6
+			}
 		}
 		if d.diskGone {
 			used += measure(locales.DeletedOnDisk(), true)
@@ -975,6 +979,17 @@ func (a *app) vimBadge(c *ui.Context, v *vimState, text func(string) ui.Element)
 			Padding(1, 6).Radius(4).Background(bg).ContentTransition(ui.ContentTransition{})
 		if k := v.pending(); k != "" {
 			text(k)
+		}
+		// What the last command said, as a search that went round, for a
+		// moment; an error in the color of one.
+		if m := a.vimMsg; m.text != "" && time.Since(m.at) < vimMessageFor {
+			col := p.statusFg
+			if m.err {
+				col = p.dangerFg
+			}
+			ui.Text(c.Key("status:vim-msg"), m.text).FontSize(11.5).TextColor(col).SingleLine().MaxWidth(420).
+				Transition(ui.ElementTransition{Duration: 180 * time.Millisecond, Colors: true, Enter: &ui.Motion{}, Exit: &ui.Motion{}}).
+				ContentTransition(ui.ContentTransition{})
 		}
 	})
 }

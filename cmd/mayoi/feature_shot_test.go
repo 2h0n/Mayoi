@@ -300,6 +300,18 @@ func TestFeatVim(t *testing.T) {
 		hs.vim("w")
 		hs.settle()
 		hs.fshot("06-vim-normal", dark)
+		// A search as it is typed: its matches, and the command line.
+		hs.vim("/")
+		hs.tt.Type("settings")
+		hs.settle()
+		hs.fshot("06-vim-search", dark)
+		hs.tt.Key(0, ui.KeyEnter)
+		hs.settle()
+		hs.vim(":")
+		hs.tt.Type("%s/settings/s/g")
+		hs.settle()
+		hs.fshot("06-vim-command", dark)
+		hs.tt.Key(0, ui.KeyEscape)
 	})
 }
 

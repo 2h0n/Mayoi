@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -57,6 +58,8 @@ type vimState struct {
 	insAt, insLen int
 	// replay is set while . makes the last change again.
 	replay bool
+	// lastInsert is where insert mode was left last, which gi inserts at.
+	lastInsert int
 	// indented is set while an insert goes on in a line that o, O, S or
 	// cc gave the indent of the line it opened at, which Esc takes back
 	// when nothing else was typed.
@@ -64,6 +67,15 @@ type vimState struct {
 	// viewH is how high the editor was in the last frame, which ⌃D and
 	// ⌃F scroll by.
 	viewH float32
+	// lastVisual is the selection of visual mode last left, which gv
+	// selects again and '< and '> are the lines of.
+	lastVisual vimVisualArea
+}
+
+// vimVisualArea is a selection of visual mode: its ends and its mode.
+type vimVisualArea struct {
+	anchor, cursor int
+	mode           vimMode
 }
 
 // pending is the keys of a command typed so far, as the status bar shows
@@ -113,7 +125,14 @@ const (
 var vimOps = map[string]bool{"d": true, "c": true, "y": true, ">": true, "<": true, "gc": true, "g~": true, "gu": true, "gU": true}
 
 // vimActions are the keys of normal mode that do something themselves.
-const vimActions = "xXDCYpPoOJsS~u.iaIAvV\x04\x15\x06\x02\x05\x19\x12\x7f"
+const vimActions = "xXDCYpPoOJsS~u.iaIAvV:\x04\x15\x06\x02\x05\x19\x12\x7f\x01\x18"
+
+// vimPairActions are the commands of normal mode of two keys, after a g,
+// a z or a Z.
+var vimPairActions = map[string]bool{
+	"gv": true, "gi": true, "gJ": true, "zz": true, "zt": true, "zb": true, "z.": true, "z\r": true, "z-": true,
+	"ZZ": true, "ZQ": true,
+}
 
 // vimVisualActions are the keys of visual mode that do something to the
 // selection, or with it.
@@ -121,6 +140,7 @@ var vimVisualActions = map[string]bool{
 	"d": true, "x": true, "X": true, "D": true, "y": true, "Y": true, "c": true, "s": true, "C": true, "S": true,
 	"R": true, ">": true, "<": true, "~": true, "u": true, "U": true, "J": true, "p": true, "P": true,
 	"gc": true, "g~": true, "gu": true, "gU": true, "o": true, "v": true, "V": true, "\x1b": true,
+	":": true, "zz": true, "zt": true, "zb": true, "z.": true, "z\r": true, "z-": true,
 }
 
 // parseVim reads the keys typed in a mode as a command: whole, begun, or
@@ -144,7 +164,7 @@ func parseVim(keys []rune, mode vimMode) (vimCmd, int) {
 	k := keys[i]
 	i++
 	name := string(k)
-	if k == 'g' {
+	if k == 'g' || k == 'z' || k == 'Z' {
 		if i == len(keys) {
 			return c, vimMore
 		}
@@ -165,6 +185,8 @@ func parseVim(keys []rune, mode vimMode) (vimCmd, int) {
 			}
 			c.key, c.arg = name, keys[i]
 			return c, vimDone
+		case k == 'z' || k == 'Z':
+			return c, vimBad
 		}
 		return parseMotion(c, keys, i, k, name, true)
 	}
@@ -196,9 +218,11 @@ func parseVim(keys []rune, mode vimMode) (vimCmd, int) {
 		}
 		c.key, c.arg = name, keys[i]
 		return c, vimDone
-	case len(name) == 1 && strings.ContainsRune(vimActions, k):
+	case len(name) == 1 && strings.ContainsRune(vimActions, k), vimPairActions[name]:
 		c.key = name
 		return c, vimDone
+	case k == 'z' || k == 'Z':
+		return c, vimBad
 	}
 	return parseMotion(c, keys, i, k, name, false)
 }
@@ -208,7 +232,7 @@ func parseVim(keys []rune, mode vimMode) (vimCmd, int) {
 func parseMotion(c vimCmd, keys []rune, i int, k rune, name string, objects bool) (vimCmd, int) {
 	switch k {
 	case 'h', 'j', 'k', 'l', 'w', 'W', 'b', 'B', 'e', 'E', '0', '^', '$', 'G', '%', '{', '}', ';', ',',
-		'\r', '-', '+', '_', ' ', '\b':
+		'\r', '-', '+', '_', ' ', '\b', 'H', 'M', 'L', 'n', 'N', '*', '#', '/', '?':
 		c.key = string(k)
 		return c, vimDone
 	case 'g':
@@ -268,6 +292,10 @@ func (c vimCmd) next(mode vimMode) vimMode {
 			return mode
 		case "ip", "ap":
 			return vimVisualLine
+		case ":":
+			return vimNormal
+		case "zz", "zt", "zb", "z.", "z\r", "z-":
+			return mode
 		}
 		if vimVisualActions[c.key] || c.key == "r" {
 			return vimNormal
@@ -287,6 +315,8 @@ func (c vimCmd) next(mode vimMode) vimMode {
 		return vimVisual
 	case "V":
 		return vimVisualLine
+	case "gi":
+		return vimInsert
 	}
 	return vimNormal
 }
@@ -298,7 +328,8 @@ func (c vimCmd) changes() bool {
 		return c.op != "y"
 	}
 	switch c.key {
-	case "x", "\x7f", "X", "D", "C", "s", "S", "r", "J", "p", "P", "~", "o", "O", "i", "a", "I", "A":
+	case "x", "\x7f", "X", "D", "C", "s", "S", "r", "J", "gJ", "p", "P", "~", "o", "O", "i", "a", "I", "A", "gi",
+		"\x01", "\x18":
 		return true
 	}
 	return false
@@ -322,7 +353,7 @@ func vimRune(ev ui.InputEvent, allCtrl bool) (rune, bool) {
 		// Only the keys of vim's commands: the others stay the
 		// platform's, where Control is the key of shortcuts.
 		switch k {
-		case ui.KeyF, ui.KeyB, ui.KeyR:
+		case ui.KeyF, ui.KeyB, ui.KeyR, ui.KeyA, ui.KeyX:
 			if !allCtrl {
 				return 0, false
 			}
@@ -439,6 +470,12 @@ func (a *app) vimKey(d *editor, ev ui.InputEvent) bool {
 			}
 		})
 	}
+	if r == '\x1b' && v.mode == vimNormal && len(v.keys) == 0 && a.vimSearch.show {
+		// Esc with nothing typed stops showing the matches of the search.
+		a.vimSearch.show = false
+		a.invalidate()
+		return true
+	}
 	v.keys = append(v.keys, r)
 	cmd, st := parseVim(v.keys, v.mode)
 	switch st {
@@ -449,19 +486,25 @@ func (a *app) vimKey(d *editor, ev ui.InputEvent) bool {
 		return true
 	}
 	v.keys = v.keys[:0]
-	mode := v.mode
-	next := cmd.next(mode)
-	v.mode = next
-	a.queueEdit(d, func(d *editor) {
-		if mode.visual() {
-			a.vimVisualRun(d, cmd, mode, next)
-		} else {
-			a.vimNormalRun(d, cmd, next)
+	switch cmd.key {
+	case "/", "?":
+		a.vimOpenLine(d, rune(cmd.key[0]), cmd, "")
+		return true
+	case ":":
+		text := ""
+		if v.mode.visual() {
+			// Over the lines selected, as vim writes them.
+			v.lastVisual = vimVisualArea{v.anchor, v.cursor, v.mode}
+			v.mode = vimNormal
+			vimPut(d, vimClamp(d.buf.Snapshot(), v.cursor))
+			text = "'<,'>"
+		} else if cmd.count > 0 {
+			text = ".,.+" + strconv.Itoa(cmd.count-1)
 		}
-		if next == vimNormal {
-			vimSettle(d)
-		}
-	})
+		a.vimOpenLine(d, ':', vimCmd{}, text)
+		return true
+	}
+	a.vimRunCmd(d, cmd, v.mode)
 	return true
 }
 
@@ -782,6 +825,19 @@ func (a *app) vimMotion(d *editor, t *vtext, cur int, key string, arg rune, coun
 		text := snap.Slice(s, e)
 		to := s + utf8.RuneCountInString(strings.TrimRight(text, " \t")) - 1
 		return vimTarget{to: max(to, s), inclusive: true}, true
+	case "n", "N", "*", "#":
+		return a.vimSearchMotion(d, snap, cur, key, cnt)
+	case "H", "M", "L":
+		top, bottom := a.vimLinesInView(d, snap)
+		tl := top + cnt - 1
+		switch key {
+		case "M":
+			tl = (top + bottom) / 2
+		case "L":
+			tl = bottom - (cnt - 1)
+		}
+		tl = min(max(tl, top), bottom, last)
+		return vimTarget{to: firstNonBlank(snap, max(tl, 0)), linewise: true}, true
 	case "G", "gg":
 		tl := last
 		if key == "gg" {
@@ -1360,6 +1416,7 @@ func (a *app) vimEndInsert(d *editor) {
 	}
 	d.hist.group, d.hist.typing = groupNone, false
 	c := min(d.sel[0], d.sel[1], snap.Len())
+	v.lastInsert = c
 	if s, _ := snap.LineRange(snap.LineAt(c)); c > s {
 		c--
 	}
@@ -1521,6 +1578,30 @@ func (a *app) vimNormalRun(d *editor, c vimCmd, next vimMode) {
 		a.vimShowVisual(d, next)
 	case "\x04", "\x15", "\x06", "\x02", "\x05", "\x19":
 		a.vimScroll(d, snap, cur, c.key, c.count)
+	case "zz", "zt", "zb", "z.", "z\r", "z-":
+		a.vimScrollTo(d, snap, line, c.key)
+		if c.key == "z." || c.key == "z\r" || c.key == "z-" {
+			vimPut(d, firstNonBlank(snap, line))
+		}
+	case "gv":
+		if lv := v.lastVisual; lv.mode.visual() {
+			v.anchor, v.cursor = lv.anchor, lv.cursor
+			a.vimShowVisual(d, next)
+		}
+	case "gi":
+		a.vimStartInsert(d, min(v.lastInsert, snap.Len()), false)
+	case "gJ":
+		vimJoinRaw(d, line, max(cnt, 2))
+	case "\x01", "\x18":
+		by := cnt
+		if c.key == "\x18" {
+			by = -cnt
+		}
+		vimIncrement(d, snap, cur, by)
+	case "ZZ":
+		a.vimEx(d, "x")
+	case "ZQ":
+		a.vimEx(d, "q")
 	default:
 		if tg, ok := a.vimMotion(d, t, cur, c.key, c.arg, c.count, ""); ok && !tg.object {
 			vimPut(d, tg.to)
@@ -1565,6 +1646,119 @@ func (a *app) vimScroll(d *editor, snap ui.TextSnapshot, cur int, key string, co
 		v.want, v.hasWant = vimCol(snap, cur), true
 	}
 	vimPut(d, vimAtCol(snap, to, v.want))
+}
+
+// vimScrollTo scrolls the editor so that line shows at the middle of the
+// view, for zz and z., at its top, for zt and z Enter, or at its bottom,
+// for zb and z-.
+func (a *app) vimScrollTo(d *editor, snap ui.TextSnapshot, line int, key string) {
+	lineH := a.font.lineH
+	if lineH <= 0 || d.vim.viewH <= 0 {
+		return
+	}
+	g := a.geometry(d, snap.LineCount())
+	top := editorPadY + g.top(line)
+	h := g.top(line+1) - g.top(line)
+	if line+1 >= snap.LineCount() {
+		h = lineH
+	}
+	// Under the lines that stick at the top, as far as they go.
+	stuck := float32(len(d.sticky)) * lineH
+	y := top - stuck
+	switch key {
+	case "zz", "z.":
+		y = top - (d.vim.viewH-h)/2
+	case "zb", "z-":
+		y = top + h + editorPadY - d.vim.viewH
+	}
+	y = max(0, y)
+	if d.vscroll.MaxY > 0 {
+		y = min(y, d.vscroll.MaxY)
+	}
+	d.vscroll.Y = y
+	a.invalidate()
+}
+
+// vimLinesInView are the first and the last lines whole in view, which H
+// and L go to.
+func (a *app) vimLinesInView(d *editor, snap ui.TextSnapshot) (top, bottom int) {
+	g := a.geometry(d, snap.LineCount())
+	if a.font.lineH <= 0 || d.vim.viewH <= 0 {
+		return 0, vimLast(snap)
+	}
+	top, bottom = a.linesInView(g, d.vscroll.Y, d.vim.viewH)
+	stuck := float32(len(d.sticky)) * a.font.lineH
+	for top < bottom && editorPadY+g.top(top) < d.vscroll.Y+stuck {
+		top++ // under the lines that stick, or cut at the top
+	}
+	for bottom > top && editorPadY+g.top(bottom+1) > d.vscroll.Y+d.vim.viewH {
+		bottom-- // cut at the bottom
+	}
+	return top, min(bottom, vimLast(snap))
+}
+
+// vimIncrement adds by to the number under the cursor, or the first
+// after it on its line, as ⌃A and ⌃X do: decimal, with its minus, or hex
+// after 0x. The cursor goes to its last digit.
+func vimIncrement(d *editor, snap ui.TextSnapshot, cur, by int) {
+	ls, le := snap.LineRange(snap.LineAt(cur))
+	runes := []rune(snap.Slice(ls, le))
+	digit := func(i int) bool { return i >= 0 && i < len(runes) && unicode.IsDigit(runes[i]) }
+	isHex := func(i int) bool {
+		return digit(i) || i >= 0 && i < len(runes) && strings.ContainsRune("abcdefABCDEF", runes[i])
+	}
+	s := cur - ls
+	for digit(s) && digit(s-1) {
+		s--
+	}
+	for s < len(runes) && !digit(s) {
+		s++
+	}
+	if s >= len(runes) {
+		return
+	}
+	if s >= 2 && (runes[s-1] == 'x' || runes[s-1] == 'X') && runes[s-2] == '0' {
+		s -= 2 // in the digits of a hex number, after its 0x
+	}
+	e := s
+	hex := runes[s] == '0' && s+2 < len(runes) && (runes[s+1] == 'x' || runes[s+1] == 'X') && isHex(s+2)
+	if hex {
+		e = s + 2
+		for isHex(e) {
+			e++
+		}
+	} else {
+		for digit(e) {
+			e++
+		}
+		if s > 0 && runes[s-1] == '-' {
+			s--
+		}
+	}
+	text := string(runes[s:e])
+	var out string
+	if hex {
+		n, err := strconv.ParseUint(text[2:], 16, 64)
+		if err != nil {
+			return
+		}
+		digits := strconv.FormatUint(n+uint64(int64(by)), 16)
+		if strings.ToUpper(text[2:]) == text[2:] && strings.ContainsAny(text[2:], "ABCDEF") {
+			digits = strings.ToUpper(digits)
+		}
+		for len(digits) < len(text)-2 {
+			digits = "0" + digits // as wide as it was
+		}
+		out = text[:2] + digits
+	} else {
+		n, err := strconv.ParseInt(text, 10, 64)
+		if err != nil {
+			return
+		}
+		out = strconv.FormatInt(n+int64(by), 10)
+	}
+	at := ls + s + utf8.RuneCountInString(out) - 1
+	d.edit([2]int{at, at}, textEdit{ls + s, ls + e, out})
 }
 
 // vimPaste pastes the clipboard cnt times after the cursor, or before:
@@ -1627,6 +1821,25 @@ func vimJoin(d *editor, line, count int) {
 	d.edit([2]int{s + at, s + at}, textEdit{s, end, text})
 }
 
+// vimJoinRaw joins count lines from line as they are, as gJ does: no
+// space between them, and their indent kept.
+func vimJoinRaw(d *editor, line, count int) {
+	snap := d.buf.Snapshot()
+	l2 := min(line+count-1, vimLast(snap))
+	if l2 <= line {
+		return
+	}
+	var edits []textEdit
+	at := 0
+	for l := line; l < l2; l++ {
+		_, e := snap.LineRange(l)
+		edits = append(edits, textEdit{e, e + 1, ""})
+		at = e - (l - line)
+	}
+	d.edit([2]int{at, at}, edits...)
+	vimPut(d, at)
+}
+
 // vimShowVisual selects what visual mode does: the runes from the anchor
 // to the cursor, or their lines, the cursor at the end that moves.
 func (a *app) vimShowVisual(d *editor, mode vimMode) {
@@ -1679,6 +1892,8 @@ func (a *app) vimVisualRun(d *editor, c vimCmd, mode, next vimMode) {
 		r = vimRange{linewise: true, l1: snap.LineAt(lo), l2: snap.LineAt(hi)}
 	}
 	switch c.key {
+	case "zz", "zt", "zb", "z.", "z\r", "z-":
+		a.vimScrollTo(d, snap, snap.LineAt(min(v.cursor, n)), c.key)
 	case "\x1b", "v", "V":
 		if next == vimNormal {
 			vimPut(d, v.cursor)
