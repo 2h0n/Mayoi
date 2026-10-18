@@ -490,3 +490,12 @@ func TestVimCursorAndFlash(t *testing.T) {
 		t.Fatal("a delete lit the text it took")
 	}
 }
+
+// On a layout of another script, the keys are where a US keyboard has
+// them.
+func TestVimOtherLayout(t *testing.T) {
+	hs, d := vimHarness(t, "a.txt", "one two\n")
+	hs.tt.KeyAt(0, ui.KeyW)
+	hs.frames()
+	expectCursor(t, d, 4)
+}

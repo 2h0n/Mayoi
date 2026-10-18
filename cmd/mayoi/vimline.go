@@ -380,10 +380,10 @@ func vimFind(snap ui.TextSnapshot, re *regexp.Regexp, from int, back bool) (at i
 
 // vimMatchCount is the number of the match at at among those of re, and
 // how many there are, unless the text is too long to count them as keys
-// are typed: 0, 0.
+// are typed: 0, -1.
 func vimMatchCount(snap ui.TextSnapshot, re *regexp.Regexp, at int) (cur, total int) {
 	if snap.ByteLen() > asyncSearchBytes {
-		return 0, 0
+		return 0, -1
 	}
 	for l := range snap.LineCount() {
 		if !vimLineMatches(snap, re, l, func(s, e int) bool {
@@ -614,7 +614,7 @@ func (a *app) vimLineView(c *ui.Context, d *editor) {
 				label, col = locales.FindInvalid(), p.dangerFg
 			} else if n, total := a.vimCountOf(d, d.buf.Snapshot(), l.text, re, vimClamp(d.buf.Snapshot(), d.sel[1])); total > 0 {
 				label = locales.VimMatchCount(n, total)
-			} else if _, _, ok := vimFind(d.buf.Snapshot(), re, 0, false); !ok {
+			} else if total == 0 {
 				label, col = locales.FindNoResults(), p.dangerFg
 			}
 			if label != "" {
