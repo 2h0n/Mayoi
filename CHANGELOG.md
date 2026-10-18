@@ -3,6 +3,12 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- On Windows, the Undo, Discard and Reset dialogs and the repository
+  headers name a submodule with `/`, as `packages/module`, like the other
+  systems.
+
 ## 0.11.0
 
 - Settings sync no longer undoes a change to `settings.json` or

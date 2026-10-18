@@ -209,7 +209,7 @@ func (a *app) scmView(c *ui.Context) {
 					section := ui.Column(c.Key("scm:" + repo.git.repo.Root)).FillWidth().Shrink(0)
 					section.Children(func() {
 						clean := !repo.hasCommitControls()
-						head := ui.ButtonBase(c.Key("repository-header")).FillWidth().Height(28).Padding(0, 10).Gap(6).AlignItems(ui.Center).Label(strings.TrimSpace(repo.label() + " " + repo.relativeRoot()))
+						head := ui.ButtonBase(c.Key("repository-header")).FillWidth().Height(28).Padding(0, 10).Gap(6).AlignItems(ui.Center).Label(strings.TrimSpace(repo.label() + " " + filepath.ToSlash(repo.relativeRoot())))
 						if head.Hovered() {
 							head.Background(p.hover)
 						}
