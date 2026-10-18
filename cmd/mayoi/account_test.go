@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"net"
 	"os"
@@ -224,7 +225,8 @@ func TestCloudLocalKeybindings(t *testing.T) {
 	m := &mayoi{s: settings.Load(filepath.Join(dir, "settings.json"))}
 	l := cloudLocal{&cloud{m: m, onMain: func(fn func()) { fn() }}}
 	path := keymap.Path(m.s.Path())
-	if err := l.Apply(cloudsync.Snapshot{Keybindings: "[1]"}, "[2]"); err != nil {
+	read, _ := l.Read()
+	if err := l.Apply(read, cloudsync.Snapshot{Keybindings: "[1]"}, "[2]"); err != nil {
 		t.Fatal(err)
 	}
 	if data, _ := os.ReadFile(path); string(data) != "[1]" {
@@ -240,12 +242,62 @@ func TestCloudLocalKeybindings(t *testing.T) {
 	if !l.IsDefault(cloudsync.Snapshot{Settings: m.s.Prefs.Synced(), Keybindings: keymap.Template}) {
 		t.Error("the defaults are not default")
 	}
-	if err := l.Apply(cloudsync.Snapshot{}, ""); err != nil {
+	if err := l.Apply(s, cloudsync.Snapshot{}, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Errorf("keybindings.json stayed: %v", err)
 	}
+}
+
+// TestCloudLocalStale: what changed since it was read, settings.json
+// saved, a preference set or keybindings.json saved, Apply leaves be.
+func TestCloudLocalStale(t *testing.T) {
+	dir := t.TempDir()
+	m := &mayoi{s: settings.Load(filepath.Join(dir, "settings.json"))}
+	m.s.Flush()
+	l := cloudLocal{&cloud{m: m, onMain: func(fn func()) { fn() }}}
+	path := keymap.Path(m.s.Path())
+	account := cloudsync.Snapshot{Settings: settingsWith(m.s.Prefs, func(p *settings.Prefs) { p.Vim = true }), Keybindings: "[account]"}
+
+	read, _ := l.Read()
+	os.WriteFile(m.s.Path(), []byte(`{"fontSize": 17}`), 0o644)
+	if err := l.Apply(read, account, ""); !errors.Is(err, cloudsync.ErrStale) {
+		t.Fatalf("settings.json saved: %v", err)
+	}
+	if m.s.FontSize != 17 || m.s.Vim {
+		t.Errorf("settings.json saved: font size %v, vim %v", m.s.FontSize, m.s.Vim)
+	}
+	if read, _ = l.Read(); string(read.Settings["fontSize"]) != "17" {
+		t.Errorf("read %s", read.Settings["fontSize"])
+	}
+
+	m.s.Blame = !m.s.Blame
+	if err := l.Apply(read, account, ""); !errors.Is(err, cloudsync.ErrStale) || m.s.Vim {
+		t.Fatalf("a preference set: %v, vim %v", err, m.s.Vim)
+	}
+
+	read, _ = l.Read()
+	os.WriteFile(path, []byte("[mine]"), 0o644)
+	if err := l.Apply(read, account, ""); !errors.Is(err, cloudsync.ErrStale) || m.s.Vim {
+		t.Fatalf("keybindings.json saved: %v, vim %v", err, m.s.Vim)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "[mine]" {
+		t.Errorf("keybindings.json = %q", data)
+	}
+
+	read, _ = l.Read()
+	if err := l.Apply(read, account, ""); err != nil || !m.s.Vim {
+		t.Fatalf("as read: %v, vim %v", err, m.s.Vim)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "[account]" {
+		t.Errorf("keybindings.json = %q", data)
+	}
+}
+
+func settingsWith(p settings.Prefs, change func(*settings.Prefs)) map[string]json.RawMessage {
+	change(&p)
+	return p.Synced()
 }
 
 // TestTokenFile: in development the token is kept in a file only its

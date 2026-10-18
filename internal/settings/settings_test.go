@@ -416,3 +416,43 @@ func TestOnPrefsWritten(t *testing.T) {
 	default:
 	}
 }
+
+// TestAnOlderWriteNeverLandsLast: a write of an older encoding, as a
+// timer that fired as Flush ran, leaves the newer one's file.
+func TestAnOlderWriteNeverLandsLast(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	s := Load(path)
+	s.FontSize = 14
+	old, oldState := s.Encode()
+	s.FontSize = 15
+	s.Flush()
+	s.write(0, old, oldState)
+	if p, ok := s.edited(); ok {
+		t.Fatalf("the file is not the settings' own: %+v", p)
+	}
+	q := Load(path)
+	if q.FontSize != 15 {
+		t.Errorf("font size %v, want 15", q.FontSize)
+	}
+	if tmps, _ := filepath.Glob(path + ".*.tmp"); len(tmps) != 0 {
+		t.Errorf("left %v", tmps)
+	}
+}
+
+// TestEdited: a save of the file is the person's once, until it changes
+// again.
+func TestEdited(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	s := Load(path)
+	s.Flush()
+	if _, ok := s.Edited(); ok {
+		t.Fatal("its own write is an edit")
+	}
+	os.WriteFile(path, []byte(`{"fontSize": 18}`), 0o644)
+	if p, ok := s.Edited(); !ok || p.FontSize != 18 {
+		t.Fatalf("edit %v, %v", p.FontSize, ok)
+	}
+	if _, ok := s.Edited(); ok {
+		t.Error("an edit taken is an edit again")
+	}
+}

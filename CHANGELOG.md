@@ -5,6 +5,11 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Settings sync no longer undoes a change to `settings.json` or
+  `keybindings.json` made as it syncs, from a menu or by saving the file:
+  it merges the change with the account's and syncs it. A save of
+  `settings.json` no longer loses to the settings' own write of a moment
+  before.
 - Windows: a file opened from quick open, or by vim's `:e`, is the file
   the Explorer shows, with backslashes, rather than a second tab of it
   that the Explorer could not reveal.
