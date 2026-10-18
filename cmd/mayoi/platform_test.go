@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -37,6 +38,14 @@ func keepLineEndings() {
 	os.Setenv("GIT_CONFIG_COUNT", "1")
 	os.Setenv("GIT_CONFIG_KEY_0", "core.autocrlf")
 	os.Setenv("GIT_CONFIG_VALUE_0", "false")
+}
+
+// skipOnWindows skips a test that does not yet pass on Windows, for why.
+func skipOnWindows(t *testing.T, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip(why)
+	}
 }
 
 // onOS has the test run as Mayoi does on goos, its keys and its names.

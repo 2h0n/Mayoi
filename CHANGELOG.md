@@ -20,6 +20,8 @@ needs a `## <version>` section here, or its build fails.
   as `c:\proj\a.go` for `C:\Proj`, opens in that folder's window.
 - Windows: a terminal is named after its shell, `pwsh`, `powershell` or
   `cmd`, rather than "shell".
+- Windows: the repository picker finds a repository typed with `/`, as
+  `packages/module`, as well as with `\`.
 - The home folder shortens to `~` only for itself and the folders in it,
   not for a folder whose name begins the same, as `/Users/me2`; on
   Windows, whatever the case of its letters.

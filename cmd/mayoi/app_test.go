@@ -202,6 +202,7 @@ func (hs *harness) path(rel string) string { return filepath.Join(hs.root, filep
 // status bar's parts go one by one, the least needed first, each only
 // once the bar would not hold it, and those left fit.
 func TestStatusBarDropsTheLeastNeededFirst(t *testing.T) {
+	skipOnWindows(t, "Windows' narrower font holds the branch at 300")
 	hs := newHarness(t, true)
 	git := hs.gitRepo()
 	branch := "feature/responsive-title-bar-polish"

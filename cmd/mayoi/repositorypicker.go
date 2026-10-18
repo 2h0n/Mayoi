@@ -74,13 +74,14 @@ func (a *app) repositoryButton(c *ui.Context, status bool) bool {
 }
 
 func (a *app) repositoryChoices() []string {
-	query := strings.ToLower(strings.TrimSpace(a.repositories.picker.query))
+	// Either slash finds a repository, whichever its root is spelled with.
+	query := filepath.ToSlash(strings.ToLower(strings.TrimSpace(a.repositories.picker.query)))
 	var roots []string
 	if query == "" || strings.Contains(strings.ToLower(locales.RepositoryAutomatic()), query) {
 		roots = append(roots, "")
 	}
 	for _, ctx := range a.rootRepositoryList() {
-		if ctx.git.repo != nil && (query == "" || strings.Contains(strings.ToLower(ctx.git.repo.Root), query)) {
+		if ctx.git.repo != nil && (query == "" || strings.Contains(filepath.ToSlash(strings.ToLower(ctx.git.repo.Root)), query)) {
 			roots = append(roots, ctx.git.repo.Root)
 		}
 	}

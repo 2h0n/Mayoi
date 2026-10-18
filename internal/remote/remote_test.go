@@ -32,7 +32,7 @@ func TestPaths(t *testing.T) {
 			t.Errorf("%q is taken for remote", local)
 		}
 	}
-	if got := filepath.Dir(p); got != "/ssh:me@box:2222/home/me" {
+	if got := filepath.ToSlash(filepath.Dir(p)); got != "/ssh:me@box:2222/home/me" {
 		t.Errorf("Dir = %q", got)
 	}
 	if got := On(p, "/home/me/proj/.git"); got != "/ssh:me@box:2222/home/me/proj/.git" {
