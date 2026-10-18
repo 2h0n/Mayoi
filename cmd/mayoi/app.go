@@ -124,6 +124,7 @@ type app struct {
 	vimSearch vimSearch
 	vimHist   [2][]string
 	vimMsg    vimMessage
+	vimCount  vimCounted
 
 	// queue holds the functions other goroutines post for the main thread,
 	// which the next frame runs.

@@ -5,6 +5,8 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- In vim mode the cursor is half a block while an operator, as `d`,
+  waits for its motion, and the text yanked lights up for a moment.
 - Vim mode searches: `/` and `?` open a command line over the bottom
   of the editor, which moves to the first match as you type, highlights
   every one and counts them; `n`, `N`, `*` and `#` search again, a

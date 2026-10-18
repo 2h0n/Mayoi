@@ -3,6 +3,7 @@ package main
 import (
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -58,6 +59,10 @@ type vimState struct {
 	insAt, insLen int
 	// replay is set while . makes the last change again.
 	replay bool
+	// flash is the text yanked last, which shows for a moment from
+	// flashAt: runes from up to to.
+	flash   [2]int
+	flashAt time.Time
 	// lastInsert is where insert mode was left last, which gi inserts at.
 	lastInsert int
 	// indented is set while an insert goes on in a line that o, O, S or
@@ -76,6 +81,19 @@ type vimState struct {
 type vimVisualArea struct {
 	anchor, cursor int
 	mode           vimMode
+}
+
+// vimFlashFor is how long the text yanked shows.
+const vimFlashFor = 280 * time.Millisecond
+
+// operatorPending reports whether an operator typed waits for its motion,
+// as the cursor shows: half a block.
+func (v *vimState) operatorPending() bool {
+	if len(v.keys) == 0 || v.mode != vimNormal {
+		return false
+	}
+	c, st := parseVim(v.keys, v.mode)
+	return st == vimMore && c.op != ""
 }
 
 // pending is the keys of a command typed so far, as the status bar shows
@@ -1285,6 +1303,8 @@ func (a *app) vimApply(d *editor, op string, r vimRange, cur int) {
 	switch op {
 	case "y":
 		a.vimYank(snap, r)
+		// What was yanked lights up for a moment, as it goes.
+		d.vim.flash, d.vim.flashAt = [2]int{r.start, min(r.end, snap.Len())}, time.Now()
 		caret := r.start
 		if r.linewise {
 			caret = cur

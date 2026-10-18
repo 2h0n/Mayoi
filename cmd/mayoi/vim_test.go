@@ -470,3 +470,23 @@ func TestVimScrollsToCursor(t *testing.T) {
 		t.Fatalf("zz left the cursor at %v, the middle at %v", y, mid)
 	}
 }
+
+func TestVimCursorAndFlash(t *testing.T) {
+	hs, d := vimHarness(t, "a.txt", "one two\n")
+	hs.vim("d")
+	if !d.vim.operatorPending() {
+		t.Fatal("d does not wait for a motion")
+	}
+	hs.vim("<Esc>")
+	if d.vim.operatorPending() {
+		t.Fatal("Esc left the operator waiting")
+	}
+	hs.vim("yiw")
+	if d.vim.flash != [2]int{0, 3} || d.vim.flashAt.IsZero() {
+		t.Fatalf("yiw lit %v, want [0 3]", d.vim.flash)
+	}
+	hs.vim("wdw")
+	if d.vim.flash != [2]int{0, 3} {
+		t.Fatal("a delete lit the text it took")
+	}
+}

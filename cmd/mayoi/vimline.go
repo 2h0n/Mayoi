@@ -57,6 +57,28 @@ type vimMessage struct {
 	at   time.Time
 }
 
+// vimCounted is the count of the matches last found, which the command
+// line shows every frame: of a pattern, in a version of a document, at a
+// match.
+type vimCounted struct {
+	pattern    string
+	doc        int
+	version    uint64
+	at         int
+	cur, total int
+}
+
+// vimCountOf counts the matches of re, as vimMatchCount does, again only
+// when the pattern, the text or the match changed.
+func (a *app) vimCountOf(d *editor, snap ui.TextSnapshot, pattern string, re *regexp.Regexp, at int) (cur, total int) {
+	k := &a.vimCount
+	if k.pattern != pattern || k.doc != d.id || k.version != snap.Version() || k.at != at {
+		cur, total := vimMatchCount(snap, re, at)
+		*k = vimCounted{pattern, d.id, snap.Version(), at, cur, total}
+	}
+	return k.cur, k.total
+}
+
 // vimMessageFor is how long a message of vim mode shows.
 const vimMessageFor = 4 * time.Second
 
@@ -450,7 +472,7 @@ func (a *app) vimSearchMotion(d *editor, snap ui.TextSnapshot, cur int, key stri
 	if back {
 		text = "?" + vimShownPattern(s.pattern)
 	}
-	if n, total := vimMatchCount(snap, re, to); total > 0 {
+	if n, total := a.vimCountOf(d, snap, s.pattern, re, to); total > 0 {
 		text += "  " + locales.VimMatchCount(n, total)
 	}
 	switch {
@@ -590,7 +612,7 @@ func (a *app) vimLineView(c *ui.Context, d *editor) {
 			label, col := "", p.muted
 			if re, err := a.vimCompile(l.text); err != nil {
 				label, col = locales.FindInvalid(), p.dangerFg
-			} else if n, total := vimMatchCount(d.buf.Snapshot(), re, vimClamp(d.buf.Snapshot(), d.sel[1])); total > 0 {
+			} else if n, total := a.vimCountOf(d, d.buf.Snapshot(), l.text, re, vimClamp(d.buf.Snapshot(), d.sel[1])); total > 0 {
 				label = locales.VimMatchCount(n, total)
 			} else if _, _, ok := vimFind(d.buf.Snapshot(), re, 0, false); !ok {
 				label, col = locales.FindNoResults(), p.dangerFg
