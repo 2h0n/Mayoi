@@ -686,16 +686,18 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 	a.followMarkdown(v)
 	m, p := v.markdown, a.pal
 	size := a.settings.FontSize
-	// Measure the actual body font, including the Matrix UI font.
+	// Measure the actual body font, including the Matrix UI font. The
+	// column is 120 digits wide, room for tables and images while a line
+	// of prose stays short enough to read.
 	font := ui.Font{Family: c.Theme().Font, Size: size}
 	if p.mono {
 		font.Weight, font.Features = a.settings.FontWeight, strings.Join(a.settings.FontFeatures, ",")
 	}
 	if m.measured != font || m.measure == 0 {
 		m.measured = font
-		m.measure, _ = ui.ShapeText(strings.Repeat("0", 80), font, 0).Size()
+		m.measure, _ = ui.ShapeText(strings.Repeat("0", 120), font, 0).Size()
 	}
-	width := m.measure
+	width := min(m.measure, max(1, v.pane.Bounds(c).W-2*textPadR))
 	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label(locales.PreviewLabel(name)).Padding(editorPadY, textPadR).Rows(func(row ui.ListRow) {
 		c := row.Context
 		b := m.blocks[row.Index]
@@ -708,7 +710,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 			outside, bottom = max(bottom, size*a.settings.LineHeight*0.75), 0
 		}
 		ui.Row(c).WidthPercent(100).Justify(ui.Center).Margin(0, 0, outside, 0).Children(func() {
-			ui.Row(c).WidthPercent(100).MaxWidth(width).AlignItems(ui.Start).Padding(0, 0, 0, b.offset*size).Gap(size * 0.5).Children(func() {
+			ui.Row(c).WidthPercent(100).MaxWidth(m.measure).AlignItems(ui.Start).Padding(0, 0, 0, b.offset*size).Gap(size * 0.5).Children(func() {
 				for range b.quote {
 					ui.Box(c).Width(3).AlignSelf(ui.Stretch).Background(p.guideNow)
 				}
@@ -750,7 +752,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 					case markdownRule:
 						ui.Box(c).Height(1).WidthPercent(100).Background(p.border).Margin(size*a.settings.LineHeight*0.375, 0)
 					case markdownImageBlock:
-						imageWidth := max(1, min(width, v.pane.Bounds(c).W-2*textPadR)-(b.offset+b.markerWidth)*size-float32(b.quote)*size)
+						imageWidth := max(1, width-(b.offset+b.markerWidth)*size-float32(b.quote)*size)
 						a.markdownImage(c, b.runs[0], imageWidth, m.root, v.doc.path)
 					case markdownCodeBlock, markdownHTML:
 						ui.Column(c).WidthPercent(100).Padding(size*0.5, size*0.75).Background(p.chrome).Radius(6).Children(func() {

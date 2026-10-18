@@ -5,6 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- The Markdown preview's column is half as wide again, 120 digits
+  rather than 80, so tables and images have room in a wide pane while
+  lines stay short enough to read; a narrower pane still fits it.
 - In vim mode the cursor is half a block while an operator, as `d`,
   waits for its motion, and the text yanked lights up for a moment.
 - Vim mode searches: `/` and `?` open a command line over the bottom
