@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.0
 
 - Settings sync no longer undoes a change to `settings.json` or
   `keybindings.json` made as it syncs, from a menu or by saving the file:
