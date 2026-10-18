@@ -92,13 +92,15 @@ func TestVimLikeVim(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.Keys, func(t *testing.T) {
 			hs.t = t
+			// Unseen, so that the text put back is not typing, which
+			// would close its brackets.
+			d.hist = history{}
 			d.buf.Replace(0, d.buf.Len(), c.Text)
 			d.observe()
-			d.hist = history{snap: d.buf.Snapshot(), seen: true}
 			d.indent = detectIndent(d.buf.Snapshot(), d.path)
-			d.vim = vimState{}
-			hs.a.vimReg = vimRegister{}
-			hs.a.vimSearch = vimSearch{}
+			d.vim, d.marks = vimState{}, nil
+			hs.a.vimReg, hs.a.vimRegs = vimRegister{}, nil
+			hs.a.vimSearch, hs.a.vimLastSub, hs.a.vimLastEx = vimSearch{}, "", ""
 			hs.tt.SetClipboard("")
 			d.selectRange(0, 0, false)
 			hs.frames()

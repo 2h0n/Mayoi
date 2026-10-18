@@ -8,6 +8,35 @@ needs a `## <version>` section here, or its build fails.
 - The Markdown preview's column is half as wide again, 120 digits
   rather than 80, so tables and images have room in a wide pane while
   lines stay short enough to read; a narrower pane still fits it.
+- Vim mode records macros: `qa` records the keys typed into register
+  `a` until `q`, with the status bar saying so, and `@a` plays them,
+  `3@a` three times, `@@` again and `@:` the last command. A macro stops
+  where a motion fails, as in vim.
+- Vim mode has registers: `"a` to `"z` yank, delete and paste on their
+  own, `"A` appends, `"0` holds the last yank, `"1` to `"9` the last
+  deletes of lines, `"_` keeps nothing, and `".`, `":` and `"/` what was
+  typed, run and searched last. `:reg` shows them.
+- Vim mode has marks, `ma` then `'a` or `` `a ``, which move with the
+  text as it changes, and a jump list: `''` goes back, and ⌃O and ⌃I go
+  back and forward through the places `G`, `%`, searches and marks
+  jumped from. `:marks` lists them.
+- Vim mode adds `:normal` to type keys over a range of lines, `:g` and
+  `:v` to run a command on the lines that match or do not, `:m` and `:t`
+  to move and copy lines, `:pu`, and `&` and `g&` to repeat the last
+  `:s`. `:g` and `:normal` undo as one step.
+- Vim mode adds `it` and `at` for the text in tags, `[( [{ ]) ]}` to go
+  to the bracket that holds the cursor, and `gp` and `gP`.
+- In vim mode a count before an insert types its text as many times, as
+  `3ix` and `2o` do, and `.` repeats it so; `r` and Enter leaves the
+  cursor where vim does.
+- In vim mode, ⌃W and ⌃U delete the word and the line before the caret
+  in insert mode, on macOS.
+- In vim mode `ma` sets a mark, where before `m` was dropped and `a`
+  started inserting.
+- Vim mode's search highlights draw from what the last frame found
+  while nothing changed, rather than searching the lines in view every
+  frame.
+
 - In vim mode the cursor is half a block while an operator, as `d`,
   waits for its motion, and the text yanked lights up for a moment.
 - Vim mode searches: `/` and `?` open a command line over the bottom

@@ -919,6 +919,9 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 			if k := d.vim.pending(); k != "" {
 				used += measure(k, false)
 			}
+			if a.vimRec != 0 {
+				used += measure(locales.VimRecording(string(a.vimRec)), false) + 6 + 5
+			}
 			if m := a.vimMsg; m.text != "" && time.Since(m.at) < vimMessageFor {
 				used += min(measure(m.text, false), 420) + 6
 			}
@@ -977,6 +980,15 @@ func (a *app) vimBadge(c *ui.Context, v *vimState, text func(string) ui.Element)
 	row.Children(func() {
 		ui.Text(c, v.mode.String()).FontSize(10.5).FontWeight(650).LetterSpacing(0.6).TextColor(fg).SingleLine().
 			Padding(1, 6).Radius(4).Background(bg).ContentTransition(ui.ContentTransition{})
+		if a.vimRec != 0 {
+			// A register recording, as vim says: a red dot, and its name.
+			ui.Row(c.Key("status:vim-rec")).Gap(5).AlignItems(ui.Center).
+				Transition(ui.ElementTransition{Duration: 160 * time.Millisecond, Enter: &ui.Motion{Scale: 0.8}, Exit: &ui.Motion{Scale: 0.8}}).
+				Children(func() {
+					ui.Box(c).Width(6).Height(6).Radius(3).Background(p.dangerFg)
+					ui.Text(c, locales.VimRecording(string(a.vimRec))).FontSize(11.5).TextColor(p.dangerFg).SingleLine()
+				})
+		}
 		if k := v.pending(); k != "" {
 			text(k)
 		}

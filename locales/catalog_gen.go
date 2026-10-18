@@ -8863,6 +8863,26 @@ func (msgs Messages) VimCommandLine() string {
 	return Catalog.Format(msgs.locale, "vimCommandLine", nil)
 }
 
+// VimMarkNotSet says "Mark not set: {mark}"
+// in the language the app shows.
+func VimMarkNotSet(mark string) string { return In(i18n.Locale()).VimMarkNotSet(mark) }
+
+// VimMarkNotSet says "Mark not set: {mark}"
+// in the language of msgs.
+func (msgs Messages) VimMarkNotSet(mark string) string {
+	return Catalog.Format(msgs.locale, "vimMarkNotSet", map[string]any{"mark": mark})
+}
+
+// VimMarksEmpty says "No marks set"
+// in the language the app shows.
+func VimMarksEmpty() string { return In(i18n.Locale()).VimMarksEmpty() }
+
+// VimMarksEmpty says "No marks set"
+// in the language of msgs.
+func (msgs Messages) VimMarksEmpty() string {
+	return Catalog.Format(msgs.locale, "vimMarksEmpty", nil)
+}
+
 // VimMatchCount says "[{cur}/{total}]"
 // in the language the app shows.
 func VimMatchCount(cur int, total int) string { return In(i18n.Locale()).VimMatchCount(cur, total) }
@@ -8891,6 +8911,26 @@ func VimPatternNotFound(pattern string) string { return In(i18n.Locale()).VimPat
 // in the language of msgs.
 func (msgs Messages) VimPatternNotFound(pattern string) string {
 	return Catalog.Format(msgs.locale, "vimPatternNotFound", map[string]any{"pattern": pattern})
+}
+
+// VimRecording says "recording @{reg}"
+// in the language the app shows.
+func VimRecording(reg string) string { return In(i18n.Locale()).VimRecording(reg) }
+
+// VimRecording says "recording @{reg}"
+// in the language of msgs.
+func (msgs Messages) VimRecording(reg string) string {
+	return Catalog.Format(msgs.locale, "vimRecording", map[string]any{"reg": reg})
+}
+
+// VimRegistersEmpty says "The registers are empty"
+// in the language the app shows.
+func VimRegistersEmpty() string { return In(i18n.Locale()).VimRegistersEmpty() }
+
+// VimRegistersEmpty says "The registers are empty"
+// in the language of msgs.
+func (msgs Messages) VimRegistersEmpty() string {
+	return Catalog.Format(msgs.locale, "vimRegistersEmpty", nil)
 }
 
 // VimSearchHint says "Search, as a vim pattern"

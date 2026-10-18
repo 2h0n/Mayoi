@@ -48,6 +48,32 @@ keys[T8] = ["/beta<CR>", "/beta<CR>n", "/beta<CR>nn", "/beta<CR>N", "?alpha<CR>"
     "G$<C-x>", "G10<C-x>", "vjy0gvd", "vey$gvd", "Vjyjgvd", "vjd.gvy", "vjy:'<,'>d<CR>"]
 keys[T9] = [":sort<CR>", ":sort!<CR>", ":sort u<CR>", ":sort n<CR>", ":2,4sort<CR>", "Vjj:sort<CR>", ":sort i<CR>"]
 
+# Counts before an insert, registers, marks, and r<CR> in an indent.
+keys[T1] += ["3ix<Esc>", "3ax<Esc>", "3Ax<Esc>", "3Ix<Esc>", "2ox<Esc>", "2Ox<Esc>", "3ix<Esc>.", "3ix<Esc>j.",
+    "2Ax<Esc>j.", "2ox<Esc>.", "3iab<Esc>", "2a<CR><Esc>", "\"ayy\"ap", "\"ayyj\"aP", "\"ayw\"bywj\"ap\"bp",
+    "\"Ayy\"ap", "\"ayyj\"Ayy\"ap", "\"ayw\"Aywj\"aP", "\"_ddp", "yyj\"_ddp", "yiwdd\"0P", "dddd\"1p\"2p",
+    "dw\"-P", "\"add\"ap", "3\"ayy\"ap", "\"a3yy\"ap", "\"ay$\"ap", "wmajj`ax", "wmajj'ax", "jmakd'a",
+    "jjmaggy'ap", "wmabd`a", "jmaggd`a", "Gmagg``x", "G''x", "Gggx``x", "/two<CR>``x", "jmaG'a''x", "yyjgpx",
+    "yiwgPx", "yyjgPx", "jf(dib", "jfxd[(", "jfxd])", "jfx[(x", "jfx])x", "jfxc[(z<Esc>"]
+T10 = "<ul>\n  <li class=\"a\">one <b>two</b></li>\n  <li>three</li>\n</ul>\n"
+T11 = "f(a, g(b, c), d)\nif (x) { y(); }\n"
+T12 = "1 one\n2 two\n3 three\n4 four\n5 five\n6 six\n"
+keys[T3] += ["jjf\"r<CR>", "jjfyr<CR>"]
+keys[T2] += ["ixy<Esc>\".p", ":s/a/b/<CR>j&", ":s/a/b/g<CR>j&", ":s/a/b/<CR>g&", ":2,3m0<CR>", ":1m$<CR>",
+    ":1m2<CR>", ":3m1<CR>", ":1t.<CR>", ":1,2t$<CR>", ":3t0<CR>", ":1co2<CR>", "yy:3pu<CR>", "yy:pu!<CR>",
+    ":%norm Ax<CR>", ":%norm! Ix<CR>", ":2,3norm dw<CR>", ":norm 2x<CR>", ":%norm $x<CR>", ":g/a/d<CR>",
+    ":v/a/d<CR>", ":g!/a/d<CR>", ":g/i/s/i/I/<CR>", ":g/a/norm Ax<CR>", ":g/e/m0<CR>", ":2,3g/./d<CR>",
+    ":g/third/d<CR>", ":g/alpha/d<CR>u"]
+keys[T5] += [":g/[bd]/d<CR>", ":g/./m0<CR>", ":g/./t.<CR>", ":%norm Ax<CR>u", "dd:g/c/norm dd<CR>",
+    ":2,4norm Ax<CR>", "\"ayyj\"byyG\"ap\"bp"]
+keys[T10] = ["jfodit", "jfodat", "jfociti<Esc>", "jfwdit", "jfwd2it", "jfwdat", "jjditkdit", "dit", "jfwyitP",
+    "jfwvitd", "jfwvatd", "jjfhcitX<Esc>", "jfw2dit", "jdit"]
+keys[T11] = ["fbd[(", "fbd])", "fbc[(z<Esc>", "fb[(x", "fb])x", "fb2[(x", "jfyd[{", "jfyd]}", "jfy[{x", "jfy]}x",
+    "fad])", "fd[(x", "f,[(x"]
+keys[T12] = [":2,4norm Ax<CR>", ":g/[24]/d<CR>", ":g/o/norm A!<CR>", ":v/o/d<CR>", ":2,5m0<CR>", ":4,5m1<CR>",
+    ":2m4<CR>", ":5m2<CR>", ":2,3t5<CR>", ":g/^/m0<CR>", ":g/e$/s/e/E/<CR>", "3Gma5Gd'a", "3Gma5Gy'aP",
+    "3Gmb:'b,$d<CR>", "jVj:norm Ax<CR>"]
+
 
 def vim_keys(keys):
     out = keys.replace("\\", "\\\\").replace('"', '\\"')

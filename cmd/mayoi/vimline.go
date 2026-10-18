@@ -84,6 +84,9 @@ const vimMessageFor = 4 * time.Second
 
 // vimSay shows a message of vim mode in the status bar.
 func (a *app) vimSay(text string, err bool) {
+	if err {
+		a.vimFailed = true // which ends the keys playing
+	}
 	a.vimMsg = vimMessage{text: text, err: err, at: time.Now()}
 	a.invalidate()
 	// A frame once it is over, which leaves it out.
@@ -135,6 +138,7 @@ func (a *app) vimSubmit() {
 	if d == nil {
 		return
 	}
+	a.vimRecordText(text + "\r")
 	if text != "" {
 		h := a.vimHistory(kind)
 		*h = slices.DeleteFunc(*h, func(s string) bool { return s == text })
@@ -421,20 +425,53 @@ func (a *app) vimMatches(d *editor, snap ui.TextSnapshot, first, last int) []mat
 		return nil
 	}
 	caret := vimCursor(d, snap)
-	var out []matchRect
+	// The matches found for the frame before, as long as nothing they
+	// follow from changed: most frames draw the same.
+	k := &d.vimShown
+	key := vimShownKey{pattern, snap.Version(), first, last, caret, a.font}
+	if k.found && k.key == key {
+		return k.rects
+	}
+	out := k.rects[:0]
 	for l := first; l <= last && l < snap.LineCount() && len(out) < 500; l++ {
 		ls, le := snap.LineRange(l)
+		long := le-ls > highlightRunes
 		vimLineMatches(snap, re, l, func(s, e int) bool {
 			if e == s {
 				return true // nothing to show of an empty match, as ^
 			}
-			x0 := a.textWidth(snap.Slice(ls, s))
-			x1 := a.textWidth(snap.Slice(ls, min(e, le)))
+			var x0, x1 float32
+			if long {
+				// Cells rather than the text laid out, as for the
+				// cursor, along a line too long to measure every frame.
+				x0, x1 = float32(s-ls)*a.font.charW, float32(min(e, le)-ls)*a.font.charW
+			} else {
+				x0 = a.textWidth(snap.Slice(ls, s))
+				x1 = a.textWidth(snap.Slice(ls, min(e, le)))
+			}
 			out = append(out, matchRect{line: l, x0: x0, x1: max(x1, x0+2), cur: s == caret})
 			return len(out) < 500
 		})
 	}
+	k.key, k.rects, k.found = key, out, true
 	return out
+}
+
+// vimShownKey is what the matches an editor highlights follow from.
+type vimShownKey struct {
+	pattern     string
+	version     uint64
+	first, last int
+	caret       int
+	font        codeFont
+}
+
+// vimShownMatches are the matches an editor highlighted last, and what
+// they followed from.
+type vimShownMatches struct {
+	key   vimShownKey
+	rects []matchRect
+	found bool
 }
 
 // vimSearchMotion is the motion of n, N, * and #: the match of the last
@@ -587,6 +624,7 @@ func (a *app) vimLineView(c *ui.Context, d *editor) {
 				}
 			case ev.Mods == 0 && ev.Key == ui.KeyBackspace && l.text == "",
 				ev.Mods == ui.Ctrl && (ev.Key == ui.KeyBracketLeft || ev.Key == ui.KeyC && ui.Cmd != ui.Ctrl):
+				a.vimRecordText(l.text + "\x1b")
 				a.vimCloseLine(false)
 			default:
 				return false
@@ -623,6 +661,7 @@ func (a *app) vimLineView(c *ui.Context, d *editor) {
 		}
 	})
 	if bar.OverlayShortcut(0, ui.KeyEscape) || bar.Shortcut(0, ui.KeyEscape) {
+		a.vimRecordText(l.text + "\x1b")
 		a.vimCloseLine(false)
 	}
 }
@@ -630,7 +669,7 @@ func (a *app) vimLineView(c *ui.Context, d *editor) {
 // vimRangeOf reads the lines a command goes over, as vim writes them
 // before it: a line (a number, . $ or '< '>, then +n or -n), two with a
 // comma between, or % for all. It reports false when there is none.
-func vimRangeOf(s string, snap ui.TextSnapshot, cur int, vis vimVisualArea) (l1, l2 int, rest string, has bool) {
+func vimRangeOf(s string, snap ui.TextSnapshot, cur int, vis vimVisualArea, marks map[rune]int) (l1, l2 int, rest string, has bool) {
 	last := vimLast(snap)
 	if r, ok := strings.CutPrefix(s, "%"); ok {
 		return 0, last, r, true
@@ -657,6 +696,11 @@ func vimRangeOf(s string, snap ui.TextSnapshot, cur int, vis vimVisualArea) (l1,
 				l = snap.LineAt(min(hi, snap.Len()))
 			}
 			s, got = s[2:], true
+		case len(s) > 1 && s[0] == '\'' && marks != nil:
+			// A mark's line, as 'a.
+			if at, ok := marks[rune(s[1])]; ok {
+				l, s, got = snap.LineAt(min(at, snap.Len())), s[2:], true
+			}
 		}
 		for len(s) > 0 && (s[0] == '+' || s[0] == '-') {
 			sign := 1
@@ -697,7 +741,10 @@ func (a *app) vimEx(d *editor, text string) {
 	snap := d.buf.Snapshot()
 	text = strings.TrimSpace(text)
 	text = strings.TrimLeft(text, ":")
-	l1, l2, rest, has := vimRangeOf(text, snap, d.sel[1], d.vim.lastVisual)
+	if text != "" {
+		a.vimLastEx = text
+	}
+	l1, l2, rest, has := vimRangeOf(text, snap, d.sel[1], d.vim.lastVisual, d.marks)
 	rest = strings.TrimSpace(rest)
 	name := rest
 	for i, r := range rest {
@@ -716,8 +763,22 @@ func (a *app) vimEx(d *editor, text string) {
 		name, arg = rest[:1], strings.TrimSpace(rest[1:])
 	}
 	is := func(names ...string) bool { return slices.Contains(names, name) }
+	if !has {
+		// The cursor's line, but for the commands of the whole text.
+		l1 = snap.LineAt(min(d.sel[1], snap.Len()))
+		l2 = l1
+	}
+	// The register of :d, :y and :pu, as :d a.
+	d.vim.reg = 0
+	if r, n := utf8.DecodeRuneInString(arg); n == len(arg) && n > 0 && vimRegisterName(r) && !unicode.IsDigit(r) &&
+		is("d", "de", "del", "delete", "y", "ya", "yank", "pu", "put") {
+		d.vim.reg = r
+	}
 	switch {
 	case name == "" && has:
+		if snap.LineAt(min(d.sel[1], snap.Len())) != l2 {
+			vimPushJump(d, d.sel[1])
+		}
 		vimPut(d, firstNonBlank(snap, l2))
 	case name == "":
 	case is("w", "write", "up", "update"):
@@ -736,31 +797,48 @@ func (a *app) vimEx(d *editor, text string) {
 	case is("noh", "nohl", "nohlsearch"):
 		a.vimSearch.show = false
 	case is("s", "su", "substitute"):
-		if !has {
-			l1, l2 = snap.LineAt(d.sel[1]), snap.LineAt(d.sel[1])
-		}
 		a.vimSubstitute(d, l1, l2, arg)
+	case is("&", "&&"):
+		a.vimRepeatSub(d, d.sel[1], false)
 	case is("d", "de", "del", "delete"):
-		if !has {
-			l1, l2 = snap.LineAt(d.sel[1]), snap.LineAt(d.sel[1])
-		}
 		a.vimApply(d, "d", vimRange{linewise: true, l1: l1, l2: l2}, d.sel[1])
 	case is("y", "ya", "yank"):
-		if !has {
-			l1, l2 = snap.LineAt(d.sel[1]), snap.LineAt(d.sel[1])
-		}
-		a.vimYank(snap, vimRange{linewise: true, l1: l1, l2: l2})
+		a.vimYank(d, snap, vimRange{linewise: true, l1: l1, l2: l2}, false)
+	case is("pu", "put"):
+		a.vimPutLines(d, d.vim.reg, l2, bang)
 	case is(">", "<"):
-		if !has {
-			l1, l2 = snap.LineAt(d.sel[1]), snap.LineAt(d.sel[1])
-		}
 		a.vimApply(d, name, vimRange{linewise: true, l1: l1, l2: l2}, d.sel[1])
 	case is("j", "join"):
 		if !has {
-			l1, l2 = snap.LineAt(d.sel[1]), snap.LineAt(d.sel[1])+1
+			l2 = l1 + 1
 		}
 		vimJoin(d, l1, max(l2-l1+1, 2))
 		vimPut(d, firstNonBlank(d.buf.Snapshot(), l1))
+	case is("m", "mo", "move", "t", "co", "copy"):
+		to, ok := vimAddress(arg, snap, d.sel[1], d.vim.lastVisual, d.marks)
+		if !ok {
+			a.vimSay(locales.VimNotCommand(text), true)
+			return
+		}
+		vimMoveLines(d, l1, l2, to, !is("m", "mo", "move"))
+	case is("norm", "normal"):
+		a.vimNormalEx(d, l1, l2, has, strings.TrimLeft(rest[len(name):], " !"))
+	case is("g", "global", "v", "vglobal"):
+		if !has {
+			l1, l2 = 0, vimLast(snap)
+		}
+		a.vimGlobal(d, l1, l2, arg, bang || name[0] == 'v')
+	case is("reg", "registers", "di", "display"):
+		a.vimRegisters(arg)
+	case is("marks"):
+		a.vimMarks(d)
+	case is("delm", "delmarks"):
+		for _, r := range arg {
+			delete(d.marks, r)
+		}
+		if bang {
+			clear(d.marks)
+		}
 	case is("sor", "sort"):
 		if !has {
 			l1, l2 = 0, vimLast(snap)
@@ -838,6 +916,7 @@ func (a *app) vimSubstitute(d *editor, l1, l2 int, arg string) {
 		return
 	}
 	a.vimSearch.pattern, a.vimSearch.back = strings.TrimSuffix(strings.TrimSuffix(pattern, `\c`), `\C`), false
+	a.vimLastSub = arg
 	all := strings.Contains(flags, "g")
 	tmpl := vimTemplate(rep)
 	var edits []textEdit

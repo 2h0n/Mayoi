@@ -1092,6 +1092,8 @@
   "uploadTo": "Upload to {dir}",
   "vimCommandHint": "Command, as w, s/old/new/g or 42",
   "vimCommandLine": "Vim command line",
+  "vimMarkNotSet": "Mark not set: {mark}",
+  "vimMarksEmpty": "No marks set",
   "vimMatchCount": "[{cur}/{total}]",
   "@vimMatchCount": {
     "placeholders": {
@@ -1105,6 +1107,8 @@
   },
   "vimNotCommand": "Not an editor command: {cmd}",
   "vimPatternNotFound": "Pattern not found: {pattern}",
+  "vimRecording": "recording @{reg}",
+  "vimRegistersEmpty": "The registers are empty",
   "vimSearchHint": "Search, as a vim pattern",
   "vimSubstituted": "{count, plural, one {# substitution} other {# substitutions}} on {lines, plural, one {# line} other {# lines}}",
   "vimWrappedBottom": "Search hit TOP, continuing at BOTTOM",

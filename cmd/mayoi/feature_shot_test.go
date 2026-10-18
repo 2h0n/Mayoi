@@ -312,6 +312,12 @@ func TestFeatVim(t *testing.T) {
 		hs.settle()
 		hs.fshot("06-vim-command", dark)
 		hs.tt.Key(0, ui.KeyEscape)
+		hs.settle()
+		// A register recording, in the status bar.
+		hs.vim("qa")
+		hs.settle()
+		hs.fshot("06-vim-record", dark)
+		hs.vim("q")
 	})
 }
 
