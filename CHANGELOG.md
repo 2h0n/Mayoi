@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.1
 
 - On Windows, the Undo, Discard and Reset dialogs and the repository
   headers name a submodule with `/`, as `packages/module`, like the other
