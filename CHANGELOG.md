@@ -5,6 +5,11 @@ needs a `## <version>` section here, or its build fails.
 
 ## 0.11.1
 
+- **Folders of projects in Source Control:** a folder that is not a Git
+  repository but holds some, as `workspace/project-a`, or two folders deep,
+  lists each one's changes to stage and commit, as submodules are, instead
+  of offering to make the folder a repository. A project cloned or removed
+  later is added or dropped (#17).
 - On Windows, the Undo, Discard and Reset dialogs and the repository
   headers name a submodule with `/`, as `packages/module`, like the other
   systems.
