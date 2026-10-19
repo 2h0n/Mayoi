@@ -338,9 +338,9 @@ a new column.
 
 Choose **Lock Column** in a tab's menu to keep a column for terminals, or **Move to Locked Right Column** in a
 terminal tab's or panel terminal's menu to move the running terminal there in one step. The lock in the tab strip unlocks
-the column. Files, images and diffs opened from the Explorer, Search, Quick Open or Source Control go to the unlocked
-column that has the keyboard, or the one used last when a locked column has it. Dragging a tab or file into a locked
-column still puts it there. Closing files keeps at least one unlocked column beside the locked ones, without widening
+the column. Files, images and diffs opened from the Explorer, Search, Quick Open or Source Control, and terminals from
+**New Terminal in Editor Area**, go to the unlocked column that has the keyboard, or the one used last when a locked
+column has it. Dragging a tab or file into a locked column still puts it there. Closing files keeps at least one unlocked column beside the locked ones, without widening
 them, and ⌘W closes an extra empty column. A locked column stays when its last terminal exits and offers **New
 Terminal**. Locks, widths and the last file column come back with each project's session. The command palette has
 **Toggle Column Lock** and **Move Terminal to Locked Right Column**, which take keyboard shortcuts.

@@ -153,7 +153,7 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		{"review.clear", t.CmdReviewClear(), "", a.clearReview},
 		{"view.terminal", t.CmdViewTerminal(), "Ctrl+`", a.togglePanel},
 		{"view.newTerminal", t.CmdViewNewTerminal(), "Ctrl+Shift+`", a.newTerminal},
-		{"view.terminalTab", t.CmdViewTerminalTab(), "", func() { a.newTerminalTab(a.column(), a.workDir(), true) }},
+		{"view.terminalTab", t.CmdViewTerminalTab(), "", func() { a.newTerminalTab(a.fileColumn(), a.workDir(), true) }},
 		{"view.terminalMove", t.CmdViewTerminalMove(), "", a.moveTerminal},
 		{"view.terminalLockRight", t.CmdViewTerminalLockRight(), "", a.moveTerminalToLockedRight},
 		{"view.panelPosition.bottom", t.CmdViewPanelBottom(), "", func() { a.setPanelPosition("") }},

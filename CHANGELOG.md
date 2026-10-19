@@ -3,6 +3,11 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- New Terminal in Editor Area opens in an unlocked column when a locked
+  one has the keyboard, as files do.
+
 ## 0.11.1
 
 - **Folders of projects in Source Control:** a folder that is not a Git
