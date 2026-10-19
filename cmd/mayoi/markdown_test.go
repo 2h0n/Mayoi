@@ -1007,3 +1007,58 @@ func TestMarkdownScrollSync(t *testing.T) {
 		t.Fatalf("the text is at line %d, the preview at %q (line %d, %d)", top, heading, want, n)
 	}
 }
+
+func TestMarkdownToggleKeepsPlace(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	doc := markdownSyncDoc()
+	os.WriteFile(hs.path("sync.md"), []byte(doc), 0o644)
+	a.openFile(hs.path("sync.md"), true)
+	hs.settle()
+	d := a.activeEditor()
+	lineOf := func(heading string) int {
+		return strings.Count(doc[:strings.Index(doc, "## "+heading+"\n")], "\n")
+	}
+	d.vscroll.Y = editorPadY + float32(lineOf("Section 60"))*a.font.lineH
+	hs.settle()
+	// The preview opens where the text was.
+	a.run("view.togglePreview")
+	hs.until("preview", func() bool { return d.preview != nil && d.preview.loaded })
+	for range 6 {
+		hs.settle()
+	}
+	m := d.preview.markdown
+	pane, ok := hs.tt.Find(locales.PreviewLabel("sync.md"))
+	if !ok {
+		t.Fatal("no preview")
+	}
+	topHeading := func() string {
+		first, last := m.list.Visible()
+		for i := max(first, 0); i <= last; i++ {
+			if m.blocks[i].kind != markdownHeading {
+				continue
+			}
+			h := markdownRunsText(m.blocks[i].runs)
+			if r, ok := hs.tt.Find(h); ok && r.Y+r.H > pane.Y+1 {
+				return h
+			}
+		}
+		return ""
+	}
+	if h := topHeading(); h != "Section 60" {
+		t.Fatalf("the preview opened at %q, not section 60", h)
+	}
+	// The text opens where the preview was.
+	for range 20 {
+		hs.tt.Scroll(pane.X+pane.W/2, pane.Y+pane.H/2, 0, 120)
+		hs.settle()
+	}
+	heading := topHeading()
+	a.run("view.togglePreview")
+	hs.settle()
+	hs.settle()
+	top := a.geometry(d, d.buf.Snapshot().LineCount()).at(d.vscroll.Y - editorPadY)
+	if want := lineOf(heading); top < want-4 || top > want+4 {
+		t.Fatalf("the text opened at line %d, the preview was at %q, line %d", top, heading, want)
+	}
+}

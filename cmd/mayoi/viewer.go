@@ -522,9 +522,25 @@ func (a *app) setPreview(d *editor, on bool) {
 	if on {
 		d.preview = newPreviewViewer(d.document)
 		if isMarkdown(d.document) {
-			d.preview.markdown = &markdownPreview{}
+			// It opens where the text is.
+			m := &markdownPreview{}
+			y := d.vscroll.Y
+			if d.hidden {
+				y = d.hiddenY
+			}
+			m.sync.want, m.sync.placing = a.textPlace(d, y), true
+			d.preview.markdown = m
 		}
 	} else {
+		if m := d.preview.markdown; m != nil && m.lines > 0 {
+			// The text opens where the preview was.
+			y := a.textY(d, m.sync.top)
+			if d.hidden {
+				d.hiddenY = y
+			} else {
+				d.vscroll.Y = y
+			}
+		}
 		d.preview.stop()
 		d.preview = nil
 	}

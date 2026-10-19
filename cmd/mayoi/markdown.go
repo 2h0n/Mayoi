@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"cmp"
 	"html"
 	"maps"
@@ -45,6 +46,8 @@ type markdownPreview struct {
 	// words are the words of the text, outside its code, and minutes how
 	// long it takes to read, which the status bar shows.
 	words, minutes int
+	// lines are the lines of the text parsed.
+	lines int
 	sync           markdownSync
 	cache          markdownCache
 	root           string
@@ -872,6 +875,7 @@ func (a *app) followMarkdown(v *viewer) {
 				m.blocks, m.slugs = blocks, slugs
 				clear(m.tables)
 				m.words, m.minutes = words, minutes
+				m.lines = bytes.Count(source, []byte{'\n'}) + 1
 				// The rows moved: the preview takes the text's place again.
 				m.sync.resync = true
 				v.version = ver

@@ -30,6 +30,9 @@ needs a `## <version>` section here, or its build fails.
   column: scrolling the text, by the wheel, the keys, Find or Go to Line,
   brings the preview to the same place, block by block and within a
   block, and scrolling the preview brings the text along.
+- Switching between a Markdown file's text and its preview keeps the
+  place: the preview opens where the text was, and the text where the
+  preview was.
 - A Markdown table is as wide as its text, measured in the preview's
   font, with round corners, its cells in a row as tall as the tallest.
 - The status bar of a Markdown preview counts the words of the text, a
@@ -119,7 +122,6 @@ needs a `## <version>` section here, or its build fails.
 - Vim mode's search highlights draw from what the last frame found
   while nothing changed, rather than searching the lines in view every
   frame.
-
 - In vim mode the cursor is half a block while an operator, as `d`,
   waits for its motion, and the text yanked lights up for a moment.
 - Vim mode searches: `/` and `?` open a command line over the bottom
@@ -230,7 +232,6 @@ needs a `## <version>` section here, or its build fails.
 - Typing in a long file highlights with less work: only the lines near the
   edit go to the lexer, not the rest of the file, and a keystroke within a
   line updates the colors in place rather than copying those of every line.
-
 - **Submodules in Source Control:** each initialized submodule, nested ones
   and those of linked worktrees too, lists its own changes to stage and
   commit. A picker in the commits header and the status bar shows another
