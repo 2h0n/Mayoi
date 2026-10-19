@@ -704,7 +704,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 		m.measure, _ = ui.ShapeText(strings.Repeat("0", 120), font, 0).Size()
 	}
 	width := min(m.measure, max(1, v.pane.Bounds(c).W-2*textPadR))
-	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label(locales.PreviewLabel(name)).Padding(editorPadY, textPadR).Rows(func(row ui.ListRow) {
+	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label(locales.PreviewLabel(name)).Padding(editorPadY, textPadR).Selectable().Rows(func(row ui.ListRow) {
 		c := row.Context
 		b := m.blocks[row.Index]
 		top, bottom := a.markdownSpacing(b)
@@ -749,7 +749,8 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							}
 						})
 					} else {
-						ui.Text(c, b.marker).Width(size * b.markerWidth).TextColor(p.text).FontSize(size).LineHeight(a.settings.LineHeight)
+						// A list's number stays out of what is selected and copied.
+						ui.Text(c, b.marker).Width(size * b.markerWidth).TextColor(p.text).FontSize(size).LineHeight(a.settings.LineHeight).Unselectable()
 					}
 				}
 

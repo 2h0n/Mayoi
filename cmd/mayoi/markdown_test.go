@@ -271,6 +271,29 @@ func TestMarkdownPreviewColumn(t *testing.T) {
 	}
 }
 
+func TestMarkdownPreviewSelect(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	os.WriteFile(hs.path("README.md"), []byte("# Title\n\nSome prose.\n\n1. First\n2. Second\n"), 0o644)
+	a.openFile(hs.path("README.md"), true)
+	d := a.activeEditor()
+	a.run("view.togglePreview")
+	hs.until("preview", func() bool { return d.preview.loaded })
+	hs.settle()
+	r, ok := hs.tt.Find("Some prose.")
+	if !ok {
+		t.Fatal("paragraph not shown")
+	}
+	hs.tt.ClickAt(r.X+r.W/2, r.Y+r.H/2)
+	hs.tt.Key(ui.Cmd, ui.KeyA)
+	hs.tt.Key(ui.Cmd, ui.KeyC)
+	hs.settle()
+	// Every block shares one selection; a list's numbers are left out.
+	if got, want := hs.tt.Clipboard(), "Title\nSome prose.\nFirst\nSecond"; got != want {
+		t.Fatalf("copied %q, want %q", got, want)
+	}
+}
+
 func TestMarkdownLiveSplitAndScroll(t *testing.T) {
 	hs := newHarness(t, true)
 	a := hs.a
