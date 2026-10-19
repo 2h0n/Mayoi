@@ -271,6 +271,9 @@ func (a *app) tabMenu(m *ui.Menu, col *column, t *colTab, closing **colTab) {
 		if m.Item(label).Chosen() {
 			show(func() { a.setPreview(d, d.preview == nil); a.focusColumn() })
 		}
+		if m.Item(locales.CmdViewPreviewToSide()).Chosen() {
+			show(a.previewToSide)
+		}
 	}
 	path := t.path()
 	if t.diff != nil {

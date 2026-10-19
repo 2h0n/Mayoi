@@ -411,6 +411,10 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 		if shown.W <= 0 || shown.H <= 0 {
 			return
 		}
+		if at.W < r.W && at.H < r.H {
+			// A soft shadow lifts a picture that fits off the pane.
+			pt.Shadow(at, 0, 0, 6, 24, 0, p.shadow)
+		}
 		pt.Clip(shown, 0, func() {
 			// The checks start at the picture's corner, as it moves.
 			tile := checkers(p.dark)
@@ -528,6 +532,30 @@ func (a *app) togglePreview() {
 	if d := a.activeEditor(); d != nil && canPreview(d.document) {
 		a.setPreview(d, d.preview == nil)
 		a.focusColumn()
+	}
+}
+
+// previewToSide shows the preview of the document shown in a column to
+// the right, beside its text, which keeps the keyboard.
+func (a *app) previewToSide() {
+	d := a.activeEditor()
+	if d == nil || !canPreview(d.document) {
+		return
+	}
+	if d.preview != nil {
+		// The preview is shown already: the text goes beside it.
+		a.setPreview(d, false)
+	}
+	src := a.column()
+	a.splitRight()
+	side := a.activeEditor()
+	// The text takes the keyboard back before the preview is shown, which
+	// would take it.
+	if col, i := a.locate(src.tab()); col != nil {
+		a.activate(col, i, true)
+	}
+	if side != nil && side != d && side.document == d.document {
+		a.setPreview(side, true)
 	}
 }
 

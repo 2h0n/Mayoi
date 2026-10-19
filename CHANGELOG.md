@@ -7,6 +7,25 @@ needs a `## <version>` section here, or its build fails.
 
 - The Markdown preview's text can be selected and copied, across
   paragraphs, lists, code and tables; a list's numbers stay out of it.
+- **A redesigned Markdown preview:** headings scaled as GitHub scales
+  them, code within text on a rounded chip, blocks of code on cards with
+  their language in the corner and a Copy Code button under the pointer,
+  tables whose columns are as wide as their text asks, with striped rows,
+  and a picture not shown as its alt text on a chip.
+- The Markdown preview shows GitHub's alerts, a quote that opens with
+  `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]`, with
+  its icon, its title and its color.
+- A link to a heading of the document, as `[Usage](#usage)`, scrolls the
+  Markdown preview to it.
+- **Open Preview to the Side**, in the View menu, the command palette and
+  a tab's menu, shows the preview of a Markdown or SVG file in a column to
+  the right, the text keeping the keyboard. VS Code's
+  `markdown.showPreviewToSide` binds to it.
+- An empty Markdown document's preview says there is nothing to preview,
+  rather than showing a blank pane.
+- The Markdown preview parses and draws faster, its text in fewer runs.
+- A picture that fits the image viewer or an SVG preview casts a soft
+  shadow.
 
 ## 0.11.2
 

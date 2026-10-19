@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -397,7 +398,7 @@ func TestShotMarkdown(t *testing.T) {
 	blocks := parseMarkdown([]byte("中文斜体 *中文斜体* italic *italic*"), "", "", nil)
 	img := ui.Render(func(c *ui.Context) {
 		ui.Box(c).Fill().Background(hs.a.pal.editor).Padding(16).Children(func() {
-			hs.a.markdownText(c, blocks[0].runs, 24, false, "", "", false)
+			hs.a.markdownText(c, nil, "", blocks[0].runs, 24, false, false)
 		})
 	}, 640, 72, 2)
 	f, err := os.Create(filepath.Join(os.Getenv("SHOTS"), "mayoi-md-italic.png"))
@@ -408,14 +409,6 @@ func TestShotMarkdown(t *testing.T) {
 	if err := png.Encode(f, img); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func markdownRunsText(runs []markdownInline) string {
-	var b strings.Builder
-	for _, r := range runs {
-		b.WriteString(r.text)
-	}
-	return b.String()
 }
 
 func TestMarkdownLocalImagesAndLinks(t *testing.T) {
@@ -635,24 +628,24 @@ func TestMarkdownInlineStyles(t *testing.T) {
 			a.pal = paletteFor(theme, dark)
 			p := a.pal
 			for _, run := range []markdownInline{{text: "deleted", strike: true}, {text: "deleted link", strike: true, link: "https://example.com"}} {
-				span := a.markdownSpan(run, p.text, false)
+				span := a.markdownSpan(run, p.text, 13, false)
 				if span.DecorationColor.A == 0 || span.DecorationColor != span.Color {
 					t.Fatalf("decoration: %+v", span)
 				}
 			}
-			code := a.markdownSpan(markdownInline{text: "code", code: true}, p.text, false)
+			code := a.markdownSpan(markdownInline{text: "code", code: true}, p.text, 13, false)
 			if code.Background.A == 0 || code.Background == p.editor || code.Color.A == 0 {
 				t.Fatalf("inline code: %+v", code)
 			}
-			if code.Font != a.settings.FontFamily || code.Weight != 500 || code.Features != "calt=0,ss01" || code.Text != "\u2009code\u2009" {
+			if code.Font != a.settings.FontFamily || code.Weight != 500 || code.Features != "calt=0,ss01" || code.Text != "\u2009code\u2009" || code.Radius == 0 || code.Size != 13*0.9 {
 				t.Fatalf("code font/padding: %+v", code)
 			}
-			latin := a.markdownSpan(markdownInline{text: "italic", italic: true}, p.text, false)
-			cjk := a.markdownSpan(markdownInline{text: "中文斜体", italic: true}, p.text, false)
+			latin := a.markdownSpan(markdownInline{text: "italic", italic: true}, p.text, 13, false)
+			cjk := a.markdownSpan(markdownInline{text: "中文斜体", italic: true}, p.text, 13, false)
 			if !latin.Italic || !cjk.Italic || latin.Color != p.text || cjk.Color != p.text {
 				t.Fatalf("italic styles: %+v / %+v", latin, cjk)
 			}
-			block := a.markdownSpan(markdownInline{text: "code", code: true}, p.text, true)
+			block := a.markdownSpan(markdownInline{text: "code", code: true}, p.text, 13, true)
 			if block.Background.A != 0 || block.Text != "code" {
 				t.Fatalf("block code: %+v", block)
 			}
@@ -670,7 +663,7 @@ func TestMarkdownFontAndZoom(t *testing.T) {
 	for _, size := range []float32{13, 18} {
 		a.settings.FontSize = size
 		tt := ui.NewTester(func(c *ui.Context) {
-			a.markdownText(c, []markdownInline{{text: "link", bold: true, italic: true, strike: true, code: true, link: "https://example.com"}}, size, false, "", "", false)
+			a.markdownText(c, nil, "", []markdownInline{{text: "link", bold: true, italic: true, strike: true, code: true, link: "https://example.com"}}, size, false, false)
 		}, 300, 80)
 		link, ok := tt.Find("Open link https://example.com")
 		if !ok || link.H < size {
@@ -681,7 +674,7 @@ func TestMarkdownFontAndZoom(t *testing.T) {
 		if bytes.Equal(before, tt.Image().Pix) {
 			t.Fatal("hover underline did not change link rendering")
 		}
-		if a.markdownSize(markdownBlock{kind: markdownParagraph}) != size || a.markdownSize(markdownBlock{kind: markdownHeading, level: 1}) != size*1.6 {
+		if a.markdownSize(markdownBlock{kind: markdownParagraph}) != size || a.markdownSize(markdownBlock{kind: markdownHeading, level: 1}) != size*2 {
 			t.Fatal("preview font does not follow settings")
 		}
 	}
@@ -742,5 +735,156 @@ func TestMarkdownImageSpacing(t *testing.T) {
 				t.Fatalf("repeated or missing marker: %+v", blocks)
 			}
 		}
+	}
+}
+
+// A shot of a long document, to look at the preview's parts.
+func TestShotMarkdownParts(t *testing.T) {
+	if os.Getenv("SHOTS") == "" {
+		t.Skip("SHOTS is not set")
+	}
+	for _, dark := range []bool{true, false} {
+		hs := newHarness(t, dark)
+		a := hs.a
+		os.WriteFile(hs.path("parts.md"), []byte(markdownPartsFixture), 0o644)
+		a.openFile(hs.path("parts.md"), true)
+		a.run("view.togglePreview")
+		hs.until("preview", func() bool { return a.activeEditor().preview.loaded })
+		hs.settle()
+		name := "markdown-parts-light"
+		if dark {
+			name = "markdown-parts-dark"
+		}
+		hs.shot(name)
+	}
+}
+
+const markdownPartsFixture = "## Alerts\n\n" +
+	"> [!NOTE]\n> Useful information that users should know.\n\n" +
+	"> [!IMPORTANT]\n> Key information users need to know.\n\n" +
+	"> [!WARNING]\n> Urgent info that needs immediate attention.\n\n" +
+	"> [!CAUTION]\n> Advises about risks of certain actions.\n\n" +
+	"### Contents\n\n1. [Alerts](#alerts)\n2. [Tables](#tables)\n\n" +
+	"## Tables\n\n| Key | Command | Notes |\n|:--|:--|--:|\n| `⌘P` | Quick open | 1 |\n| `⇧⌘F` | Find in files, with include and exclude globs | 2 |\n| `⌘\\\\` | Split right | 3 |\n| `⇧⌘V` | Toggle preview | 4 |\n\n" +
+	"---\n\n```js\nconst a = 1 // a comment\n```\n\n```\nplain\n```\n"
+
+func TestMarkdownAlerts(t *testing.T) {
+	src := "> [!NOTE]\n> Read this.\n\n> [!warning]\n> Careful **now**.\n> > Nested quote.\n\n> [!FOO]\n> Not an alert.\n\n> [!TIP]\n\n> Plain.\n"
+	blocks := parseMarkdown([]byte(src), "test.md", "", nil)
+	var got []string
+	for _, b := range blocks {
+		switch b.kind {
+		case markdownAlertTitle:
+			got = append(got, "title:"+strconv.Itoa(int(b.alert)))
+		default:
+			got = append(got, strconv.Itoa(int(b.alert))+"@"+strconv.Itoa(b.alertAt)+"/"+strconv.Itoa(b.quote)+":"+markdownRunsText(b.runs))
+		}
+	}
+	want := []string{
+		"title:1", "1@1/1:Read this.",
+		"title:4", "4@1/1:Careful now.", "4@1/2:Nested quote.",
+		"0@0/1:[!FOO] Not an alert.",
+		"title:2",
+		"0@0/1:Plain.",
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("alerts:\n got %q\nwant %q", got, want)
+	}
+}
+
+func TestMarkdownSlugsAndWidths(t *testing.T) {
+	blocks := parseMarkdown([]byte("# Hello, World!\n## Hello, World!\n### `Code` and 中文 _x_\n\n| a | a much longer column |\n|---|---|\n| 1 | 2 |\n"), "test.md", "", nil)
+	var slugs []string
+	var widths []float32
+	for _, b := range blocks {
+		if b.slug != "" {
+			slugs = append(slugs, b.slug)
+		}
+		if b.kind == markdownTable {
+			widths = b.widths
+			if b.row != 1 {
+				t.Fatalf("row %d", b.row)
+			}
+		}
+	}
+	if strings.Join(slugs, " ") != "hello-world hello-world-1 code-and-中文-x" {
+		t.Fatalf("slugs %q", slugs)
+	}
+	if len(widths) != 2 || widths[0] >= widths[1] || math.Abs(float64(widths[0]+widths[1]-1)) > 1e-5 {
+		t.Fatalf("widths %v", widths)
+	}
+}
+
+func TestMarkdownAnchorAndCopy(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	var body strings.Builder
+	body.WriteString("[Go to the end](#the-end)\n\n")
+	for i := range 80 {
+		body.WriteString("Paragraph " + strconv.Itoa(i) + ".\n\n")
+	}
+	body.WriteString("## The End\n\n```go\nfunc main() {}\n```\n")
+	os.WriteFile(hs.path("long.md"), []byte(body.String()), 0o644)
+	a.openFile(hs.path("long.md"), true)
+	a.run("view.togglePreview")
+	d := a.activeEditor()
+	hs.until("preview", func() bool { return d.preview.loaded })
+	hs.settle()
+	if hs.tt.HasText("The End") {
+		t.Fatal("the end shows already")
+	}
+	if err := hs.tt.Click("Open link #the-end"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if !hs.tt.HasText("The End") {
+		t.Fatal("the anchor did not scroll to its heading")
+	}
+	code, ok := hs.tt.Find("func main() {}")
+	if !ok {
+		t.Fatal("no code")
+	}
+	if hs.tt.HasText("Copy Code") {
+		t.Fatal("copy shows without the pointer")
+	}
+	hs.tt.Move(code.X+code.W/2, code.Y+code.H/2)
+	hs.settle()
+	if err := hs.tt.Click("Copy Code"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if got := a.services.ReadClipboard(); got != "func main() {}" {
+		t.Fatalf("clipboard %q", got)
+	}
+}
+
+func TestMarkdownPreviewToSide(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	a.openFile(hs.path("README.md"), true)
+	hs.settle()
+	src := a.activeEditor()
+	a.run("view.previewToSide")
+	hs.settle()
+	if len(a.cols) != 2 || a.activeEditor() != src || src.preview != nil {
+		t.Fatalf("columns %d, the text has the keyboard %v", len(a.cols), a.activeEditor() == src)
+	}
+	side := a.cols[1].tab().ed
+	if side == nil || side.document != src.document || side.preview == nil {
+		t.Fatal("no preview to the side")
+	}
+	hs.until("preview", func() bool { return side.preview.loaded })
+}
+
+func TestMarkdownEmpty(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	os.WriteFile(hs.path("empty.md"), nil, 0o644)
+	a.openFile(hs.path("empty.md"), true)
+	a.run("view.togglePreview")
+	hs.until("preview", func() bool { return a.activeEditor().preview.loaded })
+	hs.settle()
+	if !hs.tt.HasText("Nothing to preview") {
+		t.Fatal("no word of an empty document")
 	}
 }
