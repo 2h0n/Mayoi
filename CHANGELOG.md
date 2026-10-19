@@ -23,6 +23,8 @@ needs a `## <version>` section here, or its build fails.
   `markdown.showPreviewToSide` binds to it.
 - An empty Markdown document's preview says there is nothing to preview,
   rather than showing a blank pane.
+- A diff highlights the words that changed in a line modified below lines
+  added or removed, rather than runs of another line's changes.
 - The Markdown preview parses and draws faster, its text in fewer runs.
 - A picture that fits the image viewer or an SVG preview casts a soft
   shadow.

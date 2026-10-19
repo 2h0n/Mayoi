@@ -1095,24 +1095,7 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 		}
 	}
 	if peer >= 0 {
-		key := [2]int{n, peer}
-		if !newSide {
-			key = [2]int{peer, n}
-		}
-		ws, ok := file.words[key]
-		if !ok && key[0] < len(file.old.lines) && key[1] < len(file.new.lines) {
-			o, w := linediff.Words(file.old.lines[key[0]], file.new.lines[key[1]])
-			ws = [2][]linediff.Span{o, w}
-			if file.words == nil {
-				file.words = map[[2]int][2][]linediff.Span{}
-			}
-			file.words[key] = ws
-		}
-		spans := ws[0]
-		if newSide {
-			spans = ws[1]
-		}
-		for _, sp := range spans {
+		for _, sp := range file.lineWords(newSide, n, peer) {
 			if sp.Start >= len(text) {
 				continue
 			}
@@ -1172,6 +1155,29 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 			pt.RichText(x, y+float32(k)*f.lineH+(f.lineH-h)/2, 0, spans...)
 		}
 	}
+}
+
+// lineWords returns the runs of line n of a side of a file that changed
+// from its peer, the line of the other side it was modified from or to.
+func (file *diffFile) lineWords(newSide bool, n, peer int) []linediff.Span {
+	// The key is the old line, then the new.
+	key := [2]int{n, peer}
+	if newSide {
+		key = [2]int{peer, n}
+	}
+	ws, ok := file.words[key]
+	if !ok && key[0] < len(file.old.lines) && key[1] < len(file.new.lines) {
+		o, w := linediff.Words(file.old.lines[key[0]], file.new.lines[key[1]])
+		ws = [2][]linediff.Span{o, w}
+		if file.words == nil {
+			file.words = map[[2]int][2][]linediff.Span{}
+		}
+		file.words[key] = ws
+	}
+	if newSide {
+		return ws[1]
+	}
+	return ws[0]
 }
 
 // fileButtons are the buttons of a file's header, whose right is at right
