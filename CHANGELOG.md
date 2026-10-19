@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.2
 
 - New Terminal in Editor Area opens in an unlocked column when a locked
   one has the keyboard, as files do.
