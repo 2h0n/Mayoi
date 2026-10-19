@@ -625,6 +625,8 @@
   },
   "previewEmpty": "Nothing to preview",
   "previewLabel": "Preview {name}",
+  "previewMinutes": "{count, plural, one {# min read} other {# min read}}",
+  "previewWords": "{count, plural, one {# word} other {# words}}",
   "previewWord": "Preview",
   "published": "Published {branch}",
   "pulledCommits": "{count, plural, one {Pulled # commit} other {Pulled # commits}}",

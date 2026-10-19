@@ -117,6 +117,13 @@ func (a *app) loadImage(v *viewer) {
 			if v.src != nil && (v.w != float32(w) || v.h != float32(h)) {
 				v.zoom, v.panX, v.panY = 0, 0, 0 // another picture: fit it
 			}
+			// Zoomed in, its pixels show as squares, to be looked at one
+			// by one, as in an image editor; smaller, it is smooth. Not
+			// a picture decoded smaller than it is, which would show its
+			// squares at its own size.
+			if bw, bh := bm.Size(); bw == w && bh == h {
+				bm.Pixelated()
+			}
 			v.src, v.w, v.h = bm, float32(w), float32(h)
 		})
 	}()
@@ -581,7 +588,10 @@ func (a *app) viewerStatus(c *ui.Context, v *viewer, item func(key, label, tip s
 			text(locales.DeletedOnDisk()).TextColor(p.dangerFg)
 		})
 	}
-	if v.markdown != nil {
+	if m := v.markdown; m != nil {
+		if m.words > 0 {
+			item("words", locales.PreviewWords(m.words)+" · "+locales.PreviewMinutes(m.minutes), "", nil, nil)
+		}
 		item("preview", locales.PreviewWord(), "", nil, nil)
 		return
 	}

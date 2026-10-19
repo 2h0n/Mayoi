@@ -5425,6 +5425,26 @@ func (msgs Messages) PreviewLabel(name string) string {
 	return Catalog.Format(msgs.locale, "previewLabel", map[string]any{"name": name})
 }
 
+// PreviewMinutes says "{count, plural, one {# min read} other {# min read}}"
+// in the language the app shows.
+func PreviewMinutes(count int) string { return In(i18n.Locale()).PreviewMinutes(count) }
+
+// PreviewMinutes says "{count, plural, one {# min read} other {# min read}}"
+// in the language of msgs.
+func (msgs Messages) PreviewMinutes(count int) string {
+	return Catalog.Format(msgs.locale, "previewMinutes", map[string]any{"count": count})
+}
+
+// PreviewWords says "{count, plural, one {# word} other {# words}}"
+// in the language the app shows.
+func PreviewWords(count int) string { return In(i18n.Locale()).PreviewWords(count) }
+
+// PreviewWords says "{count, plural, one {# word} other {# words}}"
+// in the language of msgs.
+func (msgs Messages) PreviewWords(count int) string {
+	return Catalog.Format(msgs.locale, "previewWords", map[string]any{"count": count})
+}
+
 // PreviewWord says "Preview"
 // in the language the app shows.
 func PreviewWord() string { return In(i18n.Locale()).PreviewWord() }

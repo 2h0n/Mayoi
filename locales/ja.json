@@ -535,6 +535,8 @@
   "portsForwarded": "{host} の {count} 個のポートを転送中",
   "previewEmpty": "プレビューする内容がありません",
   "previewLabel": "{name} のプレビュー",
+  "previewMinutes": "約 {count} 分で読めます",
+  "previewWords": "{count} 語",
   "previewWord": "プレビュー",
   "published": "{branch} を公開しました",
   "pulledCommits": "{count} 個のコミットをプルしました",

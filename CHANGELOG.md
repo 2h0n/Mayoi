@@ -26,6 +26,20 @@ needs a `## <version>` section here, or its build fails.
 - The Markdown preview parses and draws faster, its text in fewer runs.
 - A picture that fits the image viewer or an SVG preview casts a soft
   shadow.
+- **The Markdown preview scrolls with its text**, shown in another
+  column: scrolling the text, by the wheel, the keys, Find or Go to Line,
+  brings the preview to the same place, block by block and within a
+  block, and scrolling the preview brings the text along.
+- A Markdown table is as wide as its text, measured in the preview's
+  font, with round corners, its cells in a row as tall as the tallest.
+- The status bar of a Markdown preview counts the words of the text, a
+  Chinese or Japanese character a word, and the minutes it takes to read.
+- A picture alone in its paragraph that the preview does not show, as a
+  remote one, is a card with its alt text and its file's name, which
+  opens its link.
+- The room above a heading of the Markdown preview takes in the room
+  below the text before it, as on GitHub, rather than adding to it.
+- An image zoomed in past its size shows its pixels as crisp squares.
 
 ## 0.11.2
 

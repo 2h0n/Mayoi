@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"image/png"
 	"math"
 	"os"
@@ -13,7 +14,9 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+
 	east "github.com/yuin/goldmark/extension/ast"
+	"mayoi/locales"
 )
 
 const markdownFixture = `---
@@ -265,8 +268,13 @@ func TestMarkdownPreviewColumn(t *testing.T) {
 			}
 			first := bounds("Open link https://example.com/first")
 			second := bounds("Open link https://example.com/second")
-			if gap := second.X - first.X; math.Abs(float64(gap-column/2)) > 2 {
-				t.Errorf("table columns are %v apart, want half the column's %v", gap, column)
+			// A table is as wide as its text, which is narrower than the
+			// column here: its columns are as their words.
+			if gap := second.X - first.X; gap <= first.W || gap >= column/2 {
+				t.Errorf("table columns are %v apart, want as wide as %q, in the column's %v", gap, "First", column)
+			}
+			if first.X-image.X < 0 || first.X-image.X > 20 {
+				t.Errorf("table starts at %v, not the column's %v", first.X, image.X)
 			}
 		})
 	}
@@ -310,9 +318,15 @@ func TestMarkdownLiveSplitAndScroll(t *testing.T) {
 	if source.document != d.document || source.preview != nil {
 		t.Fatal("split did not keep separate views of the same document")
 	}
-	v.markdown.list.ScrollTo(100, ui.Start)
+	// The preview follows the text, which the edit above leaves where it
+	// is, with its caret.
+	at := 100 * len("A paragraph.\n\n")
+	hs.place(source, at, at)
+	source.vscroll.Y = editorPadY + 200*a.font.lineH
+	hs.settle()
 	hs.settle()
 	before, _ := v.markdown.list.Visible()
+	textY := source.vscroll.Y
 	if before < 90 || v.markdown.scroll.Y <= 0 {
 		t.Fatalf("scroll position %d, %v", before, v.markdown.scroll.Y)
 	}
@@ -321,9 +335,13 @@ func TestMarkdownLiveSplitAndScroll(t *testing.T) {
 		return v.version == d.buf.Version() && markdownRunsText(v.markdown.blocks[0].runs) == "Updated paragraph."
 	})
 	hs.settle()
+	// Where the text is, the preview shows, the same as before the edit.
+	source.vscroll.Y = textY
+	hs.settle()
+	hs.settle()
 	after, _ := v.markdown.list.Visible()
 	if after != before {
-		t.Fatalf("scroll moved from %d to %d", before, after)
+		t.Fatalf("scroll moved from %d to %d, the text at %v", before, after, source.vscroll.Y)
 	}
 	// A newer edit wins even if an older parse has already started.
 	source.edit(source.sel, textEdit{0, len("Updated paragraph."), "Newest paragraph."})
@@ -795,22 +813,24 @@ func TestMarkdownAlerts(t *testing.T) {
 func TestMarkdownSlugsAndWidths(t *testing.T) {
 	blocks := parseMarkdown([]byte("# Hello, World!\n## Hello, World!\n### `Code` and 中文 _x_\n\n| a | a much longer column |\n|---|---|\n| 1 | 2 |\n"), "test.md", "", nil)
 	var slugs []string
-	var widths []float32
-	for _, b := range blocks {
+	var rows []markdownBlock
+	for i, b := range blocks {
 		if b.slug != "" {
 			slugs = append(slugs, b.slug)
 		}
-		if b.kind == markdownTable {
-			widths = b.widths
-			if b.row != 1 {
-				t.Fatalf("row %d", b.row)
+		if b.kind == markdownTable || b.kind == markdownTableHeader {
+			rows = append(rows, b)
+			if b.table != 3 || b.kind == markdownTable && (b.row != 1 || !b.last) {
+				t.Fatalf("row %d: table %d, row %d, last %v", i, b.table, b.row, b.last)
 			}
 		}
 	}
+	// A character 10 wide, a cell's padding 1.5 times the size and 2.
+	widths := markdownColumns(rows, 10, func(r markdownInline, head bool) float32 { return float32(len(r.text)) * 10 })
 	if strings.Join(slugs, " ") != "hello-world hello-world-1 code-and-中文-x" {
 		t.Fatalf("slugs %q", slugs)
 	}
-	if len(widths) != 2 || widths[0] >= widths[1] || math.Abs(float64(widths[0]+widths[1]-1)) > 1e-5 {
+	if len(widths) != 2 || widths[0] != 20+17 || widths[1] != 200+17 {
 		t.Fatalf("widths %v", widths)
 	}
 }
@@ -886,5 +906,104 @@ func TestMarkdownEmpty(t *testing.T) {
 	hs.settle()
 	if !hs.tt.HasText("Nothing to preview") {
 		t.Fatal("no word of an empty document")
+	}
+}
+
+func TestMarkdownBlockLines(t *testing.T) {
+	src := "---\ntitle: x\n---\n# Title\n\npara one\nstill one\n\n- a\n- b\n\n> [!NOTE]\n> noted\n\n```go\nx := 1\n```\n\n| h | i |\n|---|---|\n| 1 | 2 |\n\n---\n\ntail\n"
+	blocks := parseMarkdown([]byte(src), "/x.md", "", nil)
+	var got []string
+	for _, b := range blocks {
+		got = append(got, strconv.Itoa(b.line))
+	}
+	// Title, para, a, b, alert title, noted, code, header, row, rule (where
+	// the row is, as goldmark keeps no place for it), tail.
+	if want := "3 5 8 9 11 11 14 18 20 20 24"; strings.Join(got, " ") != want {
+		t.Fatalf("lines %s, want %s", strings.Join(got, " "), want)
+	}
+}
+
+// markdownSyncDoc is a document of many sections, long enough to scroll
+// both its text and its preview.
+func markdownSyncDoc() string {
+	var b strings.Builder
+	for i := range 120 {
+		fmt.Fprintf(&b, "## Section %d\n\nSome text of section %d, long enough to take a line or two of the preview as it wraps.\n\n", i, i)
+		if i%10 == 3 {
+			b.WriteString("```go\nfunc f() {\n\treturn\n}\n```\n\n")
+		}
+	}
+	return b.String()
+}
+
+func TestMarkdownScrollSync(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	os.WriteFile(hs.path("sync.md"), []byte(markdownSyncDoc()), 0o644)
+	a.openFile(hs.path("sync.md"), true)
+	hs.settle()
+	src := a.activeEditor()
+	a.run("view.previewToSide")
+	hs.settle()
+	side := a.cols[1].tab().ed
+	hs.until("preview", func() bool { return side.preview.loaded })
+	hs.settle()
+	m := side.preview.markdown
+	// The heading at the top of the preview, as the last frame showed it.
+	pane, ok := hs.tt.Find(locales.PreviewLabel("sync.md"))
+	if !ok {
+		t.Fatal("no preview")
+	}
+	topHeading := func() string {
+		first, last := m.list.Visible()
+		for i := max(first, 0); i <= last; i++ {
+			if m.blocks[i].kind != markdownHeading {
+				continue
+			}
+			h := markdownRunsText(m.blocks[i].runs)
+			if r, ok := hs.tt.Find(h); ok && r.Y+r.H > pane.Y+1 {
+				return h
+			}
+		}
+		return ""
+	}
+	// Scrolling the text, with the keyboard in it, scrolls the preview.
+	line := strings.Count(markdownSyncDoc()[:strings.Index(markdownSyncDoc(), "## Section 60\n")], "\n")
+	src.vscroll.Y = editorPadY + float32(line)*a.font.lineH
+	for range 4 {
+		hs.settle()
+	}
+	if h := topHeading(); h != "Section 60" && h != "Section 59" {
+		t.Fatalf("the preview shows %q at its top, not section 60", h)
+	}
+	// The end of the text is the end of the preview.
+	src.vscroll.Y = src.vscroll.MaxY
+	for range 4 {
+		hs.settle()
+	}
+	if !m.list.AtEnd() {
+		t.Fatal("the preview is not at its end with the text")
+	}
+	// Scrolling the preview scrolls the text.
+	src.vscroll.Y = 0
+	for range 4 {
+		hs.settle()
+	}
+	if m.scroll.Y != 0 {
+		t.Fatalf("the preview is at %v with the text at its top", m.scroll.Y)
+	}
+	for range 30 {
+		hs.tt.Scroll(pane.X+pane.W/2, pane.Y+pane.H/2, 0, 120)
+		hs.settle()
+	}
+	if src.vscroll.Y <= 0 {
+		t.Fatal("the text did not follow the preview")
+	}
+	top := a.geometry(src, src.buf.Snapshot().LineCount()).at(src.vscroll.Y - editorPadY)
+	heading := topHeading()
+	n, _ := strconv.Atoi(strings.TrimPrefix(heading, "Section "))
+	want := strings.Count(markdownSyncDoc()[:strings.Index(markdownSyncDoc(), "## "+heading+"\n")], "\n")
+	if top < want-6 || top > want+6 {
+		t.Fatalf("the text is at line %d, the preview at %q (line %d, %d)", top, heading, want, n)
 	}
 }

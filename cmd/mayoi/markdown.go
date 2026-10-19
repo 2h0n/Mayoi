@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"html"
 	"maps"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -33,18 +34,29 @@ import (
 
 // markdownPreview keeps parsed blocks and the pane's place between edits.
 type markdownPreview struct {
-	blocks     []markdownBlock
-	cache      markdownCache
-	root       string
-	measure    float32
-	measured   ui.Font
-	list       ui.ListState
-	scroll     ui.ScrollState
-	observed   uint64
-	path       string
-	pending    bool
-	running    bool
-	generation atomic.Uint64
+	blocks []markdownBlock
+	// slugs are the blocks of the headings, by their anchors, which a
+	// link to #slug scrolls to.
+	slugs map[string]int
+	// tables are the widths of the columns of the tables, by their first
+	// rows, as measured in font.
+	tables    map[int][]float32
+	tableFont ui.Font
+	// words are the words of the text, outside its code, and minutes how
+	// long it takes to read, which the status bar shows.
+	words, minutes int
+	sync           markdownSync
+	cache          markdownCache
+	root           string
+	measure        float32
+	measured       ui.Font
+	list           ui.ListState
+	scroll         ui.ScrollState
+	observed       uint64
+	path           string
+	pending        bool
+	running        bool
+	generation     atomic.Uint64
 }
 
 type markdownInline struct {
@@ -112,10 +124,11 @@ type markdownBlock struct {
 	runs                 []markdownInline
 	cells                [][]markdownInline
 	aligns               []east.Alignment
-	// widths are the shares of a table's columns, by the longest text of
-	// each, and row is the place of a row of its body, from 1.
-	widths []float32
-	row    int
+	// table is the first row of the table a row is of, and row the place
+	// of a row of its body, from 1; last marks the table's last row,
+	// whose corners are round.
+	table, row int
+	last       bool
 	// alert is the kind of the alert the block is in, and alertAt the
 	// depth of its quote.
 	alert   markdownAlert
@@ -123,6 +136,9 @@ type markdownBlock struct {
 	// slug is a heading's anchor, as GitHub makes it, which a link to
 	// #slug scrolls to.
 	slug string
+	// line is the line of the text the block starts on, from 0, which the
+	// preview scrolls with as the text scrolls.
+	line int
 }
 
 func isMarkdown(d *document) bool {
@@ -261,13 +277,15 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 		return runs
 	}
 	// Front matter is recognized only at the start, with exact delimiter lines
-	// around what looks like YAML.
+	// around what looks like YAML. skip is the lines it took.
+	skip := 0
 	if lines := strings.SplitAfter(string(source), "\n"); strings.TrimSuffix(strings.TrimSuffix(lines[0], "\n"), "\r") == "---" {
 		for i := 1; i < len(lines); i++ {
 			line := strings.TrimSuffix(strings.TrimSuffix(lines[i], "\n"), "\r")
 			if line == "---" || line == "..." {
 				if markdownFrontMatter(lines[1:i]) {
 					source = []byte(strings.Join(lines[i+1:], ""))
+					skip = i + 1
 				}
 				break
 			}
@@ -275,6 +293,21 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 	}
 
 	tree := markdownParser().Parse(text.NewReader(source))
+	// starts are where the lines of source start, for the line of a block.
+	starts := []int{0}
+	for i, ch := range source {
+		if ch == '\n' {
+			starts = append(starts, i+1)
+		}
+	}
+	lineOf := func(n ast.Node) int {
+		at := markdownStart(n)
+		if at < 0 {
+			return -1
+		}
+		i, _ := slices.BinarySearch(starts, at+1)
+		return skip + i - 1
+	}
 	var blocks []markdownBlock
 	var inline func(ast.Node, markdownInline) []markdownInline
 	inline = func(n ast.Node, style markdownInline) []markdownInline {
@@ -380,6 +413,9 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 	var walk func(ast.Node, int, int, string, bool, float32, float32)
 	walk = func(n ast.Node, indent, quote int, marker string, tight bool, offset, markerWidth float32) {
 		b := markdownBlock{indent: indent, quote: quote, marker: marker, tight: tight, offset: offset, markerWidth: markerWidth, alert: alert, alertAt: alertAt}
+		if _, doc := n.(*ast.Document); !doc {
+			b.line = lineOf(n)
+		}
 		switch x := n.(type) {
 		case *ast.Heading:
 			b.kind, b.level = markdownHeading, x.Level
@@ -427,7 +463,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 			if k, n := markdownAlertOf(x, source); k != alertNone {
 				alert, alertAt, strip = k, quote+1, n
 				blocks = append(blocks, markdownBlock{kind: markdownAlertTitle, indent: indent, quote: quote + 1, marker: marker, tight: tight,
-					offset: offset, markerWidth: markerWidth, alert: k, alertAt: quote + 1})
+					offset: offset, markerWidth: markerWidth, alert: k, alertAt: quote + 1, line: b.line})
 				if marker != "" {
 					offset += markerWidth + 0.5
 					markerWidth = 0
@@ -468,6 +504,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				rb := b
 				rb.kind = markdownTable
 				rb.aligns = x.Alignments
+				rb.line = lineOf(row)
 				_, head := row.(*east.TableHeader)
 				if head {
 					rb.kind = markdownTableHeader
@@ -480,10 +517,10 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				}
 				blocks = append(blocks, rb)
 			}
-			widths := markdownWidths(blocks[first:])
 			for i := first; i < len(blocks); i++ {
-				blocks[i].widths = widths
+				blocks[i].table = first
 			}
+			blocks[len(blocks)-1].last = true
 			return
 		default:
 			for ch := n.FirstChild(); ch != nil; ch = ch.NextSibling() {
@@ -537,7 +574,41 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 		blocks = append(blocks, b)
 	}
 	walk(tree, 0, 0, "", false, 0, 0)
+	// A block without a place in the text, as a rule, is where the one
+	// before it is, so that the lines only go down.
+	line := skip
+	for i := range blocks {
+		line = max(line, blocks[i].line)
+		blocks[i].line = line
+	}
 	return blocks
+}
+
+// markdownStart is the offset in the source where a node starts, the
+// line of a fence for a block of code, or -1 for a node without text.
+func markdownStart(n ast.Node) int {
+	if f, ok := n.(*ast.FencedCodeBlock); ok && f.Info != nil {
+		return f.Info.Segment.Start
+	}
+	if n.Type() == ast.TypeBlock {
+		if l := n.Lines(); l != nil && l.Len() > 0 {
+			at := l.At(0).Start
+			if _, ok := n.(*ast.FencedCodeBlock); ok {
+				// The fence is the line above, as the block has no info.
+				at = max(0, at-1)
+			}
+			return at
+		}
+	}
+	if t, ok := n.(*ast.Text); ok {
+		return t.Segment.Start
+	}
+	for ch := n.FirstChild(); ch != nil; ch = ch.NextSibling() {
+		if at := markdownStart(ch); at >= 0 {
+			return at
+		}
+	}
+	return -1
 }
 
 // markdownAlertOf returns the kind of the alert a quote is, by the marker
@@ -592,26 +663,21 @@ func markdownSlug(s string) string {
 	return b.String()
 }
 
-// markdownWidths shares a table's width between its columns by the
-// longest text of each, in columns of a fixed font, a wide character two,
+// markdownColumns are the widths of the columns of the table rows are
+// of, in DIPs, as wide as the widest text of each, which measure gives,
 // within bounds that keep a short column readable and a long one from
-// taking all the room.
-func markdownWidths(rows []markdownBlock) []float32 {
+// taking all the room, and with the cells' padding.
+func markdownColumns(rows []markdownBlock, size float32, measure func(r markdownInline, head bool) float32) []float32 {
 	var cols []float32
-	for _, r := range rows {
-		for i, cell := range r.cells {
+	for _, row := range rows {
+		for i, cell := range row.cells {
 			w := float32(0)
-			for _, run := range cell {
-				if run.bitmap != nil {
-					w += 12
+			for _, r := range cell {
+				if r.bitmap != nil {
+					w += min(r.w, size*12)
 					continue
 				}
-				for _, ch := range run.text {
-					w++
-					if ch >= 0x1100 && unicode.In(ch, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) || ch >= 0xff00 && ch <= 0xffef {
-						w++
-					}
-				}
+				w += measure(r, row.kind == markdownTableHeader)
 			}
 			if i >= len(cols) {
 				cols = append(cols, 0)
@@ -619,13 +685,8 @@ func markdownWidths(rows []markdownBlock) []float32 {
 			cols[i] = max(cols[i], w)
 		}
 	}
-	total := float32(0)
 	for i, w := range cols {
-		cols[i] = clamp(w, 6, 48)
-		total += cols[i]
-	}
-	for i := range cols {
-		cols[i] /= total
+		cols[i] = clamp(w, size*2, size*24) + size*1.5 + 2
 	}
 	return cols
 }
@@ -647,6 +708,49 @@ func markdownMerge(runs []markdownInline) []markdownInline {
 		out = append(out, r)
 	}
 	return out
+}
+
+// markdownWords counts the words of the text outside its code, a Chinese
+// or Japanese character a word, and the minutes it takes to read them, at
+// 230 words a minute, or 500 of those characters.
+func markdownWords(blocks []markdownBlock) (words, minutes int) {
+	latin, wide := 0, 0
+	count := func(runs []markdownInline) {
+		for _, r := range runs {
+			if r.code || r.raw {
+				continue
+			}
+			in := false
+			for _, ch := range r.text {
+				switch {
+				case unicode.In(ch, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul):
+					wide++
+					in = false
+				case unicode.IsLetter(ch) || unicode.IsDigit(ch) || ch == '\'' || ch == '’':
+					if !in {
+						latin++
+					}
+					in = true
+				default:
+					in = false
+				}
+			}
+		}
+	}
+	for _, b := range blocks {
+		if b.kind == markdownCodeBlock || b.kind == markdownHTML {
+			continue
+		}
+		count(b.runs)
+		for _, cell := range b.cells {
+			count(cell)
+		}
+	}
+	words = latin + wide
+	if words > 0 {
+		minutes = max(1, int(math.Round(float64(latin)/230+float64(wide)/500)))
+	}
+	return words, minutes
 }
 
 // markdownRunsText is the text of runs.
@@ -747,6 +851,13 @@ func (a *app) followMarkdown(v *viewer) {
 		go func() {
 			root := markdownRoot(path, workspace)
 			blocks := parseMarkdown(source, path, root, func() bool { return m.generation.Load() == generation }, cache)
+			slugs := map[string]int{}
+			for i, b := range blocks {
+				if b.slug != "" {
+					slugs[b.slug] = i
+				}
+			}
+			words, minutes := markdownWords(blocks)
 			a.post(func() {
 				m.running, m.pending = false, false
 				m.cache = *cache
@@ -758,7 +869,11 @@ func (a *app) followMarkdown(v *viewer) {
 					a.followMarkdown(v)
 					return
 				}
-				m.blocks = blocks
+				m.blocks, m.slugs = blocks, slugs
+				clear(m.tables)
+				m.words, m.minutes = words, minutes
+				// The rows moved: the preview takes the text's place again.
+				m.sync.resync = true
 				v.version = ver
 				v.loaded = true
 			})
@@ -811,6 +926,38 @@ func (a *app) markdownSpan(r markdownInline, color ui.Color, size float32, block
 	return span
 }
 
+// markdownTableColumns measures the columns of the table whose first row
+// is first, once for each parse and font.
+func (a *app) markdownTableColumns(m *markdownPreview, first int, font ui.Font) []float32 {
+	if m.tableFont != font || m.tables == nil {
+		m.tables, m.tableFont = map[int][]float32{}, font
+	}
+	if cols, ok := m.tables[first]; ok {
+		return cols
+	}
+	// The first rows of a long table tell its columns well enough, for
+	// less to shape in the frame it comes into view.
+	last := first
+	for last+1 < len(m.blocks) && last-first < 200 && m.blocks[last+1].kind == markdownTable && m.blocks[last+1].table == first {
+		last++
+	}
+	cols := markdownColumns(m.blocks[first:last+1], font.Size, func(r markdownInline, head bool) float32 {
+		f := font
+		if r.bold || head {
+			f.Weight = 700
+		}
+		text := r.text
+		if r.code {
+			f.Family, f.Weight, f.Size = a.settings.FontFamily, a.settings.FontWeight, font.Size*0.9
+			text = "\u2009" + text + "\u2009"
+		}
+		w, _ := ui.ShapeText(text, f, 0).Size()
+		return w
+	})
+	m.tables[first] = cols
+	return cols
+}
+
 // markdownSize is the size of a block's text, the headings' as GitHub
 // scales them.
 func (a *app) markdownSize(b markdownBlock) float32 {
@@ -821,6 +968,21 @@ func (a *app) markdownSize(b markdownBlock) float32 {
 	return size
 }
 
+// markdownBelow is the room below block i: within its row, and outside
+// the bars of the quotes it ends.
+func (a *app) markdownBelow(m *markdownPreview, i int) (bottom, outside float32) {
+	b, size, lh := m.blocks[i], a.settings.FontSize, a.settings.LineHeight
+	_, bottom = a.markdownSpacing(b)
+	end := i+1 == len(m.blocks)
+	if b.tight && (end || !m.blocks[i+1].tight) || b.kind == markdownTable && (end || m.blocks[i+1].kind != markdownTable) {
+		bottom = size * lh * 0.75
+	}
+	if b.quote > 0 && (end || m.blocks[i+1].quote < b.quote) {
+		outside, bottom = max(bottom, size*lh*0.75), 0
+	}
+	return bottom, outside
+}
+
 func (a *app) markdownSpacing(b markdownBlock) (top, bottom float32) {
 	gap := a.settings.FontSize * a.settings.LineHeight * 0.75
 	bottom = gap
@@ -829,10 +991,11 @@ func (a *app) markdownSpacing(b markdownBlock) (top, bottom float32) {
 	}
 	switch b.kind {
 	case markdownHeading:
-		// A heading is nearer the text it heads than the text before it.
-		top, bottom = gap, gap*0.5
+		// A heading is nearer the text it heads than the text before it,
+		// the room above it taking in the room below that text.
+		top, bottom = gap*1.4, gap*0.5
 		if b.level <= 2 {
-			top = gap * 1.4
+			top = gap * 1.6
 		}
 	case markdownAlertTitle:
 		bottom = gap * 0.3
@@ -906,8 +1069,9 @@ func (a *app) markdownLink(c *ui.Context, m *markdownPreview, path, dest string,
 			if s, err := url.PathUnescape(anchor); err == nil {
 				anchor = s
 			}
-			anchor = strings.ToLower(anchor)
-			heading = slices.IndexFunc(m.blocks, func(b markdownBlock) bool { return b.slug == anchor })
+			if i, ok := m.slugs[strings.ToLower(anchor)]; ok {
+				heading = i
+			}
 		}
 	} else {
 		local = markdownPath("", path, dest)
@@ -944,6 +1108,32 @@ func (a *app) markdownImage(c *ui.Context, m *markdownPreview, path string, r ma
 	}
 }
 
+// markdownNoImage stands for a picture alone in its paragraph that does
+// not show, as a remote one or one missing: a card with its alt text and
+// its file's name, which opens its link, or a remote picture itself.
+func (a *app) markdownNoImage(c *ui.Context, m *markdownPreview, path string, r markdownInline, size float32) {
+	p := a.pal
+	card := func() {
+		ui.Row(c).AlignSelf(ui.Start).MaxWidthPercent(100).AlignItems(ui.Center).Gap(size*0.5).Padding(size*0.45, size*0.8).
+			Radius(6).Border(1, p.border).Background(p.chrome).Children(func() {
+			ui.Icon(c, iconImage).FontSize(size).TextColor(p.faint)
+			ui.Text(c, r.text).FontSize(size * 0.93).TextColor(p.muted).SingleLine().MinWidth(0)
+			if name := filepath.Base(r.image); name != r.text && name != "." && name != "/" {
+				ui.Text(c, name).FontSize(size * 0.8).TextColor(p.faint).SingleLine().MinWidth(0).Shrink(1)
+			}
+		})
+	}
+	link := r.link
+	if u, err := url.Parse(r.image); link == "" && err == nil && (u.Scheme == "http" || u.Scheme == "https") {
+		link = r.image
+	}
+	if e := a.markdownLink(c, m, path, link, true); link != "" && e.Valid() {
+		e.AlignSelf(ui.Start).MaxWidthPercent(100).Children(card)
+		return
+	}
+	card()
+}
+
 // markdownCodeCard is a block of code on its own card, its language in the
 // corner, where a copy button shows as the pointer comes over it.
 func (a *app) markdownCodeCard(c *ui.Context, m *markdownPreview, path string, b markdownBlock, size float32) {
@@ -970,13 +1160,21 @@ func (a *app) markdownCodeCard(c *ui.Context, m *markdownPreview, path string, b
 
 // markdownTableRow is a row of a table, its columns as wide as their
 // text asks, its body's rows striped.
-func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b markdownBlock, size, width float32) {
+func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b markdownBlock, size, width float32, font ui.Font) {
 	p := a.pal
-	ui.Row(c).WidthPercent(100).Children(func() {
+	cols := a.markdownTableColumns(m, b.table, font)
+	total := float32(0)
+	for _, w := range cols {
+		total += w
+	}
+	// As wide as its text asks, as long as there is room.
+	width = min(width, total)
+	const r = 6
+	ui.Row(c).Width(width).MaxWidthPercent(100).AlignItems(ui.Stretch).Children(func() {
 		for i, cell := range b.cells {
 			share := 1 / float32(len(b.cells))
-			if i < len(b.widths) {
-				share = b.widths[i]
+			if i < len(cols) && total > 0 {
+				share = cols[i] / total
 			}
 			cellBox := ui.Column(c).WidthPercent(100*share).Padding(size*0.4, size*0.75).Border(1, p.border).BorderWidth(0, 1, 1, 0)
 			if i == 0 {
@@ -992,6 +1190,23 @@ func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b
 				}
 			case b.row%2 == 0:
 				cellBox.Background(p.hover)
+			}
+			// The table's corners are round, as its cells' at them are.
+			var tl, tr, br, bl float32
+			if b.kind == markdownTableHeader {
+				tl, tr = r, r
+			}
+			if b.last {
+				br, bl = r, r
+			}
+			if i > 0 {
+				tl, bl = 0, 0
+			}
+			if i < len(b.cells)-1 {
+				tr, br = 0, 0
+			}
+			if tl+tr+br+bl > 0 {
+				cellBox.Radius(tl, tr, br, bl)
 			}
 			cellBox.Children(func() {
 				align := ui.Start
@@ -1048,21 +1263,27 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 		return
 	}
 	width := min(m.measure, max(1, v.pane.Bounds(c).W-2*textPadR))
-	ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label(locales.PreviewLabel(name)).Padding(editorPadY*2, textPadR, editorPadY*4, textPadR).Selectable().Rows(func(row ui.ListRow) {
+	a.syncMarkdown(c, v)
+	list := ui.List(c.Key("markdown"), &m.list, len(m.blocks)).Bind(&v.pane).TrackScroll(&m.scroll).Fill().Background(p.editor).Label(locales.PreviewLabel(name)).Padding(editorPadY*2, textPadR, editorPadY*4, textPadR).Selectable()
+	list.HandleInput(func(ev ui.InputEvent) bool {
+		m.markdownTouched(ev)
+		return false
+	})
+	list.Rows(func(row ui.ListRow) {
 		c := row.Context
 		b := m.blocks[row.Index]
-		top, bottom := a.markdownSpacing(b)
-		if row.Index == 0 {
+		top, _ := a.markdownSpacing(b)
+		bottom, outside := a.markdownBelow(m, row.Index)
+		switch {
+		case row.Index == 0:
 			top = 0
+		case b.kind == markdownHeading:
+			// The room above a heading takes in the room below the block
+			// before it, as CSS's margins collapse.
+			below, out := a.markdownBelow(m, row.Index-1)
+			top = max(0, top-below-out)
 		}
-		if (b.tight && (row.Index+1 == len(m.blocks) || !m.blocks[row.Index+1].tight)) || (b.kind == markdownTable && (row.Index+1 == len(m.blocks) || m.blocks[row.Index+1].kind != markdownTable)) {
-			bottom = size * lh * 0.75
-		}
-		outside := float32(0)
-		if b.quote > 0 && (row.Index+1 == len(m.blocks) || m.blocks[row.Index+1].quote < b.quote) {
-			outside, bottom = max(bottom, size*lh*0.75), 0
-		}
-		ui.Row(c).WidthPercent(100).Justify(ui.Center).Margin(0, 0, outside, 0).Children(func() {
+		ui.Row(c).Bind(&m.sync.rows[row.Index]).WidthPercent(100).Justify(ui.Center).Margin(0, 0, outside, 0).Children(func() {
 			ui.Row(c).WidthPercent(100).MaxWidth(m.measure).AlignItems(ui.Start).Padding(0, 0, 0, b.offset*size).Gap(size * 0.5).Children(func() {
 				for i := range b.quote {
 					bar := p.guideNow
@@ -1085,7 +1306,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 					case markdownCodeBlock, markdownHTML:
 						a.markdownCodeCard(c, m, path, b, size)
 					case markdownTable, markdownTableHeader:
-						a.markdownTableRow(c, m, path, b, size, width)
+						a.markdownTableRow(c, m, path, b, size, width, font)
 					case markdownAlertTitle:
 						icon, title := markdownAlertHead(b.alert)
 						col := a.markdownColor(b.alert)
@@ -1097,6 +1318,10 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 						// Quotes and the smallest headings are muted, as on
 						// GitHub; the text of an alert is not.
 						muted := b.quote > b.alertAt || b.kind == markdownHeading && b.level == 6
+						if r := b.runs[0]; b.kind == markdownParagraph && len(b.runs) == 1 && r.image != "" && r.bitmap == nil {
+							a.markdownNoImage(c, m, path, r, size)
+							return
+						}
 						a.markdownText(c, m, path, b.runs, a.markdownSize(b), muted, false)
 						if b.kind == markdownHeading && b.level <= 2 {
 							// A hairline under the largest headings, as GitHub draws it.
