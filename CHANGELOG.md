@@ -3,6 +3,12 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Mayoi checks for a new version every hour, not once a day, and shows it
+  in the status bar, on the welcome page and as **Update to …** in the
+  menu, rather than opening the update window by itself: a click opens it.
+
 ## 0.11.3
 
 - The Markdown preview's text can be selected and copied, across
