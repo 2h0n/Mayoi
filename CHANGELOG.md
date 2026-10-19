@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.4
 
 - Mayoi checks for a new version every hour, not once a day, and shows it
   in the status bar, on the welcome page and as **Update to …** in the
