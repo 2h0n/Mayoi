@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.3
 
 - The Markdown preview's text can be selected and copied, across
   paragraphs, lists, code and tables; a list's numbers stay out of it.
