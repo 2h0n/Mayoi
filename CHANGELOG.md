@@ -132,6 +132,10 @@ needs a `## <version>` section here, or its build fails.
   conflict holds. Its bars have outlined buttons with icons, a line under
   them fills as the conflicts are resolved, and going to a conflict glides
   there.
+- The status bar has a Git sync button beside the branch, with incoming
+  and outgoing commit counts. It pulls with fast-forward only before
+  pushing that branch to its upstream, or publishes a branch that has
+  no upstream yet.
 
 ## 0.11.4
 

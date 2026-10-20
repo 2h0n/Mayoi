@@ -350,8 +350,8 @@ func TestPushPullFetch(t *testing.T) {
 	}
 	a.fetch()
 	hs.settleGit()
-	if st := a.git.status; st.Behind != 1 || a.branchLabel() != "main ↓1" {
-		t.Fatalf("behind %d, label %q", st.Behind, a.branchLabel())
+	if st := a.git.status; st.Behind != 1 || a.repository().gitSyncLabel() != "1↓ 0↑" {
+		t.Fatalf("behind %d, label %q", st.Behind, a.repository().gitSyncLabel())
 	}
 	a.pull()
 	hs.settleGit()

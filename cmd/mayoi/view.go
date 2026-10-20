@@ -836,14 +836,15 @@ func (a *app) previewButton(c *ui.Context, t *colTab, d *editor) {
 // statusVisibility is which of the parts of the status bar that can go
 // show.
 type statusVisibility struct {
-	branchLabel bool
-	folder      bool
-	terminal    bool
-	lines       bool
-	indent      bool
-	encoding    bool
-	eol         bool
-	language    bool
+	branchLabel   bool
+	gitSyncCounts bool
+	folder        bool
+	terminal      bool
+	lines         bool
+	indent        bool
+	encoding      bool
+	eol           bool
+	language      bool
 }
 
 // statusFit returns which parts of the status bar show in width: as the
@@ -949,9 +950,15 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 	if version := a.host.update(); version != "" {
 		used += measure(version, true)
 	}
+	if repo := a.repository(); repo.gitSyncVisible() {
+		used += 2*6 + 12 + 2 // the sync icon stays beside the branch
+		if label := repo.gitSyncLabel(); label != "" {
+			add(&v.gitSyncCounts, measure(label, false)-2*6-2+5)
+		}
+	}
 	if a.branch() != "" {
 		used += 2*6 + 12 + 2 // its icon, which stays
-		add(&v.branchLabel, measure(a.branchLabel(), false)-2*6-2+5)
+		add(&v.branchLabel, measure(a.branch(), false)-2*6-2+5)
 	}
 	for _, p := range parts {
 		*p.on = true
@@ -965,6 +972,37 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 		used -= p.w
 	}
 	return v
+}
+
+// gitSyncStatus is separate from the branch menu so syncing needs one
+// click. The icon remains when the bar is too narrow for the counts.
+func (a *gitContext) gitSyncStatus(c *ui.Context, showCounts bool) {
+	if !a.gitSyncVisible() {
+		return
+	}
+	p, g := a.app.pal, a.git
+	label, tip, icon := locales.GitSync(), locales.GitSyncTip(g.status.Upstream), iconRefresh
+	if g.status.Upstream == "" {
+		label, tip, icon = locales.ScmPublishBranch(), locales.ScmPublishBranch(), iconPush
+	}
+	if g.busy != "" {
+		tip = g.busy
+	}
+	b := ui.ButtonBase(c.Key("status:git-sync")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
+		AlignItems(ui.Center).Label(label).Tooltip(tip).Disabled(g.busy != "")
+	if b.Hovered() {
+		b.Background(p.hover)
+	}
+	b.Transition(hoverFade)
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(12).TextColor(p.statusFg)
+		if counts := a.gitSyncLabel(); showCounts && counts != "" {
+			ui.Text(c, counts).FontSize(11.5).TextColor(p.statusFg).SingleLine()
+		}
+	})
+	if b.Clicked() {
+		a.gitSync()
+	}
 }
 
 // plural counts n things, as "1 line" or "2 lines".
@@ -1022,6 +1060,7 @@ func (a *app) vimBadge(c *ui.Context, v *vimState, text func(string) ui.Element)
 
 func (a *app) statusBar(c *ui.Context) {
 	p := a.pal
+	repo := a.repository()
 	width, _ := c.Size()
 	visible := a.statusFit(c, width)
 	ui.Row(c).Height(statusBarH).Padding(0, 6).Gap(2).AlignItems(ui.Center).Background(p.status).
@@ -1079,7 +1118,7 @@ func (a *app) statusBar(c *ui.Context) {
 		}
 		a.remoteStatus(c, text)
 		a.portsStatus(c, text)
-		if b := a.branch(); b != "" {
+		if b := repo.branch(); b != "" {
 			bb := ui.ButtonBase(c.Key("status:branch")).Height(statusBarH-6).Padding(0, 6).Gap(5).Radius(4).
 				AlignItems(ui.Center).Label(locales.BranchLabel(b)).Tooltip(locales.BranchStatusTip(b))
 			if bb.Hovered() {
@@ -1090,13 +1129,14 @@ func (a *app) statusBar(c *ui.Context) {
 				ui.Icon(c, iconBranch).FontSize(12).TextColor(p.statusFg)
 				if visible.branchLabel {
 					// Switched to another, the name rolls to it.
-					text(a.branchLabel()).ContentTransition(ui.ContentTransition{})
+					text(b).ContentTransition(ui.ContentTransition{})
 				}
 			})
-			bb.Menu(a.branchMenu)
+			bb.Menu(repo.branchMenu)
 		}
+		repo.gitSyncStatus(c, visible.gitSyncCounts)
 		a.transferStatus(c, text)
-		if busy := a.repository().git.busy; busy != "" {
+		if busy := repo.git.busy; busy != "" {
 			ui.Row(c.Key("status:busy")).Height(statusBarH).Padding(0, 6).Gap(5).AlignItems(ui.Center).Children(func() {
 				// In a theme with a character, it hops for it instead.
 				if a.themeMascot() == nil {

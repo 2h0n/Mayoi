@@ -947,6 +947,39 @@ func (r *Repo) Pull() error {
 	return err
 }
 
+// Sync fast-forwards from the current branch's upstream, then pushes
+// any local commits back to that same branch, regardless of push defaults.
+func (r *Repo) Sync() error {
+	out, err := r.run(nil, "for-each-ref", "--format=%(HEAD)%1f%(refname)%1f%(upstream:remotename)%1f%(upstream:remoteref)", "refs/heads")
+	if err != nil {
+		return err
+	}
+	var branch, remote, upstream string
+	for _, line := range strings.Split(string(out), "\n") {
+		f := strings.Split(line, "\x1f")
+		if len(f) == 4 && f[0] == "*" {
+			branch, remote, upstream = f[1], f[2], f[3]
+			break
+		}
+	}
+	if branch == "" {
+		return errors.New("check out a branch with a commit before synchronizing")
+	}
+	if remote == "" || upstream == "" {
+		return errors.New("the current branch has no upstream to synchronize with")
+	}
+	if _, err := r.run(nil, "pull", "--ff-only", "--", remote, upstream); err != nil {
+		return err
+	}
+	// FETCH_HEAD includes remote changes not yet known when sync began.
+	out, err = r.run(nil, "rev-list", "--count", "FETCH_HEAD.."+branch)
+	if err != nil || strings.TrimSpace(string(out)) == "0" {
+		return err
+	}
+	_, err = r.run(nil, "push", "--", remote, branch+":"+upstream)
+	return err
+}
+
 // Push pushes the branch to its upstream, or to a remote of the same name
 // that becomes its upstream when it has none.
 func (r *Repo) Push(branch string, hasUpstream bool) error {

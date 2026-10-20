@@ -514,6 +514,36 @@ func (a *gitContext) push() {
 	})
 }
 
+// gitSync pulls and pushes in one background operation, keeping the
+// repository busy until both finish. A branch without an upstream is
+// published by the existing push command.
+func (a *gitContext) gitSync() {
+	if !a.gitSyncVisible() {
+		return
+	}
+	if a.git.status.Upstream == "" {
+		a.push()
+		return
+	}
+	upstream, ahead, pulled := a.git.status.Upstream, a.git.status.Ahead, 0
+	a.gitDo(locales.BusySyncing(), func(r *git.Repo) error {
+		before := r.Head()
+		if err := r.Sync(); err != nil {
+			return err
+		}
+		if before != "" {
+			pulled = r.Count(before, "HEAD")
+		}
+		return nil
+	}, func() {
+		if pulled == 0 && ahead == 0 {
+			a.app.tell(note{message: locales.AlreadyUpToDate()})
+		} else {
+			a.app.tell(note{message: locales.SyncedWith(upstream)})
+		}
+	})
+}
+
 // switchBranch checks out a branch, or makes it first when create is set,
 // once the documents are saved: Git keeps the changes of the work tree
 // when they do not clash with the branch's.
@@ -878,17 +908,19 @@ func (a *gitContext) branchMenu(m *ui.Menu) {
 	}
 }
 
-// branchLabel is what the status bar says of the branch: its name, and
-// how far it is ahead of its upstream and behind it.
-func (a *gitContext) branchLabel() string {
-	label := a.branch()
-	if st := a.git.status; st != nil && st.Upstream != "" {
-		if st.Behind > 0 {
-			label += fmt.Sprintf(" ↓%d", st.Behind)
-		}
-		if st.Ahead > 0 {
-			label += fmt.Sprintf(" ↑%d", st.Ahead)
-		}
+// gitSyncVisible keeps publishing and syncing off detached and unborn
+// branches, and off repositories with no upstream or remote.
+func (a *gitContext) gitSyncVisible() bool {
+	st := a.git.status
+	return a.git.repo != nil && st != nil && st.Branch != "" && st.Head != "" &&
+		(st.Upstream != "" || len(a.git.remotes) > 0)
+}
+
+// gitSyncLabel keeps both counts when either is nonzero; an up-to-date
+// branch has only the sync icon, which can still fetch new commits.
+func (a *gitContext) gitSyncLabel() string {
+	if st := a.git.status; st != nil && st.Upstream != "" && (st.Behind > 0 || st.Ahead > 0) {
+		return fmt.Sprintf("%d↓ %d↑", st.Behind, st.Ahead)
 	}
-	return label
+	return ""
 }
