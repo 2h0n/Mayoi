@@ -139,9 +139,10 @@ func (a *app) view(c *ui.Context) {
 				sidebar()
 			}
 			main := ui.Column(c.Key("main")).MinWidth(0)
-			if side != "" && a.panelMax {
+			if (side == "left" || side == "right") && a.panelMax {
 				// A panel maximized at a side takes the row, so the
-				// editors give it theirs rather than sharing it.
+				// editors give it theirs rather than sharing it. One at
+				// the bottom is in the editors' column, and takes theirs.
 				main.Grow(0).Width(0)
 			} else {
 				main.Grow(1)

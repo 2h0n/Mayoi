@@ -12,6 +12,9 @@ needs a `## <version>` section here, or its build fails.
 - Scrolling with Command held over a terminal no longer shrinks or grows
   its font, as it did when switching back to Mayoi with Command-Tab;
   `Cmd+=` and `Cmd+-` still size all the text.
+- Maximizing the terminal panel at the bottom of the window fills the
+  window again, instead of squeezing the terminal into a column one
+  character wide.
 
 ## 0.11.5
 
