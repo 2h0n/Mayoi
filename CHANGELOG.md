@@ -136,6 +136,9 @@ needs a `## <version>` section here, or its build fails.
   and outgoing commit counts. It pulls with fast-forward only before
   pushing that branch to its upstream, or publishes a branch that has
   no upstream yet.
+- On Linux, Mayoi no longer crashes when opening a folder, Settings or
+  anything else that changes the menus: the menu bar is replaced after
+  the window has drawn, not while GTK is still drawing it (#51).
 
 ## 0.11.4
 

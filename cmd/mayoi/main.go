@@ -60,7 +60,8 @@ type mayoi struct {
 	quitting bool
 	// menuKey is the key (menuKey) of the menu last set, which is set
 	// again only when it changes.
-	menuKey string
+	menuKey      string
+	menuRevision uint64 // rejects deferred updates superseded by a newer menu
 	// cloud syncs the settings with the person's account, nil without a
 	// settings file.
 	cloud *cloud
@@ -647,14 +648,40 @@ func (m *mayoi) setMenu(a *app) {
 	// is open, as when the window has the focus again from a submenu's
 	// grab: one that does not change stays.
 	menu := a.menu(runtime.GOOS == "darwin" && mygo.App.IsPackaged(), m.run)
-	if key := menuKey(menu.Items()); key != m.menuKey {
-		m.menuKey = key
-		mygo.App.SetMenu(menu)
+	if apply := m.menuUpdate(menu); apply != nil {
+		if runtime.GOOS == "linux" {
+			// The view drains app.post during GTK's draw/render callback.
+			// SetMenu destroys the old menu bar, which GTK may still have
+			// in its list of children to draw. Dispatch from another
+			// goroutine so RunOnMain queues the update instead of running
+			// it inline inside that traversal. Do not wait here.
+			go mygo.RunOnMain(apply)
+		} else {
+			apply()
+		}
 	}
 	if runtime.GOOS != "darwin" {
 		return
 	}
 	mygo.App.Dock.SetMenu(m.dockMenu())
+}
+
+// menuUpdate captures the menu on the UI thread. Its returned function
+// must also run there, after drawing on Linux. Dispatching goroutines may
+// reach the main loop out of order, so only the latest revision applies.
+func (m *mayoi) menuUpdate(menu *mygo.Menu) func() {
+	key := menuKey(menu.Items())
+	if key == m.menuKey {
+		return nil
+	}
+	m.menuKey = key
+	m.menuRevision++
+	revision := m.menuRevision
+	return func() {
+		if revision == m.menuRevision && !m.quitting {
+			mygo.App.SetMenu(menu)
+		}
+	}
 }
 
 // dockMenu is the menu of the Dock icon: a window that shows nothing, and
