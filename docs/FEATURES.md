@@ -231,7 +231,9 @@ tab names the left and right paths, and each changed block has **Accept Left** a
 a side opens or reuses that file's document and records one undoable edit; save it from the file tab when ready. This
 comparison reads and writes local documents only and does not stage Git changes.
 
-Removed and added lines show in one column, or side by side with the lines of a change across from each other. The
+Removed and added lines show in one column, or side by side with the lines of a change across from each other. Side by
+side, a gutter between the sides joins each change's lines on the left to its lines on the right with a band, which
+curves where the sides stand apart, and holds the change's arrows; pointing at an arrow lights the lines it takes. The
 layout button in the breadcrumbs chooses side by side, one column, or side by side when each side has room for 80
 columns, which is the default. Words that changed within a line are tinted,
 and a bar along the left is brightest for the change you are on. Long lines wrap as the editor's do: **Word Wrap**

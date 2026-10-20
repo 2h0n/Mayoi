@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -63,14 +64,15 @@ func (a *app) mergeViewUI(c *ui.Context, v *mergeView) {
 			v.panes[1].scroll.Focus(c)
 		}
 	}
+	a.syncMergePanes(v)
 	ui.Column(c).Fill().Background(p.editor).Children(func() {
 		a.mergeHead(c, v)
 		a.mergeActions(c, v)
 		ui.Row(c).Grow(1).MinHeight(0).AlignItems(ui.Stretch).Children(func() {
 			a.mergePane(c, v, 0, v.oursLabel(), v.oursTip())
-			ui.Box(c).Width(1).Shrink(0).Background(p.border)
+			a.mergeGutter(c, v, 0)
 			a.mergePane(c, v, 1, v.resultLabel(), v.resultTip())
-			ui.Box(c).Width(1).Shrink(0).Background(p.border)
+			a.mergeGutter(c, v, 1)
 			a.mergePane(c, v, 2, v.theirsLabel(), v.theirsTip())
 		})
 	})
@@ -78,87 +80,112 @@ func (a *app) mergeViewUI(c *ui.Context, v *mergeView) {
 
 // mergeHead is the bar over the panes: the file in conflict, how many of
 // its conflicts stand, how many of the files of the merge stand resolved,
-// and what ends them.
+// and what ends them, over a line that fills as the conflicts resolve.
 func (a *app) mergeHead(c *ui.Context, v *mergeView) {
 	p := a.pal
 	resolved := a.mergeResolved(v)
 	filesResolved, filesTotal := a.mergeResolvedCount()
-	ui.Row(c).Height(30).Padding(0, 10, 0, 8).Gap(8).AlignItems(ui.Center).Background(p.chrome).Children(func() {
-		ui.Icon(c, iconMerge).FontSize(14).TextColor(p.changed)
-		ui.Text(c, v.name()).FontSize(12.5).FontWeight(600).TextColor(p.text).SingleLine().Shrink(0)
-		tip := locales.MergeConflictTip()
-		if op := v.op.Title(); op != "" {
-			tip = locales.MergeOpStoppedFile(op)
-		}
-		ui.Text(c, tip).FontSize(11).TextColor(p.muted).SingleLine().Shrink(1)
-		if n := len(v.regions); n > 0 {
-			un := v.unresolved()
-			pill := ui.Box(c.Key("merge-count")).Height(16).Padding(0, 6).Radius(8).Shrink(0).
-				AlignItems(ui.Center).Justify(ui.Center).
-				Label(locales.MergeConflictsUnresolved()).Tooltip(locales.MergeConflictsUnresolvedTip())
-			if un > 0 {
-				pill.Background(p.danger.Alpha(0.18))
-			} else {
-				pill.Background(p.text.Alpha(0.07))
-			}
-			pill.Children(func() {
-				ui.RichText(c, ui.Span{Text: locales.MergeConflictsCount(strconv.Itoa(un), strconv.Itoa(n)), Size: 10.5, Weight: 600, Color: p.text}).SingleLine()
+	head := ui.Column(c.Key("merge-head")).Background(p.chrome)
+	head.Children(func() {
+		ui.Row(c).Height(34).Padding(0, 10, 0, 10).Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Box(c).Size(22, 22).Radius(6).Shrink(0).Background(p.changed.Alpha(0.14)).Justify(ui.Center).AlignItems(ui.Center).Children(func() {
+				ui.Icon(c, iconMerge).FontSize(13).TextColor(p.changed)
 			})
-		}
-		if filesTotal > 1 {
-			ui.Text(c, locales.MergeFilesResolved(strconv.Itoa(filesResolved), strconv.Itoa(filesTotal))).
-				FontSize(11).TextColor(p.muted).SingleLine().Shrink(0).
-				Tooltip(locales.MergeFilesResolvedTip(cmp.Or(v.op.Title(), locales.MergeOpMerge())))
-		}
-		ui.Spacer(c)
-		if !resolved && !v.binary && v.loaded {
-			b := ui.ButtonBase(c.Key("merge-apply")).Height(20).Padding(0, 8).Radius(5).AlignItems(ui.Center).
-				Label(locales.MergeApply()).Tooltip(locales.MergeApplyTip())
-			if b.Hovered() {
-				b.Background(p.hover)
+			ui.Text(c, v.name()).FontSize(13).FontWeight(600).TextColor(p.text).SingleLine().Shrink(0)
+			tip := locales.MergeConflictTip()
+			if op := v.op.Title(); op != "" {
+				tip = locales.MergeOpStoppedFile(op)
 			}
-			b.Menu(func(m *ui.Menu) {
-				if m.Item(locales.MergeApplyAll()).Chosen() {
-					a.post(func() { a.applyNonConflicts(v, applyAll) })
+			ui.Text(c, tip).FontSize(11.5).TextColor(p.muted).SingleLine().Shrink(1)
+			if n := len(v.regions); n > 0 {
+				un := v.unresolved()
+				pill := ui.Box(c.Key("merge-count")).Height(18).Padding(0, 7).Radius(9).Shrink(0).
+					AlignItems(ui.Center).Justify(ui.Center).
+					Label(locales.MergeConflictsUnresolved()).Tooltip(locales.MergeConflictsUnresolvedTip())
+				col := p.text
+				if un > 0 {
+					pill.Background(p.danger.Alpha(0.16))
+					col = p.dangerFg
+				} else {
+					pill.Background(p.added.Alpha(0.16))
+					col = p.addedFg
 				}
-				if m.Item(locales.MergeApplyLeft()).Chosen() {
-					a.post(func() { a.applyNonConflicts(v, applyLeft) })
-				}
-				if m.Item(locales.MergeApplyRight()).Chosen() {
-					a.post(func() { a.applyNonConflicts(v, applyRight) })
-				}
-				if m.Item(locales.MergeApplyAuto()).Checked(a.settings.MergeAutoApply).Chosen() {
-					a.post(func() { a.setMergeAutoApply(!a.settings.MergeAutoApply) })
-				}
-			})
-			b.Children(func() {
-				ui.Text(c, locales.MergeApply()).FontSize(11.5).FontWeight(500).TextColor(p.text).SingleLine()
-			})
-		}
-		if !resolved {
-			if a.mergeButton(c, "merge-reset", locales.MergeResetBase(), locales.MergeResetBaseTip()) {
-				a.post(func() { a.resetMerge(v) })
+				pill.Transition(hoverFade)
+				pill.Children(func() {
+					ui.RichText(c, ui.Span{Text: locales.MergeConflictsCount(strconv.Itoa(un), strconv.Itoa(n)), Size: 10.5, Weight: 650, Color: col}).SingleLine()
+				})
 			}
-		}
-		if a.mergeButton(c, "merge-save", locales.ButtonSave(), locales.MergeSaveTip()) {
-			a.post(func() { a.saveMerge(v) })
-		}
-		if !resolved && filesTotal > 1 && a.mergeButton(c, "merge-apply-next", locales.MergeApplyChanges(), locales.MergeApplyChangesTip()) {
-			a.post(func() { a.applyMergeChanges(v) })
-		}
-		if filesTotal > 0 && a.mergeButton(c, "merge-save-close", locales.MergeSaveClose(), locales.MergeSaveCloseTip()) {
-			a.post(func() { a.saveCloseMerge(v) })
-		}
-		if filesTotal > 0 && a.mergeButton(c, "merge-files", locales.MergeConflictsEllipsis(), locales.MergeConflictsTip(cmp.Or(v.op.Title(), locales.MergeOpMerge()))) {
-			a.post(a.openConflicts)
-		}
-		if !resolved {
-			b := ui.PrimaryButton(c.Key("merge-resolved"), locales.MergeMarkResolved()).Height(22)
-			b.Tooltip(locales.MergeMarkResolvedTip())
-			if b.Clicked() {
-				a.post(func() { a.completeMerge(v) })
+			if filesTotal > 1 {
+				ui.Text(c, locales.MergeFilesResolved(strconv.Itoa(filesResolved), strconv.Itoa(filesTotal))).
+					FontSize(11.5).TextColor(p.muted).SingleLine().Shrink(0).
+					Tooltip(locales.MergeFilesResolvedTip(cmp.Or(v.op.Title(), locales.MergeOpMerge())))
 			}
+			ui.Spacer(c)
+			if !resolved && !v.binary && v.loaded {
+				b := a.mergeButtonBase(c, "merge-apply", locales.MergeApply(), locales.MergeApplyTip())
+				b.Menu(func(m *ui.Menu) {
+					if m.Item(locales.MergeApplyAll()).Chosen() {
+						a.post(func() { a.applyNonConflicts(v, applyAll) })
+					}
+					if m.Item(locales.MergeApplyLeft()).Chosen() {
+						a.post(func() { a.applyNonConflicts(v, applyLeft) })
+					}
+					if m.Item(locales.MergeApplyRight()).Chosen() {
+						a.post(func() { a.applyNonConflicts(v, applyRight) })
+					}
+					if m.Item(locales.MergeApplyAuto()).Checked(a.settings.MergeAutoApply).Chosen() {
+						a.post(func() { a.setMergeAutoApply(!a.settings.MergeAutoApply) })
+					}
+				})
+				col := p.text
+				b.Children(func() {
+					ui.Icon(c, iconChevronsRight).FontSize(12).TextColor(p.muted)
+					ui.Text(c, locales.MergeApply()).FontSize(11.5).FontWeight(500).TextColor(col).SingleLine()
+					ui.Icon(c, iconChevronDown).FontSize(11).TextColor(p.muted)
+				})
+			}
+			if !resolved {
+				if a.mergeIconButton(c, "merge-reset", iconUndo, locales.MergeResetBase(), locales.MergeResetBaseTip()) {
+					a.post(func() { a.resetMerge(v) })
+				}
+			}
+			mergeDivider(c, p)
+			if a.mergeButton(c, "merge-save", locales.ButtonSave(), locales.MergeSaveTip()) {
+				a.post(func() { a.saveMerge(v) })
+			}
+			if !resolved && filesTotal > 1 && a.mergeButton(c, "merge-apply-next", locales.MergeApplyChanges(), locales.MergeApplyChangesTip()) {
+				a.post(func() { a.applyMergeChanges(v) })
+			}
+			if filesTotal > 0 && a.mergeButton(c, "merge-save-close", locales.MergeSaveClose(), locales.MergeSaveCloseTip()) {
+				a.post(func() { a.saveCloseMerge(v) })
+			}
+			if filesTotal > 0 && a.mergeButton(c, "merge-files", locales.MergeConflictsEllipsis(), locales.MergeConflictsTip(cmp.Or(v.op.Title(), locales.MergeOpMerge()))) {
+				a.post(a.openConflicts)
+			}
+			if !resolved {
+				b := ui.PrimaryButton(c.Key("merge-resolved"), locales.MergeMarkResolved()).Height(24)
+				b.Tooltip(locales.MergeMarkResolvedTip())
+				pressPose(b)
+				if b.Clicked() {
+					a.post(func() { a.completeMerge(v) })
+				}
+			}
+		})
+		// How far the conflicts are resolved, filling as they are.
+		done := float32(1)
+		if n := len(v.regions); n > 0 && !resolved {
+			done = float32(n-v.unresolved()) / float32(n)
 		}
+		fill := head.AnimateTo("done", done, ui.Smooth)
+		col := p.accent
+		if done >= 1 {
+			col = p.added
+		}
+		col = head.AnimateColor("done-color", col, ui.Animation{Duration: 200 * time.Millisecond})
+		ui.Box(c).Height(2).Draw(func(pt *ui.Painter, r ui.Rect) {
+			pt.Fill(r, p.border.Alpha(0.6), 0)
+			pt.Fill(ui.Rect{X: r.X, Y: r.Y, W: r.W * clamp(fill, 0, 1), H: r.H}, col, 0)
+		})
 	})
 }
 
@@ -166,7 +193,7 @@ func (a *app) mergeHead(c *ui.Context, v *mergeView) {
 // stands resolved.
 func (a *app) mergeActions(c *ui.Context, v *mergeView) {
 	p := a.pal
-	ui.Row(c).Height(26).Padding(0, 10, 2, 8).Gap(6).AlignItems(ui.Center).Background(p.chrome).Children(func() {
+	ui.Row(c).Height(30).Padding(0, 10, 0, 6).Gap(6).AlignItems(ui.Center).Background(p.chrome).Children(func() {
 		if a.mergeResolved(v) {
 			ui.Icon(c, iconCheck).FontSize(13).TextColor(p.added).Shrink(0)
 			done := locales.MergeFileResolved()
@@ -199,6 +226,7 @@ func (a *app) mergeActions(c *ui.Context, v *mergeView) {
 			return
 		}
 		r := v.regions[i]
+		st := v.stateOf(r)
 		state := map[regionState]string{
 			regionUndecided: locales.MergeStateBase(),
 			regionLeft:      locales.MergeStateOurs(),
@@ -206,22 +234,32 @@ func (a *app) mergeActions(c *ui.Context, v *mergeView) {
 			regionBoth:      locales.MergeStateBoth(),
 			regionEdited:    locales.MergeStateEdited(),
 			regionIgnored:   locales.MergeStateIgnored(),
-		}[v.stateOf(r)]
+		}[st]
+		dot := p.added
+		switch st {
+		case regionUndecided:
+			dot = p.danger
+		case regionEdited:
+			dot = p.changed
+		}
+		ui.Box(c.Key("merge-state-dot")).Size(7, 7).Radius(3.5).Shrink(0).Background(dot).Transition(hoverFade)
 		ui.Text(c, locales.MergeConflictOf(strconv.Itoa(i+1), strconv.Itoa(len(v.regions)), state)).
 			FontSize(11.5).TextColor(p.muted).SingleLine().Shrink(1)
-		if a.mergeButton(c, "merge-accept-l", locales.DiffAcceptLeft(), locales.MergeAcceptLeftTip()) {
-			a.post(func() { a.takeMergeSide(v, i, true) })
-		}
-		if a.mergeButton(c, "merge-ignore-l", locales.MergeIgnoreLeft(), locales.MergeIgnoreLeftTip()) {
-			a.post(func() { a.dropMergeSide(v, i, true) })
-		}
-		if a.mergeButton(c, "merge-accept-r", locales.DiffAcceptRight(), locales.MergeAcceptRightTip()) {
-			a.post(func() { a.takeMergeSide(v, i, false) })
-		}
-		if a.mergeButton(c, "merge-ignore-r", locales.MergeIgnoreRight(), locales.MergeIgnoreRightTip()) {
-			a.post(func() { a.dropMergeSide(v, i, false) })
-		}
 		ui.Spacer(c)
+		if a.mergeIconButton(c, "merge-accept-l", iconChevronsRight, locales.DiffAcceptLeft(), locales.MergeAcceptLeftTip()) {
+			a.post(func() { a.takeMergeSide(v, i, true); a.flashMergeRegion(v, i) })
+		}
+		if a.mergeIconButton(c, "merge-ignore-l", iconX, locales.MergeIgnoreLeft(), locales.MergeIgnoreLeftTip()) {
+			a.post(func() { a.dropMergeSide(v, i, true); a.flashMergeRegion(v, i) })
+		}
+		mergeDivider(c, p)
+		if a.mergeIconButton(c, "merge-ignore-r", iconX, locales.MergeIgnoreRight(), locales.MergeIgnoreRightTip()) {
+			a.post(func() { a.dropMergeSide(v, i, false); a.flashMergeRegion(v, i) })
+		}
+		if a.mergeIconButton(c, "merge-accept-r", iconChevronsLeft, locales.DiffAcceptRight(), locales.MergeAcceptRightTip()) {
+			a.post(func() { a.takeMergeSide(v, i, false); a.flashMergeRegion(v, i) })
+		}
+		mergeDivider(c, p)
 		if a.mergeButton(c, "merge-use-l", locales.MergeUseLeft(), locales.MergeUseLeftTip()) {
 			a.post(func() { a.resolveUsingMerge(v, true) })
 		}
@@ -231,17 +269,47 @@ func (a *app) mergeActions(c *ui.Context, v *mergeView) {
 	})
 }
 
+// mergeDivider is a short line between the groups of buttons of a merge's
+// bars.
+func mergeDivider(c *ui.Context, p *palette) {
+	ui.Box(c).Size(1, 14).Shrink(0).Margin(0, 2, 0, 2).Background(p.border)
+}
+
+// mergeButtonBase is a small button of the merge's bars, outlined, its
+// face filling under the pointer, to put its content in.
+func (a *app) mergeButtonBase(c *ui.Context, key, label, tip string) ui.Element {
+	p := a.pal
+	b := ui.ButtonBase(c.Key(key)).Height(22).Padding(0, 8).Gap(5).Radius(5).AlignItems(ui.Center).Shrink(0).
+		Label(label).Tooltip(tip).Border(1, p.border)
+	if b.Hovered() {
+		b.Background(p.hover.Over(p.chrome))
+	}
+	b.Transition(hoverFade)
+	pressPose(b)
+	return b
+}
+
 // mergeButton is a small button of the merge's bars, and reports whether
 // it was clicked.
 func (a *app) mergeButton(c *ui.Context, key, label, tip string) bool {
 	p := a.pal
-	b := ui.ButtonBase(c.Key(key)).Height(20).Padding(0, 8).Radius(5).AlignItems(ui.Center).
-		Label(label).Tooltip(tip)
+	b := a.mergeButtonBase(c, key, label, tip)
+	b.Children(func() { ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(p.text).SingleLine() })
+	return b.Clicked()
+}
+
+// mergeIconButton is mergeButton with an icon before its label.
+func (a *app) mergeIconButton(c *ui.Context, key string, icon *ui.SVG, label, tip string) bool {
+	p := a.pal
+	b := a.mergeButtonBase(c, key, label, tip)
+	col := p.muted
 	if b.Hovered() {
-		b.Background(p.hover)
+		col = p.text
 	}
-	col := p.text
-	b.Children(func() { ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(col).SingleLine() })
+	b.Children(func() {
+		ui.Icon(c, icon).FontSize(12).TextColor(col)
+		ui.Text(c, label).FontSize(11.5).FontWeight(500).TextColor(p.text).SingleLine()
+	})
 	return b.Clicked()
 }
 
@@ -263,12 +331,17 @@ func (a *app) mergePane(c *ui.Context, v *mergeView, k int, label, tip string) {
 		pane := ui.ScrollHorizontal(c.Key(fmt.Sprintf("merge-scroll-%d", k))).TrackScroll(&v.panes[k].hscroll).
 			Grow(1).MinHeight(0).Background(p.editor)
 		pane.Children(func() {
-			view := v.panes[k].scroll.Bounds(c)
+			// The pane's room is the scroller's, which the text area,
+			// as wide as its longest line, may be wider than.
+			view := v.panes[k].hscroll.Bounds(c)
+			view.H = v.panes[k].scroll.Bounds(c).H
 			v.viewW, v.viewH = view.W, view.H
 			v.panes[k].viewH = view.H
+			// The width of the longest line, worked out again as the text
+			// changes: wideVer is one past the version it was of.
 			ver := buf.Version()
-			if v.panes[k].wideVer != ver {
-				v.panes[k].wideVer = ver
+			if v.panes[k].wideVer != ver+1 {
+				v.panes[k].wideVer = ver + 1
 				v.panes[k].widest = widestOf(v.paneLines(k))
 			}
 			contentW := max(view.W, textXOf(f, v.panes[k].widest))
@@ -379,6 +452,23 @@ func (a *app) paintMergeRegions(pt *ui.Painter, v *mergeView, k int, r ui.Rect) 
 	sc := v.panes[k].scroll.Y
 	first := max(int((sc-editorPadY)/lineH)-1, 0)
 	last := first + int(v.panes[k].viewH/lineH) + 3
+	// The changes of a side's own that are no conflict, which the result
+	// lacks.
+	if k != 1 {
+		for _, b := range a.mergeBands(v, k) {
+			lo, hi := b.h.A, b.h.A+b.h.ALen
+			if b.region >= 0 || !b.own || hi <= first || lo >= last {
+				continue
+			}
+			y := r.Y + editorPadY + float32(lo)*lineH - sc
+			h := max(float32(hi-lo)*lineH, 2)
+			if hi == lo {
+				y--
+			}
+			pt.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: h}, p.changed.Alpha(0.09), 0)
+			pt.Fill(ui.Rect{X: r.X, Y: y, W: diffRailW, H: h}, p.changed.Alpha(0.6), 0)
+		}
+	}
 	for i, reg := range v.regions {
 		lo, hi := v.regionLines(reg, k)
 		if lo < 0 || hi <= first || lo >= last {
@@ -388,11 +478,13 @@ func (a *app) paintMergeRegions(pt *ui.Painter, v *mergeView, k int, r ui.Rect) 
 			hi = lo + 1 // an insertion shows a row of its own
 		}
 		col := p.added
-		switch v.stateOf(reg) {
-		case regionUndecided:
+		switch st := v.stateOf(reg); {
+		case st == regionUndecided:
 			col = p.danger
-		case regionEdited:
+		case st == regionEdited:
 			col = p.changed
+		case st == regionIgnored, st == regionLeft && k == 2, st == regionRight && k == 0:
+			col = p.muted // the side the conflict did not take
 		}
 		y := r.Y + editorPadY + float32(lo)*lineH - sc
 		h := float32(hi-lo) * lineH
@@ -406,6 +498,9 @@ func (a *app) paintMergeRegions(pt *ui.Painter, v *mergeView, k int, r ui.Rect) 
 			rail = col
 		}
 		pt.Fill(ui.Rect{X: r.X, Y: y, W: diffRailW, H: h}, rail, 0)
+	}
+	if k == 1 {
+		a.paintMergeFlash(pt, v, r)
 	}
 }
 

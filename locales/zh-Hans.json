@@ -486,6 +486,8 @@
   "mergeApply": "应用",
   "mergeApplyAll": "应用所有无冲突的更改",
   "mergeApplyAuto": "自动应用",
+  "mergeApplyChange": "应用此更改",
+  "mergeApplyChangeTip": "将这一侧不冲突的更改放入结果",
   "mergeApplyChanges": "应用更改",
   "mergeApplyChangesTip": "保存结果并暂存文件，然后转到下一个冲突文件",
   "mergeApplyLeft": "应用左侧的无冲突更改",

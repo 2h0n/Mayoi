@@ -486,6 +486,8 @@
   "mergeApply": "適用",
   "mergeApplyAll": "競合していない変更をすべて適用",
   "mergeApplyAuto": "自動適用",
+  "mergeApplyChange": "この変更を適用",
+  "mergeApplyChangeTip": "競合のないこの側の変更を結果に取り込みます",
   "mergeApplyChanges": "変更を適用",
   "mergeApplyChangesTip": "結果を保存してファイルをステージし、次の競合ファイルへ進みます",
   "mergeApplyLeft": "左側の競合していない変更を適用",

@@ -326,8 +326,12 @@ func (a *app) revealDiffCaret(v *diffView, e *diffEdit) {
 	lineH := a.font.lineH
 	y := editorPadY + float32(v.tops[row])*lineH
 	h := float32(v.rows[row].h) * lineH
+	if v.split {
+		y, h = a.sideRowY(v, 1, row)
+	}
 	if v.split && !a.settings.DiffSyncScroll {
 		// The caret is of the right side, which scrolls in its own.
+		y -= a.rightShift(v)
 		end := max(0, 2*editorPadY+float32(v.tops[len(v.tops)-1])*lineH-v.viewH)
 		switch {
 		case y < v.sideY:
@@ -359,7 +363,7 @@ func (a *app) revealDiffCaret(v *diffView, e *diffEdit) {
 	l := a.diffGeometry(v, v.split, v.viewW)
 	textX := l.textX
 	if v.split {
-		textX += l.half
+		textX += l.right()
 	}
 	x, _ := diffCaretX(a.font, clipLine(text), caret-s, l.cols[0], false)
 	x += textX
@@ -385,7 +389,7 @@ func (a *app) diffCaretAtPoint(v *diffView, e *diffEdit, x, y float32, extend bo
 	if r.kind != rowLine || r.new < 0 {
 		return false
 	}
-	if v.split && x < l.half {
+	if v.split && !l.onRight(x) {
 		return false // the point is on the side that is read
 	}
 	f := v.files[r.file]
@@ -401,13 +405,13 @@ func (a *app) diffCaretAtPoint(v *diffView, e *diffEdit, x, y float32, extend bo
 	// Where the row's text starts, and the row of a wrapped line y is in.
 	textX := l.textX
 	if v.split {
-		textX += l.half
+		textX += l.right()
 	}
-	cy := y + v.scroll.Y
-	if v.split && !a.settings.DiffSyncScroll {
-		cy = y + v.sideY
+	top := editorPadY + float32(v.tops[row])*lineH
+	if v.split {
+		top, _ = a.sideRowY(v, 1, row)
 	}
-	yInRow := cy - editorPadY - float32(v.tops[row])*lineH
+	yInRow := y + v.scroll.Y - top
 	text := ""
 	if r.new < len(f.new.lines) {
 		text = clipLine(f.new.lines[r.new])
@@ -761,10 +765,9 @@ func (a *app) paintDiffEdit(pt *ui.Painter, v *diffView, e *diffEdit, l diffGeom
 		x := r.X + l.textX
 		y := r.Y + editorPadY + float32(v.tops[i])*lineH
 		if v.split {
-			x += l.half
-			if !a.settings.DiffSyncScroll {
-				y += v.scroll.Y - v.sideY
-			}
+			x += l.right()
+			ys, _ := a.sideRowY(v, 1, i)
+			y = r.Y + ys
 		}
 		if row.new < snap.LineCount() {
 			s0, s1 := snap.LineRange(row.new)
@@ -840,17 +843,14 @@ func (a *app) diffCaretRect(v *diffView, e *diffEdit, l diffGeometry) (ui.Rect, 
 		text = clipLine(e.f.new.lines[line])
 	}
 	x, k := diffCaretX(a.font, text, caret-s, l.cols[btoi(v.split)], v.built.wrap)
-	y := editorPadY + float32(v.tops[row])*a.font.lineH + float32(k)*a.font.lineH
+	y := editorPadY + float32(v.tops[row])*a.font.lineH
 	x += l.textX
 	if v.split {
-		x += l.half
-		if !a.settings.DiffAlignedRows && len(v.sideTops[1]) == len(v.rows)+1 {
-			// The caret's line stands in the right side's own stream.
-			y = editorPadY + float32(v.sideTops[1][row]-int(v.sideY))*a.font.lineH + float32(k)*a.font.lineH
-		} else if !a.settings.DiffSyncScroll {
-			y += v.scroll.Y - v.sideY
-		}
+		// The caret's line stands where the right side has it.
+		x += l.right()
+		y, _ = a.sideRowY(v, 1, row)
 	}
+	y += float32(k) * a.font.lineH
 	return ui.Rect{X: x - 1, Y: y, W: 3, H: a.font.lineH}, true
 }
 

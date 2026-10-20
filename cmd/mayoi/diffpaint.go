@@ -24,6 +24,10 @@ type diffGeometry struct {
 	numW  float32 // the width of a column of line numbers
 	textX float32 // where the text starts, from the side's left
 	half  float32 // the width of the left side, side by side
+	// mid is the width of the gutter between the sides, side by side,
+	// where the changes of one side join the other's and their arrows
+	// stand: the right side starts past it.
+	mid   float32
 	viewW float32
 	// cols are how many columns of text each side has room for, as the
 	// lines wrap: of the one column only, in the unified layout.
@@ -33,6 +37,16 @@ type diffGeometry struct {
 // diffRailW is the width of the bar along the left of a diff's rows,
 // colored as their lines changed.
 const diffRailW = 3
+
+// diffMidW is the width of the gutter between the sides of a split diff.
+const diffMidW = 40
+
+// right is where the right side of a split diff starts.
+func (l diffGeometry) right() float32 { return l.half + l.mid }
+
+// onRight reports whether x, from the diff's left, is on its right side:
+// past the middle of the gutter between them.
+func (l diffGeometry) onRight(x float32) bool { return x >= l.half+l.mid/2 }
 
 // diffGutter is the room of the line numbers of n lines in a diff.
 func (a *app) diffGutter(n int) float32 {
@@ -48,9 +62,10 @@ func (a *app) diffGeometry(v *diffView, split bool, viewW float32) diffGeometry 
 	l := diffGeometry{numW: numW, viewW: viewW}
 	room := func(w float32) int { return max(int((w-l.textX-14)/a.font.charW), 8) }
 	if split {
-		l.half = float32(int(viewW / 2))
+		l.mid = diffMidW
+		l.half = float32(int((viewW - l.mid) / 2))
 		l.textX = diffRailW + numW + 22
-		l.cols = [2]int{room(l.half), room(viewW - l.half)}
+		l.cols = [2]int{room(l.half), room(viewW - l.right())}
 	} else {
 		l.textX = diffRailW + 2*numW + 22
 		l.cols = [2]int{room(viewW), 0}
@@ -62,19 +77,16 @@ func (a *app) diffGeometry(v *diffView, split bool, viewW float32) diffGeometry 
 // content, x and y: on the right half of a split diff whose sides do not
 // scroll together, the row the right side shows there.
 func (a *app) rowUnder(v *diffView, x, y float32, l diffGeometry) int {
-	if v.split && !a.settings.DiffAlignedRows && len(v.sideTops[0]) == len(v.rows)+1 {
+	right := v.split && l.onRight(x-v.scroll.X)
+	if right {
+		y -= a.rightShift(v)
+	}
+	if a.streams(v) {
 		// The sides stand in streams of their own: the half the pointer
 		// is on finds the row in its stream.
-		if x-v.scroll.X >= l.half {
-			return v.rowAtStream(v.sideTops[1], y, v.sideY, a.font.lineH)
-		}
-		return v.rowAtStream(v.sideTops[0], y, v.scroll.Y, a.font.lineH)
+		return v.rowAtStream(v.sideTops[btoi(right)], y, a.font.lineH)
 	}
-	d := float32(0)
-	if v.split && !a.settings.DiffSyncScroll && x-v.scroll.X >= l.half {
-		d = v.sideY - v.scroll.Y
-	}
-	return v.rowAt(y+d, a.font.lineH)
+	return v.rowAt(y, a.font.lineH)
 }
 
 // diffViewUI shows a diff: its rows painted in a pane that scrolls both
@@ -146,13 +158,16 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	textW := float32(widest)*charW + textPadR
 	contentW := max(view.W, l.textX+textW)
 	if v.split {
-		contentW = view.W + max(0, textW-(l.half-l.textX))
+		contentW = view.W + max(0, textW-(view.W-l.right()-l.textX))
 	}
 	if wrap {
 		contentW, v.scroll.X = view.W, 0
 	}
 	contentH := 2*editorPadY + float32(v.tops[len(rows)])*lineH
-	if v.split && !a.settings.DiffSyncScroll {
+	switch {
+	case a.streams(v) && a.settings.DiffSyncScroll:
+		v.followStreams(lineH, v.viewH)
+	case v.split && !a.settings.DiffSyncScroll:
 		v.sideY = clamp(v.sideY, 0, max(0, contentH-v.viewH))
 	}
 	if j := v.jump; j >= 0 && view.H > 0 {
@@ -175,18 +190,39 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					top = y - view.H/3
 				}
 			}
-			v.scroll.Y = clamp(top, 0, max(0, contentH-view.H))
+			top = clamp(top, 0, max(0, contentH-view.H))
+			// Going to a change, a file or a note glides there when it
+			// is near, as an editor's going to a line does; revealing a
+			// row as the keys move along does not, nor does a long way.
+			if d := top - v.scroll.Y; v.glide && d != 0 && max(d, -d) < 3*view.H {
+				v.scroll.ScrollTo(v.scroll.X, top, ui.Animation{Duration: 220 * time.Millisecond, Ease: ui.EaseOut})
+				v.glideY = top
+			} else {
+				v.scroll.Y = top
+			}
 		}
+	}
+	// While the view glides, the rows painted are those of the way it
+	// goes, as it is drawn on the way.
+	lo, hi := v.scroll.Y, v.scroll.Y
+	if v.scroll.Scrolling() {
+		lo, hi = min(lo, v.glideY), max(hi, v.glideY)
 	}
 	first, last := 0, -1
 	if len(rows) > 0 {
-		first, last = v.rowAt(v.scroll.Y, lineH), v.rowAt(v.scroll.Y+view.H, lineH)
+		first, last = v.rowAt(lo, lineH), v.rowAt(hi+view.H, lineH)
 	}
+	// The rows painted are those each side shows, where the sides do not
+	// scroll together or stand in streams of their own.
 	paintFirst, paintLast := first, last
-	if v.split && !a.settings.DiffSyncScroll && len(rows) > 0 {
-		rightFirst := v.rowAt(v.sideY, lineH)
-		rightLast := v.rowAt(v.sideY+view.H, lineH)
-		paintFirst, paintLast = min(first, rightFirst), max(last, rightLast)
+	if streams := a.streams(v); v.split && (streams || !a.settings.DiffSyncScroll) && len(rows) > 0 {
+		for side, top := range [2]float32{v.scroll.Y, v.sideY} {
+			lo, hi := v.rowAt(top, lineH), v.rowAt(top+view.H, lineH)
+			if streams {
+				lo, hi = v.rowAtStream(v.sideTops[side], top, lineH), v.rowAtStream(v.sideTops[side], top+view.H, lineH)
+			}
+			paintFirst, paintLast = min(paintFirst, lo), max(paintLast, hi)
+		}
 	}
 	// The files read are those within a view's height of it, and the
 	// source control view chooses the file chosen, or at its top.
@@ -240,7 +276,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		}
 	}
 	a.takeKeys(pane, placeDiff, func(ev ui.InputEvent) bool {
-		if ev.Kind == ui.InputScroll && v.split && !a.settings.DiffSyncScroll && ev.X >= l.half {
+		if ev.Kind == ui.InputScroll && v.split && !a.settings.DiffSyncScroll && l.onRight(ev.X) {
 			// The right side scrolls on its own.
 			v.sideY = clamp(v.sideY+ev.DY, 0, max(0, contentH-v.viewH))
 			return true
@@ -250,10 +286,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		box := ui.Box(c).Width(contentW).Height(contentH)
 		// The buttons of the file's header under the pointer, or chosen.
 		onSticky := func(y float32) bool { return sticky >= 0 && y >= stickyY && y < stickyY+lineH }
-		hovered := -1
+		hovered, hoverRight := -1, false
 		if box.Hovered() {
 			if x, y, ok := box.PointerPosition(); ok {
 				hovered = a.rowUnder(v, x, y, l)
+				hoverRight = v.split && l.onRight(x-v.scroll.X)
 				if onSticky(y) {
 					hovered = sticky
 				}
@@ -261,6 +298,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		}
 		var buttons, hunkButtons, cardRect, commentButton ui.Rect
 		var arrowRects []ui.Rect
+		glow := map[int]float32{}
 		box.Children(func() {
 			if card != nil && first == 0 && rows[0].kind == rowCommit {
 				cardRect = ui.Rect{X: v.scroll.X, Y: editorPadY + float32(v.tops[0])*lineH, W: view.W, H: float32(rows[0].h) * lineH}
@@ -293,13 +331,16 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			if hovered >= first && hovered <= last && hovered != sticky && rows[hovered].kind == rowLine && !v.dragged {
 				row := rows[hovered]
 				x := diffRailW + 2*l.numW + 3
+				y := editorPadY + float32(v.tops[hovered])*lineH
 				if v.split {
 					x = diffRailW + l.numW + 3
-					if row.new >= 0 {
-						x += l.half
+					side := btoi(row.new >= 0 && (row.old < 0 || hoverRight))
+					if side == 1 {
+						x += l.right()
 					}
+					y, _ = a.sideRowY(v, side, hovered)
 				}
-				y := editorPadY + float32(v.tops[hovered])*lineH + (lineH-lineCommentSize)/2
+				y += (lineH - lineCommentSize) / 2
 				commentButton = a.lineCommentButton(c, v, hovered, v.scroll.X+x, y)
 			}
 			// The buttons of the run of changes under the pointer, or chosen.
@@ -317,9 +358,23 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			// The arrow of every change in view that can be applied: the
 			// lines of one of its sides put in place of its lines of the
 			// other.
-			for k := range v.starts {
-				if r := a.hunkArrowUI(c, v, k, first, last, l); r.W > 0 {
+			hot := -1
+			inLo, inHi := v.startsIn(paintFirst, paintLast)
+			for k := inLo; k < inHi; k++ {
+				if r, on := a.hunkArrowUI(c, v, k, paintFirst, paintLast, l); r.W > 0 {
 					arrowRects = append(arrowRects, r)
+					if on {
+						hot = k
+					}
+				}
+			}
+			// The change whose arrow the pointer is on glows, to show what
+			// the arrow takes, and fades as it leaves.
+			for k := inLo; k < inHi; k++ {
+				if _, to := v.hunkRows(k); v.starts[k] <= paintLast && to > paintFirst {
+					if g := box.Animate(hunkGlow{k}, unit(k == hot), 140*time.Millisecond); g > 0 {
+						glow[k] = g
+					}
 				}
 			}
 		})
@@ -439,8 +494,8 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					}
 					if v.split {
 						// The sides go on past the card, under one of them.
-						rail(vx+l.half, y, h, neutral)
-						pt.Fill(ui.Rect{X: vx + l.half - 0.5, Y: y, W: 1, H: h}, p.border, 0)
+						rail(vx+l.right(), y, h, neutral)
+						a.paintDiffMid(pt, vx, y, h, l)
 					}
 				case rowCommit:
 					a.paintCommitCard(pt, full)
@@ -477,42 +532,27 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					uiText(pt, at+18, y, h, locales.DiffShowUnchanged(row.n), headerFontSize, 400, col)
 				case rowLine:
 					if v.split {
-						// Where the rows do not align, each side's lines
-						// stand in a stream of their own, which closes up
-						// where this row has none of the side's lines to
-						// show.
-						streams := !a.settings.DiffAlignedRows && len(v.sideTops[0]) == len(v.rows)+1
 						for side := range 2 {
-							x0 := vx + float32(side)*l.half
+							x0 := vx + float32(side)*l.right()
 							w := l.half
 							if side == 1 {
-								w = view.W - l.half
+								w = view.W - l.right()
 							}
 							n, tint := row.old, p.removed
 							if side == 1 {
 								n, tint = row.new, p.added
 							}
-							ys := y
-							hs := h
-							if streams {
-								sc := v.scroll.Y
-								if side == 1 {
-									sc = v.sideY
-								}
-								ys = r.Y + editorPadY + float32(v.sideTops[side][i]-int(sc))*lineH
-								hs = float32(v.sideTops[side][i+1]-v.sideTops[side][i]) * lineH
-								if n < 0 {
-									// The side has none of this row's lines:
-									// it closes up, rather than show filler.
-									continue
-								}
-							} else {
-								if side == 1 && !a.settings.DiffSyncScroll {
-									// The right side is scrolled on its own.
-									ys += v.scroll.Y - v.sideY
-								}
+							ys, hs := a.sideRowY(v, side, i)
+							ys += r.Y
+							if n < 0 && a.streams(v) {
+								// Where the rows do not align, the side has
+								// none of this row's lines: it closes up,
+								// rather than show filler.
+								continue
 							}
-							pt.Clip(ui.Rect{X: x0, Y: vy, W: w, H: view.H}, 0, func() {
+							clip := a.runClip(v, i, ui.Rect{X: x0, Y: vy - r.Y, W: w, H: view.H})
+							clip.Y += r.Y
+							pt.Clip(clip, 0, func() {
 								if n < 0 {
 									a.paintFiller(pt, ui.Rect{X: x0, Y: ys, W: w, H: hs})
 									return
@@ -529,7 +569,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 									}
 								}
 								pt.Clip(ui.Rect{X: x0 + l.textX - 4, Y: vy, W: w - l.textX + 4, H: view.H}, 0, func() {
-									a.paintDiffLine(pt, file, side == 1, n, peer, r.X+float32(side)*l.half+l.textX, ys, tint, l.cols[side], wrap)
+									a.paintDiffLine(pt, file, side == 1, n, peer, r.X+float32(side)*l.right()+l.textX, ys, tint, l.cols[side], wrap)
 								})
 								numCol := p.gutter
 								switch {
@@ -553,7 +593,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 								}
 							})
 						}
-						pt.Fill(ui.Rect{X: vx + l.half - 0.5, Y: y, W: 1, H: h}, p.border, 0)
+						a.paintDiffMid(pt, vx, y, h, l)
 						break
 					}
 					changed := row.hunk >= 0
@@ -609,18 +649,25 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 						col = p.text.Alpha(0.09)
 					}
 					left, right := full, ui.Rect{}
-					if v.split && !a.settings.DiffSyncScroll {
+					if v.split && (a.rightShift(v) != 0 || a.streams(v)) && row.kind == rowLine {
 						// The row shows where each side has it.
-						left.W = l.half
-						right = ui.Rect{X: vx + l.half, Y: y + v.scroll.Y - v.sideY, W: view.W - l.half, H: h}
+						ly, lh := a.sideRowY(v, 0, i)
+						ry, rh := a.sideRowY(v, 1, i)
+						left = ui.Rect{X: vx, Y: r.Y + ly, W: l.half, H: lh}
+						right = ui.Rect{X: vx + l.right(), Y: r.Y + ry, W: view.W - l.right(), H: rh}
 					}
 					pt.Fill(left, col, 0)
 					if right.W > 0 {
 						pt.Fill(right, col, 0)
 					}
-					pt.Fill(ui.Rect{X: vx, Y: y, W: diffRailW, H: h}, p.accent, 0)
+					pt.Fill(ui.Rect{X: vx, Y: left.Y, W: diffRailW, H: left.H}, p.accent, 0)
 				}
 			}
+			if v.split {
+				a.paintDiffBands(pt, v, l, r, view, paintFirst, paintLast, glow)
+			}
+			a.paintDiffGlow(pt, v, l, r, view, paintFirst, paintLast, glow)
+			a.paintDiffFlash(pt, v, l, r, view, paintFirst, paintLast)
 			// The selection and the caret of the side being edited.
 			if e := v.editing; e != nil {
 				a.paintDiffEdit(pt, v, e, l, first, last, r, focused)
@@ -1161,6 +1208,178 @@ func (a *app) paintFiller(pt *ui.Painter, r ui.Rect) {
 	pt.StrokePath(&stripes, 1, p.text.Alpha(0.04))
 }
 
+// paintDiffMid paints the gutter between the sides of a split diff along
+// a row at y, h tall: a shade off the editor, past a hairline that ends
+// the left side, up to the rail of the right.
+func (a *app) paintDiffMid(pt *ui.Painter, vx, y, h float32, l diffGeometry) {
+	p := a.pal
+	x := vx + l.half
+	pt.Fill(ui.Rect{X: x, Y: y, W: l.mid, H: h}, p.text.Alpha(0.02), 0)
+	pt.Fill(ui.Rect{X: x, Y: y, W: 1, H: h}, p.border, 0)
+}
+
+// hunkSides returns where the kth change of a split diff stands on each
+// side, in its content: the top and the bottom of its lines on the left,
+// then on the right. A side that has none of its lines, where the rows do
+// not align, has it stand between the lines around it.
+func (a *app) hunkSides(v *diffView, k int) (lt, lb, rt, rb float32) {
+	from, to := v.hunkRows(k)
+	lt, _ = a.sideRowY(v, 0, from)
+	y, h := a.sideRowY(v, 0, to-1)
+	lb = max(lt, y+h)
+	rt, _ = a.sideRowY(v, 1, from)
+	y, h = a.sideRowY(v, 1, to-1)
+	rb = max(rt, y+h)
+	return lt, lb, rt, rb
+}
+
+// paintDiffBands joins each change of a split diff in view, rows first
+// to last, from its lines on the left to its lines on the right across
+// the gutter between them, as JetBrains' diff does: a band that curves
+// where the sides stand apart, tinted as each side is, the deeper for the
+// change gone to last and as glow says for the one whose arrow the
+// pointer is on.
+func (a *app) paintDiffBands(pt *ui.Painter, v *diffView, l diffGeometry, r ui.Rect, view ui.Rect, first, last int, glow map[int]float32) {
+	p := a.pal
+	vx, vy := r.X+v.scroll.X, r.Y+v.scroll.Y
+	xL, xR := vx+l.half+1, vx+l.right()-1
+	cx := (xL + xR) / 2
+	pt.Clip(ui.Rect{X: xL, Y: vy, W: xR - xL, H: view.H}, 0, func() {
+		lo, hi := v.startsIn(first, last)
+		for k := lo; k < hi; k++ {
+			at := v.starts[k]
+			from, to := v.hunkRows(k)
+			if to <= first || from > last {
+				continue
+			}
+			row := v.rows[at]
+			f := v.files[row.file]
+			if row.hunk >= len(f.hunks) {
+				continue
+			}
+			hk := f.hunks[row.hunk]
+			lc, rc := p.removed, p.added
+			if hk.ALen == 0 {
+				lc = p.added
+			}
+			if hk.BLen == 0 {
+				rc = p.removed
+			}
+			lt, lb, rt, rb := a.hunkSides(v, k)
+			lt, lb, rt, rb = lt+r.Y, lb+r.Y, rt+r.Y, rb+r.Y
+			alpha := float32(0.16)
+			if v.inCurrent(&row) {
+				alpha = 0.22
+			}
+			alpha += 0.22 * glow[k]
+			clip := a.runClip(v, from, ui.Rect{X: xL, Y: vy - r.Y, W: xR - xL, H: view.H})
+			clip.Y += r.Y
+			var band ui.Path
+			band.MoveTo(xL, lt).CubeTo(cx, lt, cx, rt, xR, rt).LineTo(xR, rb).CubeTo(cx, rb, cx, lb, xL, lb).Close()
+			pt.Clip(clip, 0, func() {
+				pt.FillPathGradient(&band, ui.LinearGradient{From: lc.Alpha(alpha), To: rc.Alpha(alpha), Angle: 90})
+				var edges ui.Path
+				edges.MoveTo(xL, lt).CubeTo(cx, lt, cx, rt, xR, rt)
+				edges.MoveTo(xL, lb).CubeTo(cx, lb, cx, rb, xR, rb)
+				edge := 0.4 + 0.4*glow[k]
+				pt.StrokePathGradient(&edges, 1, ui.LinearGradient{From: lc.Alpha(edge), To: rc.Alpha(edge), Angle: 90})
+			})
+		}
+	})
+}
+
+// hunkGlow keys the glow of the kth change of a diff.
+type hunkGlow struct{ k int }
+
+// paintDiffGlow lights the rows of the changes in view as glow says, as
+// the pointer is on an arrow of theirs: what the arrow takes.
+func (a *app) paintDiffGlow(pt *ui.Painter, v *diffView, l diffGeometry, r ui.Rect, view ui.Rect, first, last int, glow map[int]float32) {
+	p := a.pal
+	vx := r.X + v.scroll.X
+	for k, g := range glow {
+		from, to := v.hunkRows(k)
+		for i := max(from, first); i < to && i <= last; i++ {
+			row := v.rows[i]
+			if !v.split {
+				tint := p.added
+				if row.new < 0 {
+					tint = p.removed
+				}
+				y := r.Y + editorPadY + float32(v.tops[i])*a.font.lineH
+				pt.Fill(ui.Rect{X: vx, Y: y, W: view.W, H: float32(row.h) * a.font.lineH}, tint.Alpha(0.15*g), 0)
+				continue
+			}
+			for side, n := range [2]int{row.old, row.new} {
+				if n < 0 {
+					continue
+				}
+				tint, x, w := p.removed, vx, l.half
+				if side == 1 {
+					tint, x, w = p.added, vx+l.right(), view.W-l.right()
+				}
+				y, h := a.sideRowY(v, side, i)
+				pt.Fill(ui.Rect{X: x, Y: r.Y + y, W: w, H: h}, tint.Alpha(0.15*g), 0)
+			}
+		}
+	}
+}
+
+// paintDiffFlash paints the glow of the lines a diff just wrote over its
+// rows first to last that show them, fading as it goes.
+func (a *app) paintDiffFlash(pt *ui.Painter, v *diffView, l diffGeometry, r ui.Rect, view ui.Rect, first, last int) {
+	fl := &v.flash
+	if fl.path == "" {
+		return
+	}
+	now := pt.Now()
+	if fl.gen == v.gen {
+		// The rows are not laid out with the lines yet.
+		if fl.waiting.IsZero() {
+			fl.waiting = now
+		}
+		if now.Sub(fl.waiting) > 3*time.Second {
+			v.flash = diffFlash{}
+		}
+		return
+	}
+	if fl.at.IsZero() {
+		fl.at = now
+	}
+	t := float32(now.Sub(fl.at)) / float32(flashFor)
+	if t >= 1 {
+		v.flash = diffFlash{}
+		return
+	}
+	k := (1 - t) * (1 - t)
+	col := a.pal.accent.Alpha(0.30 * k)
+	vx := r.X + v.scroll.X
+	for i := first; i <= last && i < len(v.rows); i++ {
+		row := v.rows[i]
+		if row.kind != rowLine || v.files[row.file].path != fl.path {
+			continue
+		}
+		n := row.old
+		if fl.side == 1 {
+			n = row.new
+		}
+		if n < fl.lo || n >= fl.hi {
+			continue
+		}
+		if !v.split {
+			y := r.Y + editorPadY + float32(v.tops[i])*a.font.lineH
+			pt.Fill(ui.Rect{X: vx, Y: y, W: view.W, H: float32(row.h) * a.font.lineH}, col, 0)
+			continue
+		}
+		y, h := a.sideRowY(v, fl.side, i)
+		x, w := vx, l.half
+		if fl.side == 1 {
+			x, w = vx+l.right(), view.W-l.right()
+		}
+		pt.Fill(ui.Rect{X: x, Y: r.Y + y, W: w, H: h}, col, 0)
+	}
+	pt.AnimationFrame()
+}
+
 // diffSpanKey is a pair of lines a diff compares, and whether it keeps
 // the characters that changed rather than the words.
 type diffSpanKey struct {
@@ -1177,7 +1396,7 @@ func diffSpans(file *diffFile, newSide bool, n, peer int, h diffHighlight) []lin
 		return nil
 	}
 	old, new := n, peer
-	if !newSide {
+	if newSide {
 		old, new = peer, n
 	}
 	if old >= len(file.old.lines) || new >= len(file.new.lines) {

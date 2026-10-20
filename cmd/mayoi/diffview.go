@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -361,6 +362,9 @@ type diffView struct {
 	// sides: a side closes up where the other has lines it lacks. Empty
 	// while the rows align, which is the default.
 	sideTops [2][]int
+	// runs are, for each row while the sides stand in streams, the run of
+	// lines it is in, from its top to its bottom in the rows aligned.
+	runs [][2]int
 	// current is the hunk gone to last, of starts, and cursor the row
 	// chosen, -1 for none. jump is a row to scroll to in the next frame,
 	// -1 for none, as jumpTo says.
@@ -371,10 +375,17 @@ type diffView struct {
 	anchor, press int
 	dragged       bool
 	// acted is set when the last click opened a gap or folded a file.
-	acted        bool
-	jump         int
-	jumpTo       jumpPlace
+	acted  bool
+	jump   int
+	jumpTo jumpPlace
+	// glide has the jump glide there, going to a change, and glideY is
+	// where the view glides to.
+	glide        bool
+	glideY       float32
 	viewW, viewH float32
+	// flash is the lines an arrow or an append of the diff just wrote,
+	// which glow a moment as the diff shows them again.
+	flash diffFlash
 
 	// summary is what the status bar says of the diff, worked out for the
 	// generation summaryGen, plus one.
@@ -1294,7 +1305,13 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 	if v.split && !a.settings.DiffAlignedRows {
 		v.sideTops = [2][]int{slices.Grow(v.sideTops[0][:0], len(v.rows)+1), slices.Grow(v.sideTops[1][:0], len(v.rows)+1)}
 		atL, atR := 0, 0
-		for _, r := range v.rows {
+		for i, r := range v.rows {
+			if r.kind != rowLine {
+				// A row across the sides, as a header, a fold or a note, stands
+				// where the rows aligned have it: the streams close up
+				// between such rows, and meet again at them.
+				atL, atR = v.tops[i], v.tops[i]
+			}
 			v.sideTops[0] = append(v.sideTops[0], atL)
 			v.sideTops[1] = append(v.sideTops[1], atR)
 			hL, hR := r.h, r.h
@@ -1320,8 +1337,25 @@ func (a *app) layoutRows(v *diffView, l diffGeometry) {
 		}
 		v.sideTops[0] = append(v.sideTops[0], atL)
 		v.sideTops[1] = append(v.sideTops[1], atR)
+		// Each run of lines between rows across the sides, where its
+		// streams stand: the lines of a side that follows the other show
+		// in it alone.
+		v.runs = slices.Grow(v.runs[:0], len(v.rows))
+		for i := 0; i < len(v.rows); {
+			j := i + 1
+			if v.rows[i].kind == rowLine {
+				for j < len(v.rows) && v.rows[j].kind == rowLine {
+					j++
+				}
+			}
+			for k := i; k < j; k++ {
+				v.runs = append(v.runs, [2]int{v.tops[i], v.tops[j]})
+			}
+			i = j
+		}
 	} else {
 		v.sideTops = [2][]int{}
+		v.runs = v.runs[:0]
 	}
 	v.current = min(v.current, len(v.starts)-1)
 	v.cursor = min(v.cursor, len(v.rows)-1)
@@ -1477,15 +1511,132 @@ func (v *diffView) rowAt(y float32, lineH float32) int {
 	return min(max(i-1, 0), len(v.rows)-1)
 }
 
-// rowAtStream returns the row whose lines stand at a place of one
-// side's stream of rows, as rowAt does of the rows aligned.
-func (v *diffView) rowAtStream(tops []int, y, scroll, lineH float32) int {
+// diffFlash is a run of lines of a side of a file of a diff, lo up to hi,
+// that just changed: they glow from when they first show, at, and fade.
+type diffFlash struct {
+	path   string
+	side   int
+	lo, hi int
+	// gen is the diff's generation as the lines were written: they glow
+	// once the rows are laid out again with them, from at, and are given
+	// up when that does not come soon after waiting.
+	gen         int
+	at, waiting time.Time
+}
+
+// flashFor is how long the lines a diff just wrote glow.
+const flashFor = 900 * time.Millisecond
+
+// flashLines has the lines lo up to hi of a side of file f glow, as
+// the diff shows them next.
+func (v *diffView) flashLines(f *diffFile, side, lo, hi int) {
+	if hi <= lo {
+		hi = lo + 1 // a removal glows at the line after it
+	}
+	v.flash = diffFlash{path: f.path, side: side, lo: lo, hi: hi, gen: v.gen}
+}
+
+// rowAtStream returns the row whose lines stand at y in one side's
+// stream of rows, as rowAt does of the rows aligned.
+func (v *diffView) rowAtStream(tops []int, y, lineH float32) int {
 	if len(v.rows) == 0 || len(tops) == 0 {
 		return -1
 	}
-	line := int((y - editorPadY + scroll) / lineH)
+	line := int((y - editorPadY) / lineH)
 	i, _ := slices.BinarySearch(tops, line+1)
 	return min(max(i-1, 0), len(v.rows)-1)
+}
+
+// startsIn returns the changes of a diff whose rows may be among rows
+// first to last, lo up to hi of starts: the one that starts before first
+// and may run into them, and those that start up to last. The frame
+// looks at these alone, however many changes the diff has.
+func (v *diffView) startsIn(first, last int) (lo, hi int) {
+	lo = max(sort.SearchInts(v.starts, first)-1, 0)
+	hi = sort.SearchInts(v.starts, last+1)
+	return lo, max(lo, hi)
+}
+
+// streams reports whether the sides of a split diff stand in streams of
+// their own, its rows not aligned across them.
+func (a *app) streams(v *diffView) bool {
+	return v.split && !a.settings.DiffAlignedRows && len(v.sideTops[0]) == len(v.rows)+1
+}
+
+// rightShift is how much lower the right side of a split diff stands in
+// its content than the left: as much as it is scrolled less, when it
+// scrolls on its own or follows the left in a stream of its own.
+func (a *app) rightShift(v *diffView) float32 {
+	if v.split && (!a.settings.DiffSyncScroll || a.streams(v)) {
+		return v.scroll.Y - v.sideY
+	}
+	return 0
+}
+
+// sideRowY returns where the lines of row i of a side of a diff stand in
+// its content, and how tall they are: in the side's own stream when the
+// rows do not align, and lower or higher on the right as it is scrolled.
+func (a *app) sideRowY(v *diffView, side, i int) (y, h float32) {
+	lineH := a.font.lineH
+	if a.streams(v) {
+		t := v.sideTops[side]
+		y, h = editorPadY+float32(t[i])*lineH, float32(t[i+1]-t[i])*lineH
+	} else {
+		y, h = editorPadY+float32(v.tops[i])*lineH, float32(v.rows[i].h)*lineH
+	}
+	if side == 1 {
+		y += a.rightShift(v)
+	}
+	return y, h
+}
+
+// runClip returns the part of r, in a diff's content, that the run of
+// lines row i is in covers, where the sides stand in streams of their
+// own: r itself otherwise.
+func (a *app) runClip(v *diffView, i int, r ui.Rect) ui.Rect {
+	if !a.streams(v) || i < 0 || i >= len(v.runs) {
+		return r
+	}
+	lineH := a.font.lineH
+	top := editorPadY + float32(v.runs[i][0])*lineH
+	bot := editorPadY + float32(v.runs[i][1])*lineH
+	y0, y1 := max(r.Y, top), min(r.Y+r.H, bot)
+	return ui.Rect{X: r.X, Y: y0, W: r.W, H: max(0, y1-y0)}
+}
+
+// followStreams scrolls the right stream of a split diff whose rows do
+// not align so that it follows the left, as JetBrains' sides do: the line
+// in the middle of the view on the left stands across from its own on the
+// right, a run of changes taking the other side's through it at the pace
+// of its own lines. Toward the top of the diff the line followed goes up
+// to the top of the view, and toward its end down to the bottom, so that
+// the sides start and end together.
+func (v *diffView) followStreams(lineH, viewH float32) {
+	l, r := v.sideTops[0], v.sideTops[1]
+	n := len(v.rows)
+	if n == 0 || len(l) != n+1 || len(r) != n+1 {
+		return
+	}
+	end := max(0, 2*editorPadY+float32(v.tops[n])*lineH-viewH)
+	off := clamp(min(v.scroll.Y, viewH/2)+viewH/2-min(end-v.scroll.Y, viewH/2), 0, viewH)
+	mid := (v.scroll.Y + off - editorPadY) / lineH
+	i := sort.Search(n, func(j int) bool { return float32(l[j+1]) > mid })
+	i = min(i, n-1)
+	from, to := i, i+1
+	if row := v.rows[i]; row.changed() {
+		for from > 0 && v.rows[from-1].changed() && v.rows[from-1].file == row.file && v.rows[from-1].hunk == row.hunk {
+			from--
+		}
+		for to < n && v.rows[to].changed() && v.rows[to].file == row.file && v.rows[to].hunk == row.hunk {
+			to++
+		}
+	}
+	l0, l1, r0, r1 := float32(l[from]), float32(l[to]), float32(r[from]), float32(r[to])
+	at := r0
+	if l1 > l0 {
+		at = r0 + (clamp(mid, l0, l1)-l0)*(r1-r0)/(l1-l0)
+	}
+	v.sideY = clamp(v.scroll.Y+(at-mid)*lineH, 0, max(0, 2*editorPadY+float32(r[n])*lineH-viewH))
 }
 
 // topRow returns the row at the top of a diff's view.
@@ -1581,7 +1732,7 @@ func (v *diffView) stepHunk(step int, cross diffCross) {
 	if v.cursor >= 0 {
 		v.cursor = v.starts[v.current]
 	}
-	v.jumpRow(v.starts[v.current], jumpThird)
+	v.glideRow(v.starts[v.current], jumpThird)
 }
 
 // fileAt returns the file the kth change of a diff is in.
@@ -1678,12 +1829,18 @@ func (v *diffView) stepFile(step int) {
 	}
 	v.anchor = -1
 	v.cursor = v.heads[k]
-	v.jumpRow(v.cursor, jumpTop)
+	v.glideRow(v.cursor, jumpTop)
 }
 
 // jumpRow scrolls to a row in the next frame.
 func (v *diffView) jumpRow(i int, place jumpPlace) {
-	v.jump, v.jumpTo = i, place
+	v.jump, v.jumpTo, v.glide = i, place, false
+}
+
+// glideRow is jumpRow for going to a change, a file or a note: the view
+// glides there when it is near.
+func (v *diffView) glideRow(i int, place jumpPlace) {
+	v.jump, v.jumpTo, v.glide = i, place, true
 }
 
 // moveCursor moves the chosen row by step rows, past the room between

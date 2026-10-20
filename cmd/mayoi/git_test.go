@@ -1761,6 +1761,18 @@ func TestDiffHighlightSpans(t *testing.T) {
 	if got := diffSpans(f, true, 5, 0, highlightWord); got != nil {
 		t.Errorf("past the lines %v", got)
 	}
+	// A line that moved compares with its peer, not the line at its own
+	// number on the other side.
+	g := &diffFile{
+		old: diffSide{lines: []string{"x := 1", "mu sync.Mutex"}},
+		new: diffSide{lines: []string{"x := 1", "// added", "mu sync.RWMutex"}},
+	}
+	if got := diffSpansOf("mu sync.RWMutex", diffSpans(g, true, 2, 1, highlightWord)); !slices.Equal(got, []string{"RWMutex"}) {
+		t.Errorf("words of a moved new line %q", got)
+	}
+	if got := diffSpansOf("mu sync.Mutex", diffSpans(g, false, 1, 2, highlightWord)); !slices.Equal(got, []string{"Mutex"}) {
+		t.Errorf("words of a moved old line %q", got)
+	}
 }
 
 // The unchanged lines a diff shows around a change are as the settings
@@ -2465,7 +2477,7 @@ func TestRevertArrowsOfTheDiff(t *testing.T) {
 	v := a.activeTab().diff
 	d := a.docs[a.docIndex(hs.path("t.txt"))]
 	// arrowAt returns where the arrow of the kth run of the changes not
-	// staged shows, by the middle of the block's rows.
+	// staged shows.
 	arrowAt := func(k int) (x, y float32) {
 		runs := hunkRuns(v, hs.path("t.txt"), diffIndex)
 		if k >= len(runs) {
@@ -2477,30 +2489,21 @@ func TestRevertArrowsOfTheDiff(t *testing.T) {
 		}
 		ki := slices.IndexFunc(fl.hunks, func(x linediff.Hunk) bool { return x == hks[0] })
 		fi := v.rows[runs[k]].file
-		from, to := -1, -1
-		for i, r := range v.rows {
-			if r.file == fi && r.hunk == ki && r.changed() {
-				if from < 0 {
-					from = i
-				}
-				to = i + 1
-			}
-		}
+		from := slices.IndexFunc(v.rows, func(r diffRow) bool { return r.file == fi && r.hunk == ki && r.changed() })
 		if from < 0 {
 			t.Fatalf("no rows of the hunk %d", ki)
 		}
-		mid := (float32(v.tops[from]) + float32(v.tops[to-1]+v.rows[to-1].h)) / 2
 		pane, ok := hs.tt.Find("Diff of the Changes")
 		if !ok {
 			t.Fatal("no diff pane")
 		}
 		l := a.diffGeometry(v, v.split, v.viewW)
-		if v.split {
-			x = pane.X + l.half
-		} else {
-			x = pane.X + diffRailW + 6
+		k = slices.Index(v.starts, from)
+		if k < 0 {
+			t.Fatalf("no change starts at row %d", from)
 		}
-		return x, pane.Y + editorPadY + mid*a.font.lineH - v.scroll.Y
+		rc := a.hunkArrowRects(v, k, hunkArrows(fl), l)[0]
+		return pane.X + rc.X + rc.W/2 - v.scroll.X, pane.Y + rc.Y + rc.H/2 - v.scroll.Y
 	}
 	apply := func(k int, what string) {
 		a.errors = nil

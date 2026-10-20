@@ -194,7 +194,8 @@ func (a *app) hunkButtons(c *ui.Context, v *diffView, i int, right, contentW, y 
 				btn.Background(p.hover.Over(p.editor))
 				col = p.text
 			}
-			btn.Transition(hoverFade)
+			// They come and go with the pointer: they fade, rather than pop.
+			btn.Transition(revealFade)
 			pressPose(btn)
 			btn.Children(func() {
 				ui.Icon(c, b.icon).FontSize(12).TextColor(col)
@@ -285,6 +286,10 @@ func (a *app) appendHunks(v *diffView, f *diffFile, hs []linediff.Hunk) {
 		a.fail("%s", locales.DiffCatchingUpFiles())
 		return
 	}
+	if v != nil {
+		h := hs[0]
+		v.flashLines(f, 1, h.B+h.BLen, h.B+h.BLen+h.ALen)
+	}
 	if doc := a.diffDoc(f); doc != nil && doc.buf.Version() != f.docVersion {
 		a.fail("%s", locales.DiffCatchingUp())
 		return
@@ -371,41 +376,70 @@ func (a *app) restoreDeletedFile(e git.Entry) {
 
 // hunkArrowW is the side of the round button of the arrow of a change of
 // a diff, which fits between the rail and the line numbers of the one
-// column, where they leave room.
-const hunkArrowW float32 = 13
+// column, where they leave room; hunkArrowSplitW is its side in the
+// gutter between the sides of a split diff, which has room for two.
+const (
+	hunkArrowW      float32 = 13
+	hunkArrowSplitW float32 = 16
+)
 
-// hunkArrowUI is the arrow of the kth change of a diff, which puts the
-// lines of one of its sides in place of its lines of the other, at the
-// middle of the change's rows: on the divider of the sides side by side,
-// and between the rail and the line numbers of the one column, staying
-// by them as the lines scroll along. It returns where it is, or nothing
-// for a change that takes no arrow, or that is out of the view.
-func (a *app) hunkArrowUI(c *ui.Context, v *diffView, k, first, last int, l diffGeometry) ui.Rect {
+// hunkArrowRects returns where the arrows ars of the kth change of a diff
+// stand in its content. Side by side, they stand in the gutter between
+// the sides, each by the first line of the side it reads: alone in the
+// middle, or two, each by the side it reads. In the one column, they
+// stand between the rail and the line numbers, by the change's first
+// line, staying by it as the lines scroll along.
+func (a *app) hunkArrowRects(v *diffView, k int, ars []hunkArrow, l diffGeometry) []ui.Rect {
+	lineH := a.font.lineH
+	out := make([]ui.Rect, len(ars))
+	if !v.split {
+		from, _ := v.hunkRows(k)
+		y := editorPadY + float32(v.tops[from])*lineH + lineH/2 - hunkArrowW/2
+		for i := range ars {
+			out[i] = ui.Rect{X: v.scroll.X + diffRailW + float32(i)*hunkArrowW, Y: y, W: hunkArrowW, H: hunkArrowW}
+		}
+		return out
+	}
+	w := hunkArrowSplitW
+	lt, lb, rt, rb := a.hunkSides(v, k)
+	for i, ar := range ars {
+		top, bot := lt, lb
+		x := v.scroll.X + l.half + l.mid/2 - w - 1
+		if ar.dir < 0 {
+			top, bot = rt, rb
+			x = v.scroll.X + l.half + l.mid/2 + 1
+		}
+		if len(ars) == 1 {
+			x = v.scroll.X + l.half + (l.mid-w)/2
+		}
+		y := top + min(lineH, bot-top)/2 - w/2
+		out[i] = ui.Rect{X: x, Y: y, W: w, H: w}
+	}
+	return out
+}
+
+// hunkArrowUI is the arrows of the kth change of a diff, each of which
+// puts the lines of one of its sides in place of its lines of the other,
+// where hunkArrowRects has them. It returns about where they are, or
+// nothing for a change that takes no arrow, or that is out of the view,
+// and whether the pointer is on one of them.
+func (a *app) hunkArrowUI(c *ui.Context, v *diffView, k, first, last int, l diffGeometry) (ui.Rect, bool) {
 	from, to := v.hunkRows(k)
 	if from > last || to <= first || from >= len(v.rows) {
-		return ui.Rect{}
+		return ui.Rect{}, false
 	}
 	f := v.fileAt(k)
 	ars := hunkArrows(f)
 	if len(ars) == 0 {
-		return ui.Rect{}
+		return ui.Rect{}, false
 	}
 	h := f.hunks[v.rows[from].hunk]
 	p := a.pal
-	mid := (float32(v.tops[from]) + float32(v.tops[to-1]+v.rows[to-1].h)) / 2
-	y := editorPadY + mid*a.font.lineH - hunkArrowW/2
-	center := v.scroll.X + diffRailW
-	if v.split {
-		center = v.scroll.X + l.half - hunkArrowW/2
-	}
-	out := ui.Rect{}
-	for i, ar := range ars {
-		x := center
-		if len(ars) > 1 {
-			x += float32(i) * hunkArrowW
-		}
-		btn := ui.ButtonBase(c.Key(fmt.Sprintf("arrow:%d:%d", k, i))).Absolute().Left(x).Top(y).Size(hunkArrowW, hunkArrowW).
-			Radius(hunkArrowW/2).AlignItems(ui.Center).Justify(ui.Center).Label(ar.label).Tooltip(ar.tip).
+	out, hot := ui.Rect{}, false
+	for i, rc := range a.hunkArrowRects(v, k, ars, l) {
+		ar := ars[i]
+		btn := ui.ButtonBase(c.Key(fmt.Sprintf("arrow:%d:%d", k, i))).Absolute().Left(rc.X).Top(rc.Y).Size(rc.W, rc.H).
+			Radius(rc.W/2).AlignItems(ui.Center).Justify(ui.Center).Label(ar.label).Tooltip(ar.tip).
 			Background(p.editor).Border(1, p.border)
 		col := p.muted
 		hover := btn.Hovered()
@@ -418,10 +452,13 @@ func (a *app) hunkArrowUI(c *ui.Context, v *diffView, k, first, last int, l diff
 			icon = iconArrowDown
 		}
 		if hover {
-			btn.Background(p.hover.Over(p.editor))
-			col = p.text
+			btn.Background(p.fill).Border(1, p.fill).Shadow(0, 1, 4, 0, p.shadow)
+			col = p.fillText
+			hot = true
 		}
-		btn.Children(func() { ui.Icon(c, icon).FontSize(hunkArrowW - 3).TextColor(col) })
+		btn.Transition(hoverFade)
+		arrowPose(btn, hover)
+		btn.Children(func() { ui.Icon(c, icon).FontSize(rc.W - 4).TextColor(col) })
 		if btn.Clicked() {
 			append := btn.ClickModifiers()&ui.Ctrl != 0 && f.base != diffLocal
 			a.post(func() {
@@ -433,14 +470,28 @@ func (a *app) hunkArrowUI(c *ui.Context, v *diffView, k, first, last int, l diff
 				}
 			})
 		}
-		r := ui.Rect{X: x, Y: y, W: hunkArrowW, H: hunkArrowW}
 		if out.W == 0 {
-			out = r
+			out = rc
 		} else {
-			out.W = r.X + r.W - out.X
+			x0, y0 := min(out.X, rc.X), min(out.Y, rc.Y)
+			x1, y1 := max(out.X+out.W, rc.X+rc.W), max(out.Y+out.H, rc.Y+rc.H)
+			out = ui.Rect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0}
 		}
 	}
-	return out
+	return out, hot
+}
+
+// arrowPose has a round button of a diff grow a little under the
+// pointer, and give as it is pressed.
+func arrowPose(b ui.Element, hover bool) {
+	pose := ui.Pose{}
+	switch {
+	case b.Pressed():
+		pose.Scale = 0.88
+	case hover:
+		pose.Scale = 1.12
+	}
+	b.AnimatePose(pose, ui.Snappy)
 }
 
 // applyArrow does what the arrow of a change of a diff does: puts the
@@ -448,6 +499,12 @@ func (a *app) hunkArrowUI(c *ui.Context, v *diffView, k, first, last int, l diff
 // it writes, in a document of that side's text, as one step of undo. The
 // diff v keeps the document, as the undo of its keyboard works in it.
 func (a *app) applyArrow(v *diffView, f *diffFile, h linediff.Hunk, ar hunkArrow) {
+	// The lines written glow as the diff shows them.
+	if ar.dir > 0 {
+		v.flashLines(f, 1, h.B, h.B+h.ALen)
+	} else {
+		v.flashLines(f, 0, h.A, h.A+h.BLen)
+	}
 	if f.base == diffLocal {
 		a.applyLocalArrow(v, f, h, ar)
 		return

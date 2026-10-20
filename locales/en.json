@@ -714,6 +714,8 @@
   "mergeApply": "Apply",
   "mergeApplyAll": "Apply All Non-Conflicting Changes",
   "mergeApplyAuto": "Apply Automatically",
+  "mergeApplyChange": "Apply This Change",
+  "mergeApplyChangeTip": "Put this change of the side, which no conflict holds, in the result",
   "mergeApplyChanges": "Apply Changes",
   "mergeApplyChangesTip": "Save the result, stage the file, and go on to the next file in conflict",
   "mergeApplyLeft": "Apply Non-Conflicting Changes from the Left",

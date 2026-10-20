@@ -107,6 +107,31 @@ needs a `## <version>` section here, or its build fails.
   the merge goes on once every file of it stands resolved. The arrow keys
   and Enter choose and open its files, and a file whose conflicts still
   have the base's lines asks before it is marked resolved.
+- A side-by-side diff has a gutter between its sides, as JetBrains' has:
+  each change is a band from its lines on the left to its lines on the
+  right, curving where the sides stand apart, and its arrows stand in the
+  band by the first line of the side they read, larger and easier to hit;
+  in the one column, an arrow stands by its change's first line too.
+  Pointing at an arrow lights the lines it takes, and the lines an arrow
+  or an append writes glow a moment as the diff shows them again.
+- The words tinted as changed within a line are those that changed against
+  the line it is paired with: lines that moved, as after an added import,
+  were compared with the line at their own number on the other side.
+- With **Line Alignment** off, a split diff scrolled down shows both sides
+  again — the left one went out of view — and the right side follows the
+  left as it scrolls, its changes going by at the pace of the left's lines.
+- Going to the next or previous change, or file, glides there when it is
+  near, and the buttons of a run of changes fade in and out with the
+  pointer.
+- The three-way merge view shows the whole text of each side — its side
+  panes cut every line after a few characters — and its panes scroll
+  together, a side's changes going by at the pace of the result's lines.
+  Gutters between the panes join each change of a side to the result's
+  lines, with **»** and **×** by each conflict to accept or ignore that
+  side's lines, and **Apply This Change** by a change of a side's that no
+  conflict holds. Its bars have outlined buttons with icons, a line under
+  them fills as the conflicts are resolved, and going to a conflict glides
+  there.
 
 ## 0.11.4
 

@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo/ui"
 
@@ -81,6 +82,24 @@ type mergeView struct {
 
 	panes        [3]paneScroll
 	viewW, viewH float32
+	// lastY are where the panes were scrolled to in the last frame: the
+	// one that moved since leads the others.
+	lastY [3]float32
+
+	// pairs are the hunks between each side and the result, as of the
+	// result's version pairsVer, and own the hunks of each side against
+	// the base, which the gutters between the panes show.
+	pairs    [2][]linediff.Hunk
+	pairsVer uint64
+	pairsOK  bool
+	own      [2][]sideHunk
+	// bands are the bands of each side's gutter, as of bandsKey.
+	bands    [2][]mergeBand
+	bandsKey [2]mergeBandKey
+	bandsOK  [2]bool
+	// flash is the result's lines a button of the gutters just wrote,
+	// which glow a moment.
+	flash diffFlash
 }
 
 // paneScroll is what one of the three panes keeps as it shows: its
@@ -955,18 +974,27 @@ func (a *app) stepMergeRegion(v *mergeView, step int) {
 }
 
 // revealMergeRegion scrolls every pane so a region shows, a third of the
-// way down.
+// way down: the result glides there, and the sides follow it as they
+// scroll together.
 func (a *app) revealMergeRegion(v *mergeView, i int) {
 	r := v.regionAt(i)
 	if r == nil {
 		return
 	}
 	at := [3]int{r.oursLo, max(r.atLo, 0), r.theirsLo}
-	for k, line := range at {
-		if room := v.viewH - a.font.lineH*4; room > 0 {
-			v.panes[k].scroll.Y = max(0, editorPadY+float32(line)*a.font.lineH-room/3)
-		}
+	room := v.viewH - a.font.lineH*4
+	if room <= 0 {
+		return
 	}
+	y := max(0, editorPadY+float32(at[1])*a.font.lineH-room/3)
+	if d := y - v.panes[1].scroll.Y; d != 0 && max(d, -d) < 3*v.viewH {
+		v.panes[1].scroll.ScrollTo(v.panes[1].scroll.X, y, ui.Animation{Duration: 220 * time.Millisecond, Ease: ui.EaseOut})
+		return
+	}
+	for k, line := range at {
+		v.panes[k].scroll.Y = max(0, editorPadY+float32(line)*a.font.lineH-room/3)
+	}
+	v.lastY = [3]float32{v.panes[0].scroll.Y, v.panes[1].scroll.Y, v.panes[2].scroll.Y}
 }
 
 // chooseMergeLine takes the region a click in a pane went to, by the

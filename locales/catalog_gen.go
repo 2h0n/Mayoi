@@ -4927,6 +4927,26 @@ func (msgs Messages) MergeApplyAuto() string {
 	return Catalog.Format(msgs.locale, "mergeApplyAuto", nil)
 }
 
+// MergeApplyChange says "Apply This Change"
+// in the language the app shows.
+func MergeApplyChange() string { return In(i18n.Locale()).MergeApplyChange() }
+
+// MergeApplyChange says "Apply This Change"
+// in the language of msgs.
+func (msgs Messages) MergeApplyChange() string {
+	return Catalog.Format(msgs.locale, "mergeApplyChange", nil)
+}
+
+// MergeApplyChangeTip says "Put this change of the side, which no conflict holds, in the result"
+// in the language the app shows.
+func MergeApplyChangeTip() string { return In(i18n.Locale()).MergeApplyChangeTip() }
+
+// MergeApplyChangeTip says "Put this change of the side, which no conflict holds, in the result"
+// in the language of msgs.
+func (msgs Messages) MergeApplyChangeTip() string {
+	return Catalog.Format(msgs.locale, "mergeApplyChangeTip", nil)
+}
+
 // MergeApplyChanges says "Apply Changes"
 // in the language the app shows.
 func MergeApplyChanges() string { return In(i18n.Locale()).MergeApplyChanges() }
