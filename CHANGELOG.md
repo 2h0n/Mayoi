@@ -5,6 +5,10 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Clicking the branch in the status bar opens the same searchable branch
+  picker as Source Control, with **Create Branch…** at the top; fetch, pull
+  and push stay in Source Control and the Git menu. Invalid branch names are
+  caught before Git sees them.
 - Scrolling with Command held over a terminal no longer shrinks or grows
   its font, as it did when switching back to Mayoi with Command-Tab;
   `Cmd+=` and `Cmd+-` still size all the text.
