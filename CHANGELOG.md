@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.5
 
 - Discarding changes block by block in a diff now always goes through the
   file's document, also when the file was not open: the discard is one
