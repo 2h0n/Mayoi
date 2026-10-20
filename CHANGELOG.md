@@ -3,6 +3,12 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Scrolling with Command held over a terminal no longer shrinks or grows
+  its font, as it did when switching back to Mayoi with Command-Tab;
+  `Cmd+=` and `Cmd+-` still size all the text.
+
 ## 0.11.5
 
 - Discarding changes block by block in a diff now always goes through the
