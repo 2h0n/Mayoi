@@ -161,6 +161,7 @@ func (a *app) view(c *ui.Context) {
 	a.repositoryPickerView(c)
 	a.recentPickerView(c)
 	a.remotePickerView(c)
+	a.conflictsView(c)
 	a.promptView(c)
 	a.confirmView(c)
 	a.signinView(c)
@@ -564,6 +565,8 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					a.viewerView(c, shown.view, shown.name())
 				case shown.diff != nil:
 					a.diffViewUI(c, shown.diff)
+				case shown.merge != nil:
+					a.mergeViewUI(c, shown.merge)
 				case shown.ed.loading || shown.ed.loadErr != nil:
 					a.hideEditor(shown.ed)
 					a.loadingView(c, shown.ed)
@@ -962,6 +965,14 @@ func (a *app) statusFit(c *ui.Context, width float32) statusVisibility {
 		used -= p.w
 	}
 	return v
+}
+
+// plural counts n things, as "1 line" or "2 lines".
+func plural(n int, thing string) string {
+	if n == 1 {
+		return "1 " + thing
+	}
+	return fmt.Sprintf("%d %ss", n, thing)
 }
 
 // vimBadge shows vim mode's mode in the status bar, as a badge colored

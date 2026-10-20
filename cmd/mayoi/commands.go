@@ -119,8 +119,14 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		{"git.writeMessage", t.CmdGitWriteMessage(), "", func() { a.showSourceControl(); a.writeMessage() }},
 		{"git.openChanges", t.CmdGitOpenChanges(), "", a.openChanges},
 		{"git.openAllChanges", t.CmdGitOpenAllChanges(), "", func() { a.openChangesTab(true) }},
+		{"git.compareFiles", t.CmdGitCompareFiles(), "", a.compareLocalFiles},
+		{"git.solveConflicts", t.CmdGitSolveConflicts(), "", a.solveActiveConflicts},
+		{"git.conflictFiles", t.CmdGitConflictFiles(), "", a.openConflicts},
 		{"git.nextChange", t.CmdGitNextChange(), "Alt+F5", func() { a.stepChange(1) }},
 		{"git.prevChange", t.CmdGitPrevChange(), "Shift+Alt+F5", func() { a.stepChange(-1) }},
+		{"git.nextFile", t.CmdGitNextFile(), "", func() { a.stepDiffFile(1) }},
+		{"git.prevFile", t.CmdGitPrevFile(), "", func() { a.stepDiffFile(-1) }},
+		{"git.appendChange", t.CmdGitAppendChange(), "", a.appendAtCursor},
 		{"git.showChange", t.CmdGitShowChange(), "", a.editActive(func(d *editor) { d.peekHunk(caretLine(d)) })},
 		{"git.revertChange", t.CmdGitRevertChange(), "", a.editActive(func(d *editor) { a.onCaretHunk(d, a.revertHunk) })},
 		{"git.stageChange", t.CmdGitStageChange(), "", a.editActive(func(d *editor) { a.onCaretHunk(d, a.stageHunk) })},
@@ -195,6 +201,14 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		cmds = slices.DeleteFunc(cmds, func(c command) bool { return strings.HasPrefix(c.id, "remote.") })
 	}
 	return cmds
+}
+
+// solveActiveConflicts shows the three-way merge of the file of the tab
+// shown when it is in conflict.
+func (a *app) solveActiveConflicts() {
+	if t := a.activeTab(); t != nil && t.path() != "" {
+		a.openMerge(t.path(), true)
+	}
 }
 
 // recentCommand is the prefix of the commands that open a recent
@@ -529,8 +543,8 @@ func (a *app) menu(cli bool, run func(id string, win *mygo.Window)) *mygo.Menu {
 		}},
 		{Label: locales.MenuGit(), Submenu: []*mygo.MenuItem{
 			item("git.commit"), item("git.commitPush"), item("git.amend"), item("git.undoCommit"), mygo.Separator(),
-			item("git.openChanges"), item("git.openAllChanges"), item("git.nextChange"), item("git.prevChange"), mygo.Separator(),
-			item("git.showChange"), item("git.revertChange"), item("git.stageChange"), mygo.Separator(),
+			item("git.openChanges"), item("git.openAllChanges"), item("git.compareFiles"), item("git.nextChange"), item("git.prevChange"), item("git.nextFile"), item("git.prevFile"), mygo.Separator(),
+			item("git.showChange"), item("git.revertChange"), item("git.appendChange"), item("git.stageChange"), mygo.Separator(),
 			item("git.stageFile"), item("git.unstageFile"), item("git.stageAll"), mygo.Separator(),
 			item("git.switchBranch"), item("git.createBranch"), item("git.fetch"), item("git.pull"), item("git.push"), mygo.Separator(),
 			checkbox("git.blame", a.settings.Blame), item("git.refresh"), mygo.Separator(),

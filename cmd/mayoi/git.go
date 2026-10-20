@@ -40,6 +40,12 @@ type gitState struct {
 	// view, worked out for the status groupsOf.
 	groups   [groupCount][]git.Entry
 	groupsOf *git.Status
+	// mergeDone are the files of the command in progress that the merge
+	// view staged as resolved, by path, and mergeDoneOp the command they
+	// belong to: a list of the files in conflict has them resolved, until
+	// the command ends or another starts.
+	mergeDone   map[string]bool
+	mergeDoneOp git.Op
 	// stale has the next frame read the status again, unless running;
 	// read is when it was read last.
 	stale, running bool
@@ -639,6 +645,7 @@ func (a *gitContext) runOp(op git.Op, busy, done string, fn func(r *git.Repo) er
 			g.message, g.amend = msg, false
 		}
 		a.app.showSourceControl()
+		a.app.openConflicts()
 		a.app.tell(note{message: locales.OpStopped(opTitle(op)),
 			label: locales.ButtonAbort(), action: func() { a.abortOpOf(op) }})
 	})

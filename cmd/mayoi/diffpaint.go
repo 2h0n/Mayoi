@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -57,11 +58,33 @@ func (a *app) diffGeometry(v *diffView, split bool, viewW float32) diffGeometry 
 	return l
 }
 
+// rowUnder returns the row of a diff at a pointer's place in its
+// content, x and y: on the right half of a split diff whose sides do not
+// scroll together, the row the right side shows there.
+func (a *app) rowUnder(v *diffView, x, y float32, l diffGeometry) int {
+	if v.split && !a.settings.DiffAlignedRows && len(v.sideTops[0]) == len(v.rows)+1 {
+		// The sides stand in streams of their own: the half the pointer
+		// is on finds the row in its stream.
+		if x-v.scroll.X >= l.half {
+			return v.rowAtStream(v.sideTops[1], y, v.sideY, a.font.lineH)
+		}
+		return v.rowAtStream(v.sideTops[0], y, v.scroll.Y, a.font.lineH)
+	}
+	d := float32(0)
+	if v.split && !a.settings.DiffSyncScroll && x-v.scroll.X >= l.half {
+		d = v.sideY - v.scroll.Y
+	}
+	return v.rowAt(y+d, a.font.lineH)
+}
+
 // diffViewUI shows a diff: its rows painted in a pane that scrolls both
 // ways, keeping the line numbers in place, or down only as its lines wrap.
+// While its writable side is edited, the edits run first, as a frame is
+// built.
 func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	p, f := a.pal, a.font
 	a.refreshDiff(v)
+	a.runDiffEdits(v, v.pane.FocusWithin(c))
 	message := func(msg string) {
 		ui.Column(c).Fill().Background(p.editor).Center().Children(func() {
 			ui.Text(c, msg).FontSize(13).TextColor(p.muted)
@@ -129,6 +152,9 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		contentW, v.scroll.X = view.W, 0
 	}
 	contentH := 2*editorPadY + float32(v.tops[len(rows)])*lineH
+	if v.split && !a.settings.DiffSyncScroll {
+		v.sideY = clamp(v.sideY, 0, max(0, contentH-v.viewH))
+	}
 	if j := v.jump; j >= 0 && view.H > 0 {
 		v.jump = -1
 		if j < len(rows) {
@@ -155,6 +181,12 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	first, last := 0, -1
 	if len(rows) > 0 {
 		first, last = v.rowAt(v.scroll.Y, lineH), v.rowAt(v.scroll.Y+view.H, lineH)
+	}
+	paintFirst, paintLast := first, last
+	if v.split && !a.settings.DiffSyncScroll && len(rows) > 0 {
+		rightFirst := v.rowAt(v.sideY, lineH)
+		rightLast := v.rowAt(v.sideY+view.H, lineH)
+		paintFirst, paintLast = min(first, rightFirst), max(last, rightLast)
 	}
 	// The files read are those within a view's height of it, and the
 	// source control view chooses the file chosen, or at its top.
@@ -200,20 +232,35 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 	focused := v.pane.FocusWithin(c)
 	pane := ui.ScrollBoth(c.Key("diff")).TrackScroll(&v.scroll).Bind(&v.pane).Fill().Background(p.editor).
 		Focusable().FocusRing(false).Label(locales.DiffPaneLabel())
-	a.takeKeys(pane, placeDiff, func(ev ui.InputEvent) bool { return a.diffInput(v, ev) }).Children(func() {
+	// While the working tree side is edited, the input methods type for
+	// the caret the diff paints.
+	if e := v.editing; e != nil {
+		if rc, ok := a.diffCaretRect(v, e, l); ok {
+			pane.TextCaret(rc)
+		}
+	}
+	a.takeKeys(pane, placeDiff, func(ev ui.InputEvent) bool {
+		if ev.Kind == ui.InputScroll && v.split && !a.settings.DiffSyncScroll && ev.X >= l.half {
+			// The right side scrolls on its own.
+			v.sideY = clamp(v.sideY+ev.DY, 0, max(0, contentH-v.viewH))
+			return true
+		}
+		return a.diffInput(v, ev)
+	}).Children(func() {
 		box := ui.Box(c).Width(contentW).Height(contentH)
 		// The buttons of the file's header under the pointer, or chosen.
 		onSticky := func(y float32) bool { return sticky >= 0 && y >= stickyY && y < stickyY+lineH }
 		hovered := -1
 		if box.Hovered() {
-			if _, y, ok := box.PointerPosition(); ok {
-				hovered = v.rowAt(y, lineH)
+			if x, y, ok := box.PointerPosition(); ok {
+				hovered = a.rowUnder(v, x, y, l)
 				if onSticky(y) {
 					hovered = sticky
 				}
 			}
 		}
 		var buttons, hunkButtons, cardRect, commentButton ui.Rect
+		var arrowRects []ui.Rect
 		box.Children(func() {
 			if card != nil && first == 0 && rows[0].kind == rowCommit {
 				cardRect = ui.Rect{X: v.scroll.X, Y: editorPadY + float32(v.tops[0])*lineH, W: view.W, H: float32(rows[0].h) * lineH}
@@ -267,6 +314,14 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				}
 				hunkButtons = a.hunkButtons(c, v, h, v.scroll.X+view.W, contentW, editorPadY+float32(v.tops[h])*lineH)
 			}
+			// The arrow of every change in view that can be applied: the
+			// lines of one of its sides put in place of its lines of the
+			// other.
+			for k := range v.starts {
+				if r := a.hunkArrowUI(c, v, k, first, last, l); r.W > 0 {
+					arrowRects = append(arrowRects, r)
+				}
+			}
 		})
 		// Dragging from a row chooses the rows to the one under the pointer.
 		if box.Pressed() {
@@ -290,10 +345,13 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 		// A click chooses a row, and opens a gap or folds a file; a double
 		// click opens the file at a line, unless its first click did that.
 		// Shift chooses the rows from the one chosen to it.
+		arrowed := func(x, y float32) bool {
+			return slices.ContainsFunc(arrowRects, func(r ui.Rect) bool { return r.Contains(x, y) })
+		}
 		if clicked, double := box.Clicked(), box.DoubleClicked(); clicked || double {
 			if x, y, ok := box.PointerPosition(); ok && len(rows) > 0 && !buttons.Contains(x, y) && !hunkButtons.Contains(x, y) && !cardRect.Contains(x, y) &&
-				!commentButton.Contains(x, y) {
-				i := v.rowAt(y, lineH)
+				!commentButton.Contains(x, y) && !arrowed(x, y) {
+				i := a.rowUnder(v, x, y, l)
 				stuck := onSticky(y)
 				if stuck {
 					i = sticky
@@ -365,7 +423,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					pt.Fill(ui.Rect{X: x + diffRailW + 1, Y: y, W: 2, H: h}, p.accent, 0)
 				}
 			}
-			for i := first; i <= last; i++ {
+			for i := paintFirst; i <= paintLast; i++ {
 				row := &rows[i]
 				file := v.files[row.file]
 				y := r.Y + editorPadY + float32(v.tops[i])*lineH
@@ -419,6 +477,11 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					uiText(pt, at+18, y, h, locales.DiffShowUnchanged(row.n), headerFontSize, 400, col)
 				case rowLine:
 					if v.split {
+						// Where the rows do not align, each side's lines
+						// stand in a stream of their own, which closes up
+						// where this row has none of the side's lines to
+						// show.
+						streams := !a.settings.DiffAlignedRows && len(v.sideTops[0]) == len(v.rows)+1
 						for side := range 2 {
 							x0 := vx + float32(side)*l.half
 							w := l.half
@@ -429,14 +492,34 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 							if side == 1 {
 								n, tint = row.new, p.added
 							}
+							ys := y
+							hs := h
+							if streams {
+								sc := v.scroll.Y
+								if side == 1 {
+									sc = v.sideY
+								}
+								ys = r.Y + editorPadY + float32(v.sideTops[side][i]-int(sc))*lineH
+								hs = float32(v.sideTops[side][i+1]-v.sideTops[side][i]) * lineH
+								if n < 0 {
+									// The side has none of this row's lines:
+									// it closes up, rather than show filler.
+									continue
+								}
+							} else {
+								if side == 1 && !a.settings.DiffSyncScroll {
+									// The right side is scrolled on its own.
+									ys += v.scroll.Y - v.sideY
+								}
+							}
 							pt.Clip(ui.Rect{X: x0, Y: vy, W: w, H: view.H}, 0, func() {
 								if n < 0 {
-									a.paintFiller(pt, ui.Rect{X: x0, Y: y, W: w, H: h})
+									a.paintFiller(pt, ui.Rect{X: x0, Y: ys, W: w, H: hs})
 									return
 								}
 								changed := row.hunk >= 0
 								if changed {
-									pt.Fill(ui.Rect{X: x0, Y: y, W: w, H: h}, tint.Alpha(0.16), 0)
+									pt.Fill(ui.Rect{X: x0, Y: ys, W: w, H: hs}, tint.Alpha(0.16), 0)
 								}
 								peer := -1
 								if changed && row.old >= 0 && row.new >= 0 {
@@ -446,27 +529,27 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 									}
 								}
 								pt.Clip(ui.Rect{X: x0 + l.textX - 4, Y: vy, W: w - l.textX + 4, H: view.H}, 0, func() {
-									a.paintDiffLine(pt, file, side == 1, n, peer, r.X+float32(side)*l.half+l.textX, y, tint, l.cols[side], wrap)
+									a.paintDiffLine(pt, file, side == 1, n, peer, r.X+float32(side)*l.half+l.textX, ys, tint, l.cols[side], wrap)
 								})
 								numCol := p.gutter
 								switch {
 								case changed && v.inCurrent(row):
-									rail(x0, y, h, tint)
+									rail(x0, ys, hs, tint)
 									numCol = tint
 								case changed:
-									rail(x0, y, h, dim(tint))
+									rail(x0, ys, hs, dim(tint))
 									numCol = tint
 								default:
-									rail(x0, y, h, neutral)
+									rail(x0, ys, hs, neutral)
 								}
-								number(n, x0+diffRailW+l.numW, y, numCol)
-								noted(x0, y, h, *row, side == 0)
+								number(n, x0+diffRailW+l.numW, ys, numCol)
+								noted(x0, ys, hs, *row, side == 0)
 								if changed {
 									mark := "-"
 									if side == 1 {
 										mark = "+"
 									}
-									txt(x0+diffRailW+l.numW+8, y, mark, tint)
+									txt(x0+diffRailW+l.numW+8, ys, mark, tint)
 								}
 							})
 						}
@@ -525,9 +608,22 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					if focused {
 						col = p.text.Alpha(0.09)
 					}
-					pt.Fill(full, col, 0)
+					left, right := full, ui.Rect{}
+					if v.split && !a.settings.DiffSyncScroll {
+						// The row shows where each side has it.
+						left.W = l.half
+						right = ui.Rect{X: vx + l.half, Y: y + v.scroll.Y - v.sideY, W: view.W - l.half, H: h}
+					}
+					pt.Fill(left, col, 0)
+					if right.W > 0 {
+						pt.Fill(right, col, 0)
+					}
 					pt.Fill(ui.Rect{X: vx, Y: y, W: diffRailW, H: h}, p.accent, 0)
 				}
+			}
+			// The selection and the caret of the side being edited.
+			if e := v.editing; e != nil {
+				a.paintDiffEdit(pt, v, e, l, first, last, r, focused)
 			}
 			// The header of the file at the top, over its lines.
 			if sticky >= 0 {
@@ -1065,6 +1161,47 @@ func (a *app) paintFiller(pt *ui.Painter, r ui.Rect) {
 	pt.StrokePath(&stripes, 1, p.text.Alpha(0.04))
 }
 
+// diffSpanKey is a pair of lines a diff compares, and whether it keeps
+// the characters that changed rather than the words.
+type diffSpanKey struct {
+	old, new int
+	char     bool
+}
+
+// diffSpans returns the runs of line n of a side of a file of a diff
+// that its highlight shows as changed from the line peer of the other
+// side: none for the whole lines, the words, or the characters that
+// changed. The file keeps the spans, as it compared the pair last.
+func diffSpans(file *diffFile, newSide bool, n, peer int, h diffHighlight) []linediff.Span {
+	if peer < 0 || h == highlightLine {
+		return nil
+	}
+	old, new := n, peer
+	if !newSide {
+		old, new = peer, n
+	}
+	if old >= len(file.old.lines) || new >= len(file.new.lines) {
+		return nil
+	}
+	k := diffSpanKey{old, new, h == highlightChar}
+	ws, ok := file.spans[k]
+	if !ok {
+		o, w := linediff.Words(file.old.lines[old], file.new.lines[new])
+		if h == highlightChar {
+			o, w = linediff.Chars(file.old.lines[old], file.new.lines[new])
+		}
+		ws = [2][]linediff.Span{o, w}
+		if file.spans == nil {
+			file.spans = map[diffSpanKey][2][]linediff.Span{}
+		}
+		file.spans[k] = ws
+	}
+	if newSide {
+		return ws[1]
+	}
+	return ws[0]
+}
+
 // paintDiffLine paints line n of a side of a file of a diff at x, y: its
 // words that changed from the line peer of the other side, then its text
 // in the colors of its tokens, on rows cols wide as it wraps.
@@ -1094,15 +1231,13 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 			fn(k, f.width(shown[lo:s0]), f.width(shown[lo:s1]), s0, s1)
 		}
 	}
-	if peer >= 0 {
-		for _, sp := range file.lineWords(newSide, n, peer) {
-			if sp.Start >= len(text) {
-				continue
-			}
-			piece(at(sp.Start), at(min(sp.End, len(text))), func(k int, x0, x1 float32, _, _ int) {
-				pt.Fill(ui.Rect{X: x + x0, Y: y + float32(k)*f.lineH, W: max(x1-x0, 2), H: f.lineH}, tint.Alpha(0.30), 0)
-			})
+	for _, sp := range diffSpans(file, newSide, n, peer, a.diffHighlightOf()) {
+		if sp.Start >= len(text) {
+			continue
 		}
+		piece(at(sp.Start), at(min(sp.End, len(text))), func(k int, x0, x1 float32, _, _ int) {
+			pt.Fill(ui.Rect{X: x + x0, Y: y + float32(k)*f.lineH, W: max(x1-x0, 2), H: f.lineH}, tint.Alpha(0.30), 0)
+		})
 	}
 	// The runs of shown in the colors of their tokens.
 	type run struct {
@@ -1192,16 +1327,28 @@ func (a *app) fileButtons(c *ui.Context, v *diffView, f *diffFile, right, y floa
 		fn    func()
 	}
 	var bs []button
-	if f.letter != 'D' || f.base == diffStaged {
+	if f.base == diffLocal {
+		bs = append(bs,
+			button{iconOpenFile, locales.DiffOpenLeft(), func() { a.openFileAt(f.path, 0, true) }},
+			button{iconOpenFile, locales.DiffOpenRight(), func() { a.openFileAt(f.peerPath, 0, true) }},
+		)
+	} else if f.letter != 'D' || f.base == diffStaged {
 		bs = append(bs, button{iconOpenFile, openLabel(e), func() { a.openFileAt(f.path, 0, true) }})
 	}
 	switch {
+	case f.base == diffLocal:
 	case f.base == diffCommit:
 	case f.base == diffStaged:
 		bs = append(bs, button{iconMinus, locales.UnstageChanges(), func() { ctx.unstage(entryPaths(e, true)...) }})
 	default:
 		if !e.Submodule() {
-			bs = append(bs, button{iconUndo, locales.DiscardChangesEllipsis(), func() { ctx.discard(e) }})
+			if f.letter == 'D' && !e.Untracked() {
+				bs = append(bs, button{iconUndo, locales.DiffRestoreFile(), func() { a.restoreDeletedFile(e) }})
+			} else if e.Untracked() {
+				bs = append(bs, button{iconUndo, locales.DiffRemoveFile(), func() { ctx.discard(e) }})
+			} else {
+				bs = append(bs, button{iconUndo, locales.DiscardChangesEllipsis(), func() { ctx.discard(e) }})
+			}
 		}
 		bs = append(bs, button{iconPlus, locales.StageChanges(), func() { ctx.stage(e.Path) }})
 	}
