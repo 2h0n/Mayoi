@@ -14,6 +14,9 @@ needs a `## <version>` section here, or its build fails.
   quoted for the shell, rather than only their names.
 - On macOS, holding a key down repeats it, in the terminal and the editor,
   rather than opening the accents of a letter.
+- Linux: tabs indent code to their tab stops again, and text is dark and
+  crisp again on Ubuntu 22.04, where it was faint and tinted; MyGo 0.6.0
+  had undone both.
 
 ## 0.11.6
 
