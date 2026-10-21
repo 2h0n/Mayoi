@@ -751,6 +751,7 @@
   "mergeIgnoreRightTip": "Put the base's lines of the conflict back, taking theirs' out",
   "mergeMarkResolved": "Mark Resolved",
   "mergeMarkResolvedTip": "Save the result and stage the file, which ends its conflict",
+  "mergeMoreActions": "More Actions",
   "mergeMarkedResolved": "Marked {name} resolved",
   "mergeNextConflict": "Next Conflict (])",
   "mergeOpMerge": "merge",

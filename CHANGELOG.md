@@ -5,6 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- As the window narrows, the merge view's bars move their actions into a
+  **⋯** menu one by one, the least needed first, instead of cutting them
+  off.
 - Clicking the branch in the status bar opens the same searchable branch
   picker as Source Control, with **Create Branch…** at the top; fetch, pull
   and push stay in Source Control and the Git menu. Invalid branch names are

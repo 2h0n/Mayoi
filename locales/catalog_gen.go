@@ -5305,6 +5305,16 @@ func (msgs Messages) MergeMarkResolvedTip() string {
 	return Catalog.Format(msgs.locale, "mergeMarkResolvedTip", nil)
 }
 
+// MergeMoreActions says "More Actions"
+// in the language the app shows.
+func MergeMoreActions() string { return In(i18n.Locale()).MergeMoreActions() }
+
+// MergeMoreActions says "More Actions"
+// in the language of msgs.
+func (msgs Messages) MergeMoreActions() string {
+	return Catalog.Format(msgs.locale, "mergeMoreActions", nil)
+}
+
 // MergeMarkedResolved says "Marked {name} resolved"
 // in the language the app shows.
 func MergeMarkedResolved(name string) string { return In(i18n.Locale()).MergeMarkedResolved(name) }
