@@ -11,7 +11,8 @@ import (
 )
 
 // Use the real Git for the repository, but reproduce an older host's
-// missing switch command at the same process boundary used over SSH.
+// missing switch and restore commands at the same process boundary used
+// over SSH.
 func withoutGitSwitch(t *testing.T) {
 	t.Helper()
 	if runtime.GOOS == "windows" {
@@ -23,8 +24,8 @@ func withoutGitSwitch(t *testing.T) {
 	}
 	dir := t.TempDir()
 	script := "#!/bin/sh\n" +
-		"if [ \"$1\" = switch ]; then\n" +
-		"  echo \"git: 'switch' is not a git command. See 'git --help'.\" >&2\n" +
+		"if [ \"$1\" = switch ] || [ \"$1\" = restore ]; then\n" +
+		"  echo \"git: '$1' is not a git command. See 'git --help'.\" >&2\n" +
 		"  exit 1\nfi\n" +
 		"exec '" + strings.ReplaceAll(realGit, "'", "'\\''") + "' \"$@\"\n"
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
@@ -126,5 +127,36 @@ func TestSwitchRemoteWithoutGitSwitch(t *testing.T) {
 	}
 	if b := branchNamed(t, r, "topic"); !b.Current || b.Upstream != "origin/topic" {
 		t.Fatalf("remote branch not selected: %+v", b)
+	}
+}
+
+func TestDetachWithoutGitSwitch(t *testing.T) {
+	r, git := repo(t)
+	git("tag", "v1")
+	withoutGitSwitch(t)
+	if err := r.Checkout("v1"); err != nil {
+		t.Fatalf("detach on an older Git: %v", err)
+	}
+	if out, err := r.run(nil, "symbolic-ref", "-q", "HEAD"); err == nil {
+		t.Fatalf("HEAD not detached: %s", out)
+	}
+}
+
+func TestUnstageDiscardWithoutGitRestore(t *testing.T) {
+	r, git := repo(t)
+	withoutGitSwitch(t)
+	write(t, r.Root, "a.txt", "staged\n")
+	git("add", "a.txt")
+	if err := r.Unstage(r.Abs("a.txt")); err != nil {
+		t.Fatalf("unstage on an older Git: %v", err)
+	}
+	if out, _ := r.run(nil, "diff", "--cached", "--name-only"); len(out) != 0 {
+		t.Fatalf("still staged: %s", out)
+	}
+	if err := r.Discard(r.Abs("a.txt")); err != nil {
+		t.Fatalf("discard on an older Git: %v", err)
+	}
+	if out, _ := r.run(nil, "diff", "--name-only"); len(out) != 0 {
+		t.Fatalf("not discarded: %s", out)
 	}
 }

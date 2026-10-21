@@ -357,14 +357,18 @@ func (r *Repo) Unstage(paths ...string) error {
 		_, err := r.run(nil, append([]string{"rm", "--cached", "-r", "-q", "--"}, r.rels(paths)...)...)
 		return err
 	}
-	_, err := r.run(nil, append([]string{"restore", "--staged", "--"}, r.rels(paths)...)...)
-	return err
+	return r.runOr(
+		append([]string{"restore", "--staged", "--"}, r.rels(paths)...),
+		append([]string{"reset", "-q", "--"}, r.rels(paths)...),
+	)
 }
 
 // Discard makes the tracked files in the work tree as the index has them.
 func (r *Repo) Discard(paths ...string) error {
-	_, err := r.run(nil, append([]string{"restore", "--worktree", "--"}, r.rels(paths)...)...)
-	return err
+	return r.runOr(
+		append([]string{"restore", "--worktree", "--"}, r.rels(paths)...),
+		append([]string{"checkout", "--"}, r.rels(paths)...),
+	)
 }
 
 // StageText puts text in the index as the file at path.
@@ -661,8 +665,7 @@ func (r *Repo) Remotes() ([]string, error) {
 
 // Checkout checks out a commit, detaching HEAD at it.
 func (r *Repo) Checkout(rev string) error {
-	_, err := r.run(nil, "switch", "--detach", rev)
-	return err
+	return r.runOr([]string{"switch", "--detach", rev}, []string{"checkout", "--detach", rev, "--"})
 }
 
 // CreateBranch makes a branch at a commit, without checking it out.
@@ -698,7 +701,7 @@ func (r *Repo) Switch(branch string, create bool) error {
 		args = []string{"switch", "-c", branch}
 		checkout = []string{"checkout", "-b", branch, "--"}
 	}
-	err := r.switchOrCheckout(args, checkout)
+	err := r.runOr(args, checkout)
 	if err != nil && !create {
 		if path, lookupErr := r.WorktreeForBranch(branch); lookupErr == nil && path != "" && path != r.Root {
 			return &WorktreeInUse{Branch: branch, Path: path}
@@ -707,14 +710,16 @@ func (r *Repo) Switch(branch string, create bool) error {
 	return err
 }
 
-// Older hosts may not have switch. Only retry a missing command: a
-// conflict or an occupied branch must keep the original error. The
-// checkout arguments end in -- so a missing branch cannot restore a file.
-func (r *Repo) switchOrCheckout(args, checkout []string) error {
+// runOr runs args, then old when the host's Git is older than its
+// command: switch and restore came in Git 2.23. Only a missing command is
+// retried, so a conflict or an occupied branch keeps the original error.
+// A checkout of a branch ends in -- so a missing branch cannot restore a
+// file.
+func (r *Repo) runOr(args, old []string) error {
 	_, err := r.run(nil, args...)
 	var gitErr *Error
-	if errors.As(err, &gitErr) && strings.HasPrefix(gitErr.Stderr, "git: 'switch' is not a git command.") {
-		_, err = r.run(nil, checkout...)
+	if errors.As(err, &gitErr) && strings.HasPrefix(gitErr.Stderr, "git: '"+args[0]+"' is not a git command.") {
+		_, err = r.run(nil, old...)
 	}
 	return err
 }

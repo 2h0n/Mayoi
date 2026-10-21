@@ -295,7 +295,7 @@ func (r *Repo) CheckoutTracking(remoteBranch, localName string) error {
 	if _, err := r.run(nil, "show-ref", "--verify", ref); err != nil {
 		return err
 	}
-	return r.switchOrCheckout(
+	return r.runOr(
 		[]string{"switch", "--track", "-c", localName, "--", ref},
 		[]string{"checkout", "--track", "-b", localName, ref, "--"},
 	)

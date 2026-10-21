@@ -5,8 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
-- Switching, creating and tracking branches also work on older Git hosts
-  that do not support `git switch`.
+- Switching, creating and tracking branches, checking out a commit, and
+  unstaging or discarding changes also work on hosts with Git older than
+  2.23, which has no `git switch` or `git restore`.
 - Long file paths in diff headers shorten to fit narrow columns, keeping
   filenames clear of change counts, status badges and file actions.
 - Files copied in the Finder paste into a terminal as their full paths,
