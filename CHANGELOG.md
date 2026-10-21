@@ -3,6 +3,11 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Long file paths in diff headers shorten to fit narrow columns, keeping
+  filenames clear of change counts, status badges and file actions.
+
 ## 0.11.6
 
 - After a crash, Mayoi asks at the next launch whether to send its crash

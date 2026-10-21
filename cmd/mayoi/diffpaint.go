@@ -297,6 +297,13 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			}
 		}
 		var buttons, hunkButtons, cardRect, commentButton ui.Rect
+		buttonRow := -1
+		buttonSpace := func(row int) float32 {
+			if row == buttonRow {
+				return buttons.W + 10
+			}
+			return 0
+		}
 		var arrowRects []ui.Rect
 		glow := map[int]float32{}
 		box.Children(func() {
@@ -313,6 +320,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 					y = stickyY
 				}
 				buttons = a.fileButtons(c, v, v.files[rows[i].file], v.scroll.X+view.W, y)
+				buttonRow = i
 			}
 			// The cards of the notes in view.
 			for i := first; i <= last; i++ {
@@ -500,7 +508,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 				case rowCommit:
 					a.paintCommitCard(pt, full)
 				case rowFile:
-					a.paintFileHeader(pt, file, full, i == hovered, txt)
+					a.paintFileHeader(pt, file, full, i == hovered, buttonSpace(i), txt)
 				case rowSection:
 					a.paintSection(pt, file.base, v.sections[btoi(file.base == diffStaged)], full)
 				case rowNote:
@@ -676,7 +684,7 @@ func (a *app) diffViewUI(c *ui.Context, v *diffView) {
 			if sticky >= 0 {
 				head := ui.Rect{X: vx, Y: r.Y + stickyY, W: view.W, H: lineH}
 				pt.Shadow(head, 0, 0, 2, 6, 0, p.shadow)
-				a.paintFileHeader(pt, v.files[rows[sticky].file], head, hovered == sticky, txt)
+				a.paintFileHeader(pt, v.files[rows[sticky].file], head, hovered == sticky, buttonSpace(sticky), txt)
 				if v.cursor == sticky {
 					col := p.text.Alpha(0.05)
 					if focused {
@@ -768,7 +776,7 @@ func (a *app) fileHeaderRight(f *diffFile) float32 {
 // paintFileHeader paints the header of a file in the diff of every file:
 // whether its lines show, its icon, path and state, and the lines its
 // changes add and remove, in numbers and in a bar.
-func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bool, txt func(x, y float32, s string, col ui.Color) float32) {
+func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bool, buttonSpace float32, txt func(x, y float32, s string, col ui.Color) float32) {
 	p := a.pal
 	bg := p.chrome
 	if hovered {
@@ -795,22 +803,36 @@ func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bo
 		dir, rel = rel[:k+1], rel[k+1:]
 	}
 	if (f.base == diffStaged || f.base == diffCommit) && f.entry.Orig != "" {
-		x += uiText(pt, x, r.Y, r.H, a.relOrPath(f.entry.Orig), headerFontSize, 400, p.muted) + 6
-		x += uiText(pt, x, r.Y, r.H, "→", headerFontSize, 400, p.faint) + 6
+		dir = a.relOrPath(f.entry.Orig) + " → " + dir
 	}
-	x += uiText(pt, x, r.Y, r.H, dir, headerFontSize, 400, p.muted)
 	nameCol := p.text
 	if f.letter == 'D' {
 		nameCol = p.muted
 	}
-	x += uiText(pt, x, r.Y, r.H, rel, headerFontSize, 600, nameCol)
+	// The path shares the row with the counts and, while hovered or
+	// selected, the file actions. Shorten the directory first, keeping
+	// the filename; neither text nor its status pill may cross that edge.
+	right := r.X + r.W - a.fileHeaderRight(f) - buttonSpace - 10
+	room := max(float32(0), right-x)
+	nameSpan := fitHeaderSpan(pt, ui.Span{Text: rel, Size: headerFontSize, Weight: 600, Color: nameCol}, room, false)
+	nameW, _ := pt.MeasureText(0, nameSpan)
+	dirSpan := fitHeaderSpan(pt, ui.Span{Text: dir, Size: headerFontSize, Weight: 400, Color: p.muted}, max(float32(0), room-nameW), true)
+	if room > 0 {
+		pt.Clip(ui.Rect{X: x, Y: r.Y, W: room, H: r.H}, 0, func() {
+			textW, h := pt.MeasureText(0, dirSpan, nameSpan)
+			pt.RichText(x, r.Y+(r.H-h)/2, 0, dirSpan, nameSpan)
+			x += textW
+		})
+	}
 	if word := statusWord(f.letter); word != "" {
 		col := gitColor(p, f.letter)
 		span := ui.Span{Text: word, Size: 10.5, Weight: 600, Color: col}
 		w, th := pt.MeasureText(0, span)
 		pill := ui.Rect{X: x + 8, Y: mid - 8, W: w + 12, H: 16}
-		pt.Fill(pill, col.Alpha(0.14), 8)
-		pt.RichText(pill.X+6, mid-th/2, 0, span)
+		if pill.X+pill.W <= right {
+			pt.Fill(pill, col.Alpha(0.14), 8)
+			pt.RichText(pill.X+6, mid-th/2, 0, span)
+		}
 	}
 	if !f.loaded || f.binary {
 		return
@@ -851,6 +873,40 @@ func (a *app) paintFileHeader(pt *ui.Painter, f *diffFile, r ui.Rect, hovered bo
 		}
 		pt.Fill(ui.Rect{X: at + float32(i)*8, Y: mid - 3.5, W: 7, H: 7}, col, 1.5)
 	}
+}
+
+// fitHeaderSpan fits one line using the same font measurements as its
+// painter. A directory loses its beginning; a filename keeps its beginning.
+func fitHeaderSpan(pt *ui.Painter, span ui.Span, width float32, tail bool) ui.Span {
+	if w, _ := pt.MeasureText(0, span); w <= width {
+		return span
+	}
+	runes := []rune(span.Text)
+	span.Text = "…"
+	if w, _ := pt.MeasureText(0, span); w > width {
+		span.Text = ""
+		return span
+	}
+	lo, hi := 0, len(runes)
+	for lo < hi {
+		mid := (lo + hi + 1) / 2
+		if tail {
+			span.Text = "…" + string(runes[len(runes)-mid:])
+		} else {
+			span.Text = string(runes[:mid]) + "…"
+		}
+		if w, _ := pt.MeasureText(0, span); w <= width {
+			lo = mid
+		} else {
+			hi = mid - 1
+		}
+	}
+	if tail {
+		span.Text = "…" + string(runes[len(runes)-lo:])
+	} else {
+		span.Text = string(runes[:lo]) + "…"
+	}
+	return span
 }
 
 // maxCardSubject is how many lines a commit's subject wraps to in the
