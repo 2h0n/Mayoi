@@ -7,6 +7,8 @@ needs a `## <version>` section here, or its build fails.
 
 - Long file paths in diff headers shorten to fit narrow columns, keeping
   filenames clear of change counts, status badges and file actions.
+- Files copied in the Finder paste into a terminal as their full paths,
+  quoted for the shell, rather than only their names.
 
 ## 0.11.6
 
