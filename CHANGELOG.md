@@ -38,6 +38,10 @@ needs a `## <version>` section here, or its build fails.
 - Maximizing the terminal panel at the bottom of the window fills the
   window again, instead of squeezing the terminal into a column one
   character wide.
+- MyGo 0.6.0: the window redraws and lays out only what changed, the mouse
+  wheel scrolls with a glide, the terminal shows images programs send
+  (Kitty graphics) and takes the paths of files dropped on it, and menus
+  take Windows 11's style there. Mayoi no longer builds on a fork of it.
 
 ## 0.11.5
 
