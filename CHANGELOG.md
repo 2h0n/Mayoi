@@ -12,6 +12,8 @@ needs a `## <version>` section here, or its build fails.
   filenames clear of change counts, status badges and file actions.
 - Files copied in the Finder paste into a terminal as their full paths,
   quoted for the shell, rather than only their names.
+- On macOS, holding a key down repeats it, in the terminal and the editor,
+  rather than opening the accents of a letter.
 
 ## 0.11.6
 
