@@ -121,6 +121,7 @@ func (a *app) crumbsLoad(dir string) {
 	delete(k.errs, dir)
 	gen := k.gen
 	go func() {
+		defer recoverCrash()
 		entries, err := vfs.ReadDir(dir)
 		a.post(func() {
 			if a.crumbs.gen != gen {

@@ -119,6 +119,7 @@ func (a *gitContext) refreshScmPanels() {
 		}
 	}
 	go func() {
+		defer recoverCrash()
 		branches, err := repo.PanelBranches()
 		var remotes []git.Remote
 		if err == nil && tab == scmRemotesTab {
@@ -179,6 +180,7 @@ func (a *gitContext) panelLog(key, from, to string) *scmPanelLog {
 	repo, token := p.repo, p.request
 	n := l.n
 	go func() {
+		defer recoverCrash()
 		var commits []git.Commit
 		var err error
 		if from == "" {

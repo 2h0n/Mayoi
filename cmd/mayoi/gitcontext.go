@@ -145,6 +145,7 @@ func (a *app) discoverRepositories() {
 	token := new(int)
 	state.token, state.scanning, state.dirty = token, true, false
 	go func() {
+		defer recoverCrash()
 		// An incomplete scan must not drop live contexts and their messages.
 		failed := func() {
 			a.post(func() {

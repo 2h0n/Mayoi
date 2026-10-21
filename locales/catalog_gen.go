@@ -767,6 +767,16 @@ func (msgs Messages) ButtonDontSave() string {
 	return Catalog.Format(msgs.locale, "buttonDontSave", nil)
 }
 
+// ButtonDontSend says "Don't Send"
+// in the language the app shows.
+func ButtonDontSend() string { return In(i18n.Locale()).ButtonDontSend() }
+
+// ButtonDontSend says "Don't Send"
+// in the language of msgs.
+func (msgs Messages) ButtonDontSend() string {
+	return Catalog.Format(msgs.locale, "buttonDontSend", nil)
+}
+
 // ButtonSave says "Save"
 // in the language the app shows.
 func ButtonSave() string { return In(i18n.Locale()).ButtonSave() }
@@ -775,6 +785,26 @@ func ButtonSave() string { return In(i18n.Locale()).ButtonSave() }
 // in the language of msgs.
 func (msgs Messages) ButtonSave() string {
 	return Catalog.Format(msgs.locale, "buttonSave", nil)
+}
+
+// ButtonSendReport says "Send"
+// in the language the app shows.
+func ButtonSendReport() string { return In(i18n.Locale()).ButtonSendReport() }
+
+// ButtonSendReport says "Send"
+// in the language of msgs.
+func (msgs Messages) ButtonSendReport() string {
+	return Catalog.Format(msgs.locale, "buttonSendReport", nil)
+}
+
+// ButtonShowReport says "Show Report"
+// in the language the app shows.
+func ButtonShowReport() string { return In(i18n.Locale()).ButtonShowReport() }
+
+// ButtonShowReport says "Show Report"
+// in the language of msgs.
+func (msgs Messages) ButtonShowReport() string {
+	return Catalog.Format(msgs.locale, "buttonShowReport", nil)
 }
 
 // ButtonUndo says "Undo"
@@ -2599,6 +2629,46 @@ func CopyRelativePath() string { return In(i18n.Locale()).CopyRelativePath() }
 // in the language of msgs.
 func (msgs Messages) CopyRelativePath() string {
 	return Catalog.Format(msgs.locale, "copyRelativePath", nil)
+}
+
+// CrashDetail says "The report says where in Mayoi's code it happened, with Mayoi's version and your system. It holds none of your files,…"
+// in the language the app shows.
+func CrashDetail() string { return In(i18n.Locale()).CrashDetail() }
+
+// CrashDetail says "The report says where in Mayoi's code it happened, with Mayoi's version and your system. It holds none of your files,…"
+// in the language of msgs.
+func (msgs Messages) CrashDetail() string {
+	return Catalog.Format(msgs.locale, "crashDetail", nil)
+}
+
+// CrashDontAsk says "Don't ask again"
+// in the language the app shows.
+func CrashDontAsk() string { return In(i18n.Locale()).CrashDontAsk() }
+
+// CrashDontAsk says "Don't ask again"
+// in the language of msgs.
+func (msgs Messages) CrashDontAsk() string {
+	return Catalog.Format(msgs.locale, "crashDontAsk", nil)
+}
+
+// CrashQuestion says "Mayoi quit unexpectedly. Send a crash report?"
+// in the language the app shows.
+func CrashQuestion() string { return In(i18n.Locale()).CrashQuestion() }
+
+// CrashQuestion says "Mayoi quit unexpectedly. Send a crash report?"
+// in the language of msgs.
+func (msgs Messages) CrashQuestion() string {
+	return Catalog.Format(msgs.locale, "crashQuestion", nil)
+}
+
+// CrashRecoveredQuestion says "Mayoi ran into an error. Send an error report?"
+// in the language the app shows.
+func CrashRecoveredQuestion() string { return In(i18n.Locale()).CrashRecoveredQuestion() }
+
+// CrashRecoveredQuestion says "Mayoi ran into an error. Send an error report?"
+// in the language of msgs.
+func (msgs Messages) CrashRecoveredQuestion() string {
+	return Catalog.Format(msgs.locale, "crashRecoveredQuestion", nil)
 }
 
 // CreateBranchEllipsis says "Create Branch…"

@@ -231,6 +231,7 @@ func (a *app) runSearch(gen int, re *regexp.Regexp, fold foldQuery, rels []strin
 		return
 	}
 	go func() {
+		defer recoverCrash()
 		var (
 			mu    sync.Mutex
 			batch []*searchFile
@@ -250,6 +251,7 @@ func (a *app) runSearch(gen int, re *regexp.Regexp, fold foldQuery, rels []strin
 		}
 		for range max(1, min(runtime.GOMAXPROCS(0), 8, len(rels))) {
 			wg.Go(func() {
+				defer recoverCrash()
 				for !cancel.Load() {
 					i := int(next.Add(1) - 1)
 					if i >= len(rels) {

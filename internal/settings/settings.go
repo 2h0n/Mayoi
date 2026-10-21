@@ -183,6 +183,10 @@ type Prefs struct {
 	// AIModel is the model of Mon's AI gateway that writes commit
 	// messages, "" for Mayoi's choice.
 	AIModel string `json:"aiModel,omitempty"`
+	// CrashReports is what Mayoi does with the report of a crash at the
+	// next launch: "" asks whether to send it to Mon, "always" sends it
+	// and "never" doesn't.
+	CrashReports string `json:"crashReports,omitempty"`
 	// SyncIgnored is what settings sync leaves on this machine: keys of
 	// the preferences, "settings.json" for all of them, and
 	// "keybindings.json" for the keyboard shortcuts.

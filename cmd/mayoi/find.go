@@ -146,6 +146,7 @@ func (a *app) searchIn(d *editor, async bool) {
 		f.pending, f.pendingDoc = snap.Version(), d.id
 		re, id := f.re, d.id
 		go func() {
+			defer recoverCrash()
 			matches := scanMatches(re, snap)
 			a.post(func() {
 				if f.pending != snap.Version() || f.pendingDoc != id {

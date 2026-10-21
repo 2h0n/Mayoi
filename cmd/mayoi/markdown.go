@@ -852,6 +852,7 @@ func (a *app) followMarkdown(v *viewer) {
 		// Give the worker its own cache snapshot; publish it on the UI thread.
 		cache := &markdownCache{maps.Clone(m.cache.images), maps.Clone(m.cache.code)}
 		go func() {
+			defer recoverCrash()
 			root := markdownRoot(path, workspace)
 			blocks := parseMarkdown(source, path, root, func() bool { return m.generation.Load() == generation }, cache)
 			slugs := map[string]int{}

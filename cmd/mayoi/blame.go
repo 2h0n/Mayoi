@@ -57,6 +57,7 @@ func (a *app) blameLine(d *editor, line int, version uint64, focused bool) strin
 	b.running = true
 	path, text := d.path, d.buf.Snapshot().String()
 	go func() {
+		defer recoverCrash()
 		bl, err := r.BlameLine(path, line, text)
 		a.post(func() {
 			if d.blame.line != line || d.blame.version != version {

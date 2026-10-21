@@ -855,6 +855,7 @@ func (a *app) listCommitFiles(v *diffView) {
 	cm.loading = true
 	hash, info := cm.hash, cm.info
 	go func() {
+		defer recoverCrash()
 		var err error
 		if info.Hash == "" || len(info.Parents) == 0 && info.Subject == "" {
 			info, err = r.CommitInfo(hash)
@@ -975,6 +976,7 @@ func (a *app) refreshDiffFile(v *diffView, f *diffFile) bool {
 		orig = path
 	}
 	go func() {
+		defer recoverCrash()
 		var err error
 		read := func(rev, path string) (string, bool) {
 			text, ok, e := r.Show(rev, path)

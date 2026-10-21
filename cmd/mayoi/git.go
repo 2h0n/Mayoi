@@ -113,6 +113,7 @@ func (a *app) lookUpRepo() {
 	tok := new(int)
 	g.lookup = tok
 	go func() {
+		defer recoverCrash()
 		r, err := git.Open(root)
 		a.post(func() {
 			if a.root != root || g.lookup != tok {
@@ -143,6 +144,7 @@ func (a *gitContext) refreshGit() {
 			g.checked, g.metaRunning = time.Now(), true
 			r := g.repo
 			go func() {
+				defer recoverCrash()
 				t, refs, err := remoteGitMeta(r)
 				a.app.post(func() {
 					if g.repo != r {
@@ -170,6 +172,7 @@ func (a *gitContext) refreshGit() {
 	readRemotes := g.remotesStale
 	g.remotesStale = false
 	go func() {
+		defer recoverCrash()
 		st, err := r.Status()
 		branches, _ := r.Branches()
 		var remotes []string
@@ -226,6 +229,7 @@ func (a *gitContext) refreshHistory() {
 	// Without a remote nothing is pushed or not: no commit is marked.
 	r, remotes, all := g.repo, len(g.remotes) > 0, a.app.settings.ScmAllBranches
 	go func() {
+		defer recoverCrash()
 		cs, err := r.Log(n, all)
 		var unpushed map[string]bool
 		if remotes {

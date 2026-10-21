@@ -103,6 +103,7 @@ func (a *app) loadImage(v *viewer) {
 	v.loading++
 	n, path := v.loading, v.path
 	go func() {
+		defer recoverCrash()
 		bm, w, h, size, err := decodeImage(path)
 		a.post(func() {
 			if v.loading != n {

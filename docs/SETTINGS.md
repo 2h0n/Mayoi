@@ -21,8 +21,8 @@ All of Mayoi's files are in one data folder:
 | `window-state.json` | Mayoi         | Each window's position and size                                                   |
 | `updater.json`      | Mayoi         | Update choices: automatic downloads, a skipped version, the last check            |
 | `sync.json`         | Mayoi         | [Settings sync](#settings-sync): the account, and the settings as last synced     |
-| `crash.log`         | Mayoi         | What ended Mayoi if it crashed, with every goroutine's stack; empty otherwise     |
-| `crashes/`          | Mayoi         | The last 10 crash logs, each named by the time of its crash                       |
+| `crash.log`         | Mayoi         | Mayoi's version and system, then what ended it if it crashed, with every stack    |
+| `crashes/`          | Mayoi         | The last 10 crash logs, by time; `.sent` or `.unsent` once asked about            |
 
 To keep the files somewhere else, start Mayoi with `MAYOI_DATA_DIR` set to a folder. Mayoi then reads and writes all
 of these files there instead, which is a way to try a setup without touching your own. Create the folder first, and
@@ -70,6 +70,7 @@ takes its default.
 | `scmAllBranches`        | `false`       | `true`, `false`                                             | **Show All Branches** in Source Control's menu |
 | `syncIgnored`           | none          | Keys, `"settings.json"`, `"keybindings.json"`               | The [settings sync](#settings-sync) panel      |
 | `aiModel`               | `""`          | `""` (`deepseek-flash`), or a model of the AI gateway       | Only this file                                 |
+| `crashReports`          | `""`          | `""` (ask), `"always"`, `"never"`                           | **Don't ask again** when Mayoi asks           |
 
 ### Language
 
@@ -127,6 +128,10 @@ differ in width lines them up only roughly.
 - **`scmAllBranches`** shows the commits of every branch and tag, not only those of the branch checked out.
 - **`aiModel`** is the model of Mon's AI gateway that writes commit messages, `deepseek-flash` when empty. The models
   your account can use are listed at `https://mon.sorrycc.dev/api/v1/ai/v1/models`.
+- **`crashReports`** is what Mayoi does at launch with the crash logs of the last runs: `""` asks whether to send them
+  to Mon, `"always"` sends them and `"never"` doesn't. A report is anonymous, never sent with your account's token,
+  and has your home folder taken out. **Show Report** in the question opens the logs as they would be sent. Only
+  releases send reports, and builds started with `MAYOI_MON_URL`.
 
 ### Example
 

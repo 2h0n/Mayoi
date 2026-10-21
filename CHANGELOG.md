@@ -5,6 +5,14 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- After a crash, Mayoi asks at the next launch whether to send its crash
+  report, so that it can be fixed: **Send**, **Don't Send** or **Show
+  Report**, with **Don't ask again** kept as `crashReports` in the
+  settings. A report is anonymous and has your home folder taken out. A
+  crash log now starts with Mayoi's version and system, an error in the
+  background, as reading git or searching, no longer quits Mayoi but is
+  kept to report, and on macOS the system's own crash reports of Mayoi are
+  kept too.
 - Terminal tabs remain clickable across their full height when the tab
   strip overflows; the horizontal scroll bar has its own space below them
   only when needed, keeping the panel compact when the tabs fit.

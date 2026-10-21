@@ -1815,6 +1815,7 @@ func (f *frame) scanProjectLogo(a *app, h *desktop, dir, icon string) {
 	h.logoGen++
 	gen := h.logoGen
 	go func() {
+		defer recoverCrash()
 		var src ui.ImageSource
 		if icon != "" {
 			src = decodeProjectLogo(icon)

@@ -521,6 +521,7 @@ func (a *app) refreshMerge(v *mergeView) {
 	v.loading = true
 	path, op := v.path, v.op
 	go func() {
+		defer recoverCrash()
 		base, ours, theirs, err := r.Stages(path)
 		oursSide, theirsSide := r.MergeSides(op)
 		data, readErr := vfs.ReadFile(path)

@@ -696,6 +696,7 @@ func (a *app) refreshIndex() {
 	a.indexing, a.indexStale = true, false
 	root := a.root
 	go func() {
+		defer recoverCrash()
 		files := workspace.Index(root)
 		a.post(func() {
 			a.indexing = false
@@ -719,6 +720,7 @@ func (a *app) refreshIgnored() {
 	a.ignoring, a.ignoredStale = true, false
 	root := a.root
 	go func() {
+		defer recoverCrash()
 		ignored := workspace.Ignored(root)
 		a.post(func() {
 			a.ignoring = false
