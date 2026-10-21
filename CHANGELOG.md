@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.6
 
 - After a crash, Mayoi asks at the next launch whether to send its crash
   report, so that it can be fixed: **Send**, **Don't Send** or **Show
