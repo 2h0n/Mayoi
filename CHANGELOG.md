@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.7
 
 - Untitled documents keep their text as Mayoi quits, and open again,
   changed, at the next launch, rather than asking where to save them, so
