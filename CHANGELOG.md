@@ -12,7 +12,15 @@ needs a `## <version>` section here, or its build fails.
   Grok Bot's face, a round head with two slanted eyes, takes the logo's
   place on the welcome page and sits at the start of the status bar,
   blinking now and then and hopping while Git or a search works, as Clawd
-  and Qoduck do.
+  and Qoduck do, and glancing to one side and the other now and then.
+- **View → Theme → Color Theme…**, or **Color Theme…** on the welcome page,
+  opens a box of the themes, each with a little window in its colors and
+  its character. The window takes each theme as ↑ and ↓ move to it, and ←
+  and → switch between the system's appearance, light and dark: Return
+  keeps them, and Escape goes back. `workbench.action.selectTheme` binds it
+  in `keybindings.json`, as `cmd+k cmd+t` does in VS Code.
+- Changing the theme or the appearance fades every color of the window to
+  the new one's, rather than switching at once, but with reduced motion.
 
 ## 0.11.8
 

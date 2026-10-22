@@ -58,7 +58,7 @@ func (a *app) view(c *ui.Context) {
 	// The places that take the keys say so as they are built.
 	a.keyFocus = placeNone
 	a.pal = a.applyTheme(c)
-	updateLinuxControlsTheme(a.pal)
+	updateLinuxControlsTheme(a.fade.to)
 	a.themeTerminals()
 	a.fontTerminals()
 	a.copyTerminals()
@@ -163,6 +163,7 @@ func (a *app) view(c *ui.Context) {
 	a.branchPickerView(c)
 	a.repositoryPickerView(c)
 	a.recentPickerView(c)
+	a.themePickerView(c)
 	a.remotePickerView(c)
 	a.conflictsView(c)
 	a.promptView(c)
@@ -1358,6 +1359,7 @@ func (a *app) welcome(c *ui.Context) {
 					a.welcomeAction(c, iconFilePlus, locales.CmdFileNew(), a.keyHint("file.new"), a.newFile)
 					a.welcomeAction(c, iconTerminal, locales.CmdViewTerminal(), a.keyHint("view.terminal"), a.togglePanel)
 					a.welcomeAction(c, iconSidebar, locales.CmdViewSidebar(), a.keyHint("view.sidebar"), a.toggleSidebar)
+					a.welcomeAction(c, iconSparkles, locales.CmdViewSelectTheme(), a.keyHint("view.selectTheme"), a.openThemePicker)
 					if a.host.account() == "" && a.settings.Path() != "" {
 						a.welcomeAction(c, iconCloud, locales.CmdAccountSignIn(), "", func() { a.host.signIn() })
 					}

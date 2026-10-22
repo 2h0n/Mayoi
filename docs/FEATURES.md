@@ -575,7 +575,13 @@ in a light and a dark kind, and its code in Forest's greens, blues, teals and am
 logo's place and the status bar's start as Clawd does, and blinks, bobs and hops as it does. Grok Bot is the Grok Bot
 app's Sand theme: white or near-black greys, near-black or near-white buttons and its blue for the accent, in a light
 and a dark kind, and its code in the warm colors of x.ai's terminal. Grok Bot's face, a round head with two slanted
-eyes, takes the logo's place and the status bar's start as Clawd does, and looks up as it hops. **View → Sidebar on Right**
+eyes, takes the logo's place and the status bar's start as Clawd does, looks up as it hops, and now and then glances
+to one side and the other.
+**View → Theme → Color Theme…** (`workbench.action.selectTheme` in `keybindings.json`, as `cmd+k cmd+t`), or **Color
+Theme…** on the welcome page, opens a box of the themes, each with a little window in its colors and its character: the
+window takes each theme as ↑ and ↓ move to it, and ← and → switch the appearance; Return keeps them, and Escape goes
+back to those the box opened on. From one theme or appearance to another, every color of the window fades to the new
+one's, at once when the system asks for reduced motion. **View → Sidebar on Right**
 moves the sidebar to the right of the editors. It remembers the sidebar's and the panel's sides, the sidebar and panel
 sizes, and every window with its folder, frame, columns and tabs, each tab with its caret, selection, scroll position
 and own word wrap, and the folders open in the Explorer. Started without a folder, Mayoi reopens the windows that were

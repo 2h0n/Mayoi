@@ -170,7 +170,13 @@ func TestLightOrDarkThemes(t *testing.T) {
 	}
 }
 
-// A character blinks for a moment, bobs once in a few periods, and hops
+func restingPose(now time.Time) mascotPose {
+	p, _ := poseAt(now, false)
+	return p
+}
+
+// A character blinks for a moment, bobs once in a few periods, glances
+// once in a few, and hops
 // while there is work, the hop changing every step.
 func TestMascotPoses(t *testing.T) {
 	at := func(ms int64) time.Time { return time.UnixMilli(ms) }
@@ -187,6 +193,13 @@ func TestMascotPoses(t *testing.T) {
 	}
 	if p, hold := poseAt(at(3*period+500), false); p.lift != 0 || hold != mascotBobAt-500*time.Millisecond {
 		t.Errorf("the character does not wait for its bob: %+v for %v", p, hold)
+	}
+	glance := 2*period + mascotGlanceAt.Milliseconds()
+	if p, hold := poseAt(at(glance-10), false); p.look != 0 || hold != 10*time.Millisecond {
+		t.Errorf("the character does not wait for its glance: %+v for %v", p, hold)
+	}
+	if l, r := restingPose(at(glance+10)), restingPose(at(glance+mascotGlance.Milliseconds()+10)); l.look != -1 || r.look != 1 {
+		t.Errorf("the character does not glance left, then right: %+v, %+v", l, r)
 	}
 	a, _ := poseAt(at(0), true)
 	b, hold := poseAt(at(mascotHop.Milliseconds()), true)

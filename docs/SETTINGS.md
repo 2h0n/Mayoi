@@ -48,7 +48,7 @@ takes its default.
 | `terminalFontFamily`    | `""`          | Font names, separated by commas                             |                                                |
 | `terminalFontSize`      | `0`           | 0, or 9 to 28                                               |                                                |
 | `terminalCopyOnSelect`  | `true`        | `true`, `false`                                             |                                                |
-| `theme`                 | `""`          | `""` (Mayoi), `"matrix"`, `"claude"`, `"qoder"`             | **View → Theme**                               |
+| `theme`                 | `""`          | `""` (Mayoi), `"matrix"`, `"claude"`, `"qoder"`, `"grokbot"` | **View → Theme**, **Color Theme…**             |
 | `appearance`            | `""`          | `""` (follow the system), `"light"`, `"dark"`               | **View → Theme**                               |
 | `sidebarRight`          | `false`       | `true`, `false`                                             | **View → Sidebar on Right**                    |
 | `panelPosition`         | `""`          | `""` (bottom), `"left"`, `"right"`                          | **View → Panel Position**                      |

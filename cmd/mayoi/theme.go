@@ -2,7 +2,9 @@ package main
 
 import (
 	"math"
+	"reflect"
 	"time"
+	"unsafe"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/ui"
@@ -901,7 +903,7 @@ func (a *app) applyTheme(c *ui.Context) *palette {
 	case "dark":
 		dark = true
 	}
-	p := paletteFor(a.settings.Theme, dark)
+	p := a.fade.step(c, paletteFor(a.settings.Theme, dark))
 	t.Dark = p.dark
 	t.Background = p.editor
 	// Every state of the accent, or a hovered button would turn the
@@ -926,6 +928,76 @@ func (a *app) applyTheme(c *ui.Context) *palette {
 	c.SetTheme(&t)
 	return p
 }
+
+// paletteFadeFor is how long the window takes from one palette to the
+// next.
+const paletteFadeFor = 220 * time.Millisecond
+
+// paletteFade takes the window from one palette to another: each of its
+// colors fades to the new one's, rather than the whole window flashing.
+type paletteFade struct {
+	from, to *palette
+	at       time.Time
+}
+
+// step returns the palette to paint with now, on the way to to: to
+// itself once there, or at once with less motion. Each palette on the way
+// is new, so that what is cached of a palette is made anew.
+func (f *paletteFade) step(c *ui.Context, to *palette) *palette {
+	now := c.Now()
+	if to != f.to {
+		if f.to != nil && !c.Preferences().ReduceMotion {
+			// From where the window is, as it may be on its way already.
+			f.from, f.at = f.paletteAt(now), now
+		}
+		f.to = to
+	}
+	p := f.paletteAt(now)
+	if p == to {
+		f.from = nil
+	} else {
+		c.AnimationFrame()
+	}
+	return p
+}
+
+// paletteAt returns the palette at a moment of the fade.
+func (f *paletteFade) paletteAt(now time.Time) *palette {
+	k := float32(now.Sub(f.at)) / float32(paletteFadeFor)
+	if f.from == nil || k >= 1 || k < 0 {
+		return f.to
+	}
+	return mixPalettes(f.from, f.to, ui.EaseInOut(k))
+}
+
+// mixPalettes returns a new palette a part k of the way from x to y: its
+// colors mixed, and what is not a color y's. A color either leaves zero,
+// for the theme's own, is y's.
+func mixPalettes(x, y *palette, k float32) *palette {
+	p := *y
+	v := reflect.ValueOf(&p).Elem()
+	mix := func(off uintptr) {
+		at := func(q *palette) *ui.Color { return (*ui.Color)(unsafe.Add(unsafe.Pointer(q), off)) }
+		xc, yc := *at(x), *at(y)
+		if xc != (ui.Color{}) && yc != (ui.Color{}) {
+			*at(&p) = xc.Mix(yc, k)
+		}
+	}
+	for i := range v.NumField() {
+		f := v.Type().Field(i)
+		switch {
+		case f.Type == colorType:
+			mix(f.Offset)
+		case f.Type.Kind() == reflect.Array && f.Type.Elem() == colorType:
+			for j := range f.Type.Len() {
+				mix(f.Offset + uintptr(j)*colorType.Size())
+			}
+		}
+	}
+	return &p
+}
+
+var colorType = reflect.TypeFor[ui.Color]()
 
 // popIn is how a box over an editor comes in, as find's: it fades in,
 // from a little above where it settles, and goes back up as it fades out.
