@@ -12,6 +12,9 @@ needs a `## <version>` section here, or its build fails.
 - A commit's tab no longer shows the panel of its files at first: the
   button in the diff's toolbar, or **Git → Show Files of Commits**, shows
   it, and it stays shown in every commit's tab until it is hidden.
+- **⌘F** and **⌥⌘F** select the query the find box has, as VS Code does,
+  so typing replaces it: when the box opens again with the last query, and
+  when it has the focus already.
 
 ## 0.11.9
 
