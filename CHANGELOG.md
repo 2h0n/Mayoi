@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.9
 
 - The Grok Bot theme: **View → Theme → Grok Bot** takes the Grok Bot app's
   Sand Light and Sand Dark colors, light or dark as the Appearance is:
