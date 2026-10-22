@@ -364,6 +364,11 @@ type Tab struct {
 	ScrollX float32 `json:"scrollX,omitempty"`
 	ScrollY float32 `json:"scrollY,omitempty"`
 	Wrap    *bool   `json:"wrap,omitempty"`
+	// Untitled is the file in the untitled folder beside the settings that
+	// keeps the text of an untitled document as the app quit, and Number
+	// the number of its name.
+	Untitled string `json:"untitled,omitempty"`
+	Number   int    `json:"number,omitempty"`
 }
 
 // MaxDiffContext is as many unchanged lines around a change as a diff

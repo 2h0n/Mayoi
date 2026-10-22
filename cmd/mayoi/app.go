@@ -514,6 +514,7 @@ func (a *app) saveDoc(d *document, then func()) {
 			if path == "" {
 				return
 			}
+			a.dropKept(d)
 			d.path = path
 			d.hl.Close()
 			d.hl = highlight.New(highlight.Lexer(path), a.invalidate)

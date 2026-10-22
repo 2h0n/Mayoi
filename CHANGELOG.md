@@ -5,6 +5,9 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Untitled documents keep their text as Mayoi quits, and open again,
+  changed, at the next launch, rather than asking where to save them, so
+  restarting or shutting down the Mac no longer stops on them.
 - Switching, creating and tracking branches, checking out a commit, and
   unstaging or discarding changes also work on hosts with Git older than
   2.23, which has no `git switch` or `git restore`.
