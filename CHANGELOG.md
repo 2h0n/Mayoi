@@ -8,6 +8,15 @@ needs a `## <version>` section here, or its build fails.
 - **View → New Terminals in Editor Area**, or `"terminalLocation": "editor"`
   in `settings.json`, has New Terminal and **Open in Terminal** open a tab
   of the editor area rather than the panel.
+- The Markdown preview shows the HTML in Markdown as GitHub does, rather
+  than its tags as code: pictures as wide as `<img width>` says, from a
+  `<picture>` too, links, bold, italic and code, headings and paragraphs,
+  and centers what `align="center"` centers, Markdown between the tags of
+  a `<div>` included.
+- The Markdown preview shows pictures of the web, as badges, fetching them
+  in the background, and the pictures of a paragraph next to each other on
+  one row; an SVG with text, which it would draw without its text, shows
+  its alt text.
 
 ## 0.11.7
 
