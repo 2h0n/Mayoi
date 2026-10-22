@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.8
 
 - **View → New Terminals in Editor Area**, or `"terminalLocation": "editor"`
   in `settings.json`, has New Terminal and **Open in Terminal** open a tab
