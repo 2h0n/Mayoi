@@ -211,6 +211,10 @@ type app struct {
 	docs []*document
 	cols []*column
 	col  int
+	// findCol is the column the find widget shows in, the one with the
+	// keyboard as the frame's columns began: a click on another's tab as
+	// they draw moves col, and the widget's input binds one control.
+	findCol *column
 	// review is the comments on lines of the changes, to send to an agent.
 	review review
 	// fileCol caches the last unlocked column used for files. Removal clears
