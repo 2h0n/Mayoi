@@ -9,6 +9,9 @@ needs a `## <version>` section here, or its build fails.
   the Context menu a folded list, the Highlight menu two letters, and the
   button for a commit's files a tree. The split toggle is gone, as the
   Layout menu chooses side by side, one column or auto.
+- A commit's tab no longer shows the panel of its files at first: the
+  button in the diff's toolbar, or **Git → Show Files of Commits**, shows
+  it, and it stays shown in every commit's tab until it is hidden.
 
 ## 0.11.9
 

@@ -47,15 +47,15 @@ const (
 )
 
 // showsCommitFiles reports whether a diff shows the panel of its files:
-// a commit's, once it has files, unless the panel is closed.
+// a commit's, once it has files, when the panel is open.
 func (a *app) showsCommitFiles(v *diffView) bool {
-	return v.commit != nil && len(v.files) > 0 && !a.window.CommitFilesClosed
+	return v.commit != nil && len(v.files) > 0 && a.window.CommitFilesOpen
 }
 
 // toggleCommitFiles shows the panel of the files of commits' tabs, or
 // hides it.
 func (a *app) toggleCommitFiles() {
-	a.window.CommitFilesClosed = !a.window.CommitFilesClosed
+	a.window.CommitFilesOpen = !a.window.CommitFilesOpen
 	a.settings.Changed()
 }
 

@@ -2270,7 +2270,7 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 	}
 	a.reviewSendButton(c)
 	if v.commit != nil {
-		if button(iconListTree, a.withKey(locales.DiffToggleCommitFiles(), "git.toggleCommitFiles"), !a.window.CommitFilesClosed).Clicked() {
+		if button(iconListTree, a.withKey(locales.DiffToggleCommitFiles(), "git.toggleCommitFiles"), a.window.CommitFilesOpen).Clicked() {
 			a.post(a.toggleCommitFiles)
 		}
 	}
