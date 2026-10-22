@@ -3,6 +3,13 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- The diff's toolbar tells its buttons apart: the Whitespace menu shows ¶,
+  the Context menu a folded list, the Highlight menu two letters, and the
+  button for a commit's files a tree. The split toggle is gone, as the
+  Layout menu chooses side by side, one column or auto.
+
 ## 0.11.9
 
 - The Grok Bot theme: **View → Theme → Grok Bot** takes the Grok Bot app's

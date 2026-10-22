@@ -2270,7 +2270,7 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 	}
 	a.reviewSendButton(c)
 	if v.commit != nil {
-		if button(iconSidebarRight, a.withKey(locales.DiffToggleCommitFiles(), "git.toggleCommitFiles"), !a.window.CommitFilesClosed).Clicked() {
+		if button(iconListTree, a.withKey(locales.DiffToggleCommitFiles(), "git.toggleCommitFiles"), !a.window.CommitFilesClosed).Clicked() {
 			a.post(a.toggleCommitFiles)
 		}
 	}
@@ -2278,13 +2278,6 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 	act(iconArrowDown, locales.DiffNextChange(), func() { v.stepHunk(1, a.crossesDiff()) })
 	act(iconChevronLeft, locales.DiffPrevFile(), func() { v.stepFile(-1) })
 	act(iconChevronRight, locales.DiffNextFile(), func() { v.stepFile(1) })
-	if button(iconColumns, locales.DiffLayoutSplit(), v.split).Clicked() {
-		next := layoutSplit
-		if v.split {
-			next = layoutInline
-		}
-		a.post(func() { a.setDiffLayout(v, next) })
-	}
 	if button(iconUnfold, locales.DiffShowFullFiles(), v.full).Clicked() {
 		a.post(func() { a.setDiffFull(v, !v.full) })
 	}
@@ -2306,7 +2299,7 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 	})
 	// Whitespace filtering changes comparison and navigation only; the
 	// original file text remains what block actions edit.
-	b = button(iconRows, locales.DiffWhitespaceMenu(), false)
+	b = button(iconWhitespace, locales.DiffWhitespaceMenu(), false)
 	b.Menu(func(m *ui.Menu) {
 		for _, w := range []struct {
 			mode  diffWhitespace
@@ -2318,7 +2311,7 @@ func (a *app) diffButtons(c *ui.Context, t *colTab) {
 		}
 	})
 	// The unchanged lines around a change, which the rest folds down to.
-	b = button(iconRows, locales.DiffContextMenu(), false)
+	b = button(iconContext, locales.DiffContextMenu(), false)
 	b.Menu(func(m *ui.Menu) {
 		for _, n := range []int{0, 1, 2, 3, 5, 10} {
 			label := locales.DiffContextNone()
