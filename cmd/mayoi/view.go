@@ -1040,12 +1040,13 @@ func (a *app) vimBadge(c *ui.Context, v *vimState, text func(string) ui.Element)
 		bg, fg = p.modified.Alpha(0.22), p.modifiedFg
 	}
 	row := ui.Row(c.Key("status:vim")).Height(statusBarH).Padding(0, 6).Gap(6).AlignItems(ui.Center)
-	// From mode to mode, the badge's colors and name cross over.
+	// From mode to mode, the badge's colors cross over. Its name changes at
+	// once: the old fading out over the new broke up the strokes of both.
 	fade := ui.Animation{Duration: 140 * time.Millisecond}
 	bg, fg = row.AnimateColor("bg", bg, fade), row.AnimateColor("fg", fg, fade)
 	row.Children(func() {
 		ui.Text(c, v.mode.String()).FontSize(10.5).FontWeight(650).LetterSpacing(0.6).TextColor(fg).SingleLine().
-			Padding(1, 6).Radius(4).Background(bg).ContentTransition(ui.ContentTransition{})
+			Padding(1, 6).Radius(4).Background(bg)
 		if a.vimRec != 0 {
 			// A register recording, as vim says: a red dot, and its name.
 			ui.Row(c.Key("status:vim-rec")).Gap(5).AlignItems(ui.Center).

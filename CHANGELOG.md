@@ -17,6 +17,9 @@ needs a `## <version>` section here, or its build fails.
   in the background, and the pictures of a paragraph next to each other on
   one row; an SVG with text, which it would draw without its text, shows
   its alt text.
+- The mode badge of vim mode in the status bar switches to the new mode's
+  name at once, rather than fading the old name out over it, which broke
+  up the letters of both for a moment.
 
 ## 0.11.7
 
