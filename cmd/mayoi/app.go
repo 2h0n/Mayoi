@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo/plugins/terminal"
 	"github.com/egoist/mygo/ui"
 
+	"mayoi/internal/bg"
 	"mayoi/internal/git"
 	"mayoi/internal/highlight"
 	"mayoi/internal/keymap"
@@ -704,7 +705,7 @@ func (a *app) refreshIndex() {
 	a.indexed = time.Now()
 	a.indexing, a.indexStale = true, false
 	root := a.root
-	go func() {
+	bg.Go(func() {
 		defer recoverCrash()
 		files := workspace.Index(root)
 		a.post(func() {
@@ -714,7 +715,7 @@ func (a *app) refreshIndex() {
 				a.quick.stale = true
 			}
 		})
-	}()
+	})
 }
 
 // refreshIgnored asks Git again in the background what it ignores, when
@@ -728,7 +729,7 @@ func (a *app) refreshIgnored() {
 	}
 	a.ignoring, a.ignoredStale = true, false
 	root := a.root
-	go func() {
+	bg.Go(func() {
 		defer recoverCrash()
 		ignored := workspace.Ignored(root)
 		a.post(func() {
@@ -737,7 +738,7 @@ func (a *app) refreshIgnored() {
 				a.ignored = ignored
 			}
 		})
-	}()
+	})
 }
 
 // isIgnored reports whether Git ignores path, or a folder above it.

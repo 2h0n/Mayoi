@@ -1037,14 +1037,6 @@ func (a *gitContext) gitSyncStatus(c *ui.Context, showCounts bool) {
 	}
 }
 
-// plural counts n things, as "1 line" or "2 lines".
-func plural(n int, thing string) string {
-	if n == 1 {
-		return "1 " + thing
-	}
-	return fmt.Sprintf("%d %ss", n, thing)
-}
-
 // vimBadge shows vim mode's mode in the status bar, as a badge colored
 // by it: plain in normal mode, the accent in insert mode, and the color
 // of a change in visual mode; then the keys of a command typed so far.

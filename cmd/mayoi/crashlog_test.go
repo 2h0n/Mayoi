@@ -65,6 +65,7 @@ func TestRecoverCrash(t *testing.T) {
 		wg.Go(func() {
 			defer recoverCrash()
 			var m map[string]int
+			//lint:ignore SA5000 the panic is what the test recovers
 			m["x"] = 1
 		})
 		wg.Wait()
