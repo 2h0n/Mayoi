@@ -123,12 +123,14 @@ func themeHarness(t testing.TB, theme string, dark bool) *harness {
 	return hs
 }
 
-// Claude and Qoder have a light and a dark palette, as the appearance is.
+// Claude, Qoder and Grok Bot have a light and a dark palette, as the
+// appearance is.
 func TestLightOrDarkThemes(t *testing.T) {
 	for _, tc := range []struct {
 		name, theme string
 		light, dark *palette
-	}{{"Claude", themeClaude, claudeLightPal, claudeDarkPal}, {"Qoder", themeQoder, qoderLightPal, qoderDarkPal}} {
+	}{{"Claude", themeClaude, claudeLightPal, claudeDarkPal}, {"Qoder", themeQoder, qoderLightPal, qoderDarkPal},
+		{"Grok Bot", themeGrokBot, grokBotLightPal, grokBotDarkPal}} {
 		if paletteFor(tc.theme, false) != tc.light || paletteFor(tc.theme, true) != tc.dark {
 			t.Errorf("%s does not follow the window's light or dark", tc.name)
 		}
@@ -195,13 +197,14 @@ func TestMascotPoses(t *testing.T) {
 
 // The theme's character moves on the welcome page and in the status bar
 // while the window has the keyboard, hops while Git works, and holds
-// still without the keyboard: Clawd in Claude, and Qoduck in Qoder.
+// still without the keyboard: Clawd in Claude, Qoduck in Qoder, and Grok
+// Bot's face in Grok Bot.
 func TestMascotMoves(t *testing.T) {
 	for _, tc := range []struct {
 		theme string
 		m     *mascot
 		name  string
-	}{{themeClaude, clawd, "Claude"}, {themeQoder, qoduck, "Qoder"}} {
+	}{{themeClaude, clawd, "Claude"}, {themeQoder, qoduck, "Qoder"}, {themeGrokBot, grokBot, "Grok Bot"}} {
 		hs := themeHarness(t, tc.theme, true)
 		a := hs.a
 		if a.themeMascot() != tc.m {
@@ -244,6 +247,10 @@ func TestShotClaude(t *testing.T) {
 
 func TestShotQoder(t *testing.T) {
 	shotTheme(t, themeQoder)
+}
+
+func TestShotGrokBot(t *testing.T) {
+	shotTheme(t, themeGrokBot)
 }
 
 // shotTheme shoots a theme's welcome page and an editor, light and dark.
@@ -319,6 +326,10 @@ func TestThemeMenu(t *testing.T) {
 	if !a.commandOn("view.theme.qoder") {
 		t.Error("the palette does not check Qoder")
 	}
+	a.setTheme(themeGrokBot)
+	if g := find("Grok Bot"); g == nil || !g.Checked || find("Qoder").Checked || !a.commandOn("view.theme.grokbot") {
+		t.Error("Grok Bot is not the theme checked")
+	}
 }
 
 // A button's label reads on its face, the accent's and danger's, at the
@@ -326,7 +337,7 @@ func TestThemeMenu(t *testing.T) {
 // least at the 3:1 AA asks of large or bold text.
 func TestButtonContrast(t *testing.T) {
 	pals := map[string]*palette{"light": lightPal, "dark": darkPal, "matrix": matrixPal, "claude light": claudeLightPal, "claude dark": claudeDarkPal,
-		"qoder light": qoderLightPal, "qoder dark": qoderDarkPal}
+		"qoder light": qoderLightPal, "qoder dark": qoderDarkPal, "grok bot light": grokBotLightPal, "grok bot dark": grokBotDarkPal}
 	for name, p := range pals {
 		for _, pair := range []struct {
 			what     string
@@ -351,7 +362,7 @@ func TestButtonContrast(t *testing.T) {
 // Source Control does on a light window.
 func TestStatusTextContrast(t *testing.T) {
 	pals := map[string]*palette{"light": lightPal, "dark": darkPal, "matrix": matrixPal, "claude light": claudeLightPal, "claude dark": claudeDarkPal,
-		"qoder light": qoderLightPal, "qoder dark": qoderDarkPal}
+		"qoder light": qoderLightPal, "qoder dark": qoderDarkPal, "grok bot light": grokBotLightPal, "grok bot dark": grokBotDarkPal}
 	for name, p := range pals {
 		for what, fg := range map[string]ui.Color{"modified": p.modifiedFg, "added": p.addedFg, "removed": p.removedFg, "danger": p.dangerFg} {
 			for _, back := range []ui.Color{p.chrome, p.editor, p.panel} {
