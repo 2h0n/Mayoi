@@ -2277,6 +2277,16 @@ func (msgs Messages) CmdViewTerminal() string {
 	return Catalog.Format(msgs.locale, "cmdViewTerminal", nil)
 }
 
+// CmdViewTerminalLocation says "New Terminals in Editor Area"
+// in the language the app shows.
+func CmdViewTerminalLocation() string { return In(i18n.Locale()).CmdViewTerminalLocation() }
+
+// CmdViewTerminalLocation says "New Terminals in Editor Area"
+// in the language of msgs.
+func (msgs Messages) CmdViewTerminalLocation() string {
+	return Catalog.Format(msgs.locale, "cmdViewTerminalLocation", nil)
+}
+
 // CmdViewTerminalLockRight says "Move Terminal to Locked Right Column"
 // in the language the app shows.
 func CmdViewTerminalLockRight() string { return In(i18n.Locale()).CmdViewTerminalLockRight() }

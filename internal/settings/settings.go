@@ -171,6 +171,9 @@ type Prefs struct {
 	// below the editors, "left" or "right" at the window's side, past
 	// the sidebar.
 	PanelPosition string `json:"panelPosition,omitempty"`
+	// TerminalLocation is where a new terminal opens: "" in the panel, or
+	// "editor" in a tab of the editor area.
+	TerminalLocation string `json:"terminalLocation,omitempty"`
 	// ProjectTabs keeps the folders open in one window, a rail on its left
 	// choosing which shows, rather than a window for each.
 	ProjectTabs bool `json:"projectTabs,omitempty"`
@@ -483,6 +486,9 @@ func (s *Settings) normalize() {
 	// "" and "bottom" are the same panel position.
 	if s.PanelPosition != "left" && s.PanelPosition != "right" {
 		s.PanelPosition = ""
+	}
+	if s.TerminalLocation != "editor" {
+		s.TerminalLocation = ""
 	}
 	// The themes were appearances once.
 	if s.Appearance == "matrix" || s.Appearance == "claude" {

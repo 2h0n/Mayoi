@@ -224,6 +224,7 @@
   "cmdViewSidebarRight": "侧边栏位于右侧",
   "cmdViewSplitRight": "向右拆分",
   "cmdViewTerminal": "切换终端",
+  "cmdViewTerminalLocation": "新建终端在编辑器区域打开",
   "cmdViewTerminalLockRight": "将终端移到锁定的右侧栏",
   "cmdViewTerminalMove": "将终端移到编辑器区域或面板",
   "cmdViewTerminalTab": "在编辑器区域新建终端",

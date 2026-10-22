@@ -3,6 +3,12 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **View → New Terminals in Editor Area**, or `"terminalLocation": "editor"`
+  in `settings.json`, has New Terminal and **Open in Terminal** open a tab
+  of the editor area rather than the panel.
+
 ## 0.11.7
 
 - Untitled documents keep their text as Mayoi quits, and open again,

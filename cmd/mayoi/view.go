@@ -1531,6 +1531,17 @@ func (a *app) togglePanel() {
 	a.settings.Changed()
 }
 
+// toggleTerminalLocation has new terminals open in the editor area, or in
+// the panel again.
+func (a *app) toggleTerminalLocation() {
+	if a.settings.TerminalLocation == "" {
+		a.settings.TerminalLocation = "editor"
+	} else {
+		a.settings.TerminalLocation = ""
+	}
+	a.settings.Changed()
+}
+
 // setPanelPosition moves the terminal panel to a side of the window, or
 // back below the editors for "", and shows it when it was hidden.
 func (a *app) setPanelPosition(pos string) {
