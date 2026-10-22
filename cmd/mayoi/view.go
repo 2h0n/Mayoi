@@ -1404,9 +1404,33 @@ func (a *app) welcome(c *ui.Context) {
 						}
 					})
 				}
+				a.welcomeStar(c)
 			})
 		})
 	})
+}
+
+// repoURL is Mayoi's repository on GitHub.
+const repoURL = "https://github.com/sorrycc/Mayoi"
+
+// welcomeStar is the link at the foot of the welcome page that opens
+// Mayoi's repository, to star it: quieter than the rows above it.
+func (a *app) welcomeStar(c *ui.Context) {
+	p := a.pal
+	r := ui.ButtonBase(c.Key("welcome:star")).AlignSelf(ui.Start).Height(24).Padding(0, 10).Radius(6).Gap(6).
+		AlignItems(ui.Center).Label(locales.WelcomeStar()).Tooltip(repoURL)
+	col := p.faint
+	if r.Hovered() {
+		col = p.accent
+	}
+	col = r.AnimateColor("text", col, ui.Animation{Duration: hoverFade.Duration})
+	riseIn(r, 150*time.Millisecond).Children(func() {
+		ui.Icon(c, iconStar).FontSize(13).TextColor(col)
+		ui.Text(c, locales.WelcomeStar()).FontSize(12).TextColor(col).SingleLine()
+	})
+	if r.Clicked() {
+		a.services.OpenURL(repoURL)
+	}
 }
 
 // welcomeRowH is the height of every row of the welcome page, with keys

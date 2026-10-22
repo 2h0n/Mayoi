@@ -3,6 +3,11 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- The welcome page has a **Star on GitHub** link at its foot, which opens
+  Mayoi's repository in the browser.
+
 ## 0.11.10
 
 - The diff's toolbar tells its buttons apart: the Whitespace menu shows ¶,
