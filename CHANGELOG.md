@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.11
 
 - The welcome page has a **Star on GitHub** link at its foot, which opens
   Mayoi's repository in the browser.
