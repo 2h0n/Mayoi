@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.11.12
 
 - `mayoi run <id>[=<arg>]` runs any command of the window, and `mayoi commands` lists them.
 - `mayoi -g file:line` opens a file at a line, `-d` compares two files, and `-n` opens a new window.
