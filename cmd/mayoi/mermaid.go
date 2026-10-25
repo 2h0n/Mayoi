@@ -411,15 +411,15 @@ func parseTransform(s string) affine {
 // leaves out falling back to Pele's own.
 func (st mermaidStyle) pelePalette() map[string]string {
 	return map[string]string{
-		"--pele-bg": cssColor(st.bg), "--pele-fg": cssColor(st.fg), "--pele-muted": cssColor(st.muted),
-		"--pele-line": cssColor(st.line), "--pele-surface": cssColor(st.surface),
-		"--pele-surface-alt": cssColor(st.surfaceAlt), "--pele-border": cssColor(st.border),
-		"--pele-accent": cssColor(st.accent), "--pele-critical": cssColor(st.danger),
-		"--pele-error": cssColor(st.danger),
+		"--pele-bg": hexColor(st.bg), "--pele-fg": hexColor(st.fg), "--pele-muted": hexColor(st.muted),
+		"--pele-line": hexColor(st.line), "--pele-surface": hexColor(st.surface),
+		"--pele-surface-alt": hexColor(st.surfaceAlt), "--pele-border": hexColor(st.border),
+		"--pele-accent": hexColor(st.accent), "--pele-critical": hexColor(st.danger),
+		"--pele-error": hexColor(st.danger),
 	}
 }
 
-func cssColor(c ui.Color) string { return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B) }
+func hexColor(c ui.Color) string { return fmt.Sprintf("#%02x%02x%02x", c.R, c.G, c.B) }
 
 // mermaidSVG makes what MyGo draws of the SVG Pele drew: its colors, which
 // are CSS variables, those of st, and its text taken out of it, as the
@@ -767,7 +767,7 @@ func cssMix(args []string, vars map[string]string, depth int) string {
 	case pa < 0:
 		pa = 1 - pb
 	}
-	return cssColor(a.Mix(b, 1-pa))
+	return hexColor(a.Mix(b, 1-pa))
 }
 
 // cssHex parses a color as #rgb, #rgba, #rrggbb or #rrggbbaa.

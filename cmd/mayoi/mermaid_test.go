@@ -68,7 +68,7 @@ func TestMermaidSVG(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := string(out)
-	for _, want := range []string{`fill="` + cssColor(st.surface) + `"`, ` rx="4"`, `fill="#404040"`, `fill="#123456"`} {
+	for _, want := range []string{`fill="` + hexColor(st.surface) + `"`, ` rx="4"`, `fill="#404040"`, `fill="#123456"`} {
 		if !strings.Contains(s, want) {
 			t.Errorf("no %s in %s", want, s)
 		}
