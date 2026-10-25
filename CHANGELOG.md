@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.12.0
 
 - The Markdown preview draws `mermaid` code blocks as diagrams, in the colors of the theme.
 - Hover a diagram for **Show Source** and **Copy Code**; one that cannot be drawn says why.
