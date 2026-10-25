@@ -61,7 +61,12 @@ type markdownPreview struct {
 	pending  bool
 	// refetch is whether a picture of the web arrived since the last
 	// parse, for the text to be parsed again to show it.
-	refetch    bool
+	refetch bool
+	// mermaid is the style the last parse asked for draws diagrams in,
+	// nil for none, and sources the blocks of Mermaid shown as their
+	// source, by their lines.
+	mermaid    *mermaidStyle
+	sources    map[int]bool
 	running    bool
 	generation atomic.Uint64
 }
@@ -118,6 +123,11 @@ type markdownImageKey struct {
 type markdownCache struct {
 	images map[markdownImageKey]markdownInline
 	code   map[[2]string][]markdownInline
+	// mermaid is the style its blocks of Mermaid are drawn in as
+	// diagrams, nil to show their source, and diagrams the diagrams of
+	// their source drawn in it.
+	mermaid  *mermaidStyle
+	diagrams map[string]*mermaidDiagram
 	// arrived is called once a picture of the web a parse asked for is
 	// fetched, for the preview to parse again; without it, those pictures
 	// are not fetched.
@@ -151,6 +161,8 @@ type markdownBlock struct {
 	line int
 	// center is whether the block is centered, as in <p align="center">.
 	center bool
+	// diagram is the diagram a block of Mermaid draws, or why it could not.
+	diagram *mermaidDiagram
 }
 
 func isMarkdown(d *document) bool {
@@ -158,7 +170,7 @@ func isMarkdown(d *document) bool {
 	return strings.EqualFold(ext, ".md") || strings.EqualFold(ext, ".markdown")
 }
 
-func canPreview(d *document) bool { return isSVG(d) || isMarkdown(d) }
+func canPreview(d *document) bool { return isSVG(d) || isMarkdown(d) || isMermaid(d) }
 
 // markdownPath resolves local destinations without fetching remote resources.
 // A leading / means root, as it means the repository's on GitHub, or the
@@ -261,6 +273,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 	cache := c.images
 	used := map[markdownImageKey]bool{}
 	usedCode := map[[2]string]bool{}
+	usedDiagrams := map[string]bool{}
 	defer func() {
 		if current != nil && !current() {
 			return
@@ -275,7 +288,25 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				delete(c.code, k)
 			}
 		}
+		for k := range c.diagrams {
+			if !usedDiagrams[k] {
+				delete(c.diagrams, k)
+			}
+		}
 	}()
+	// diagram draws a block of Mermaid, as the last parse did if it had it.
+	diagram := func(text string) *mermaidDiagram {
+		usedDiagrams[text] = true
+		d, ok := c.diagrams[text]
+		if !ok {
+			d = renderMermaid(text, *c.mermaid)
+			if c.diagrams == nil {
+				c.diagrams = map[string]*mermaidDiagram{}
+			}
+			c.diagrams[text] = d
+		}
+		return d
+	}
 	// code highlights a block of code, as the last parse did if it had it.
 	code := func(text, language string) []markdownInline {
 		key := [2]string{language, text}
@@ -549,7 +580,11 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 			b.kind = markdownRule
 		case *ast.FencedCodeBlock:
 			b.kind, b.language = markdownCodeBlock, string(x.Language(source))
-			b.runs = code(string(x.Lines().Value(source)), b.language)
+			text := string(x.Lines().Value(source))
+			b.runs = code(text, b.language)
+			if c.mermaid != nil && strings.EqualFold(b.language, "mermaid") && (current == nil || current()) {
+				b.diagram = diagram(text)
+			}
 		case *ast.CodeBlock:
 			b.kind = markdownCodeBlock
 			b.runs = code(string(x.Lines().Value(source)), "")
@@ -871,9 +906,16 @@ func markdownCode(code, language string) []markdownInline {
 func (a *app) followMarkdown(v *viewer) {
 	d, m := v.doc, v.markdown
 	ver := d.buf.Version()
+	var want *mermaidStyle
+	if a.settings.PreviewMermaid {
+		st := a.mermaidStyle()
+		want = &st
+	}
+	// The diagrams are drawn anew in another theme, or not drawn.
+	same := want == nil && m.mermaid == nil || want != nil && m.mermaid != nil && *want == *m.mermaid
 	// Idle keeps the loaded version; debouncing keeps its timer; running keeps one
 	// worker; running+dirty advances the generation and schedules after that worker.
-	if (m.pending || v.loaded && v.version == ver && !m.refetch) && m.observed == ver && m.path == d.path {
+	if (m.pending || v.loaded && v.version == ver && !m.refetch) && m.observed == ver && m.path == d.path && same {
 		return
 	}
 	if m.cache.arrived == nil {
@@ -881,7 +923,7 @@ func (a *app) followMarkdown(v *viewer) {
 	}
 	first := m.generation.Load() == 0
 	generation := m.generation.Add(1)
-	m.observed, m.path = ver, d.path
+	m.observed, m.path, m.mermaid = ver, d.path, want
 	m.pending = true
 	if v.wait != nil {
 		v.wait.Stop()
@@ -899,7 +941,10 @@ func (a *app) followMarkdown(v *viewer) {
 		m.running, m.refetch = true, false
 		source, path, workspace := []byte(d.buf.String()), d.path, a.folder()
 		// Give the worker its own cache snapshot; publish it on the UI thread.
-		cache := &markdownCache{images: maps.Clone(m.cache.images), code: maps.Clone(m.cache.code), arrived: m.cache.arrived}
+		cache := &markdownCache{images: maps.Clone(m.cache.images), code: maps.Clone(m.cache.code), arrived: m.cache.arrived, mermaid: want}
+		if want != nil && m.cache.mermaid != nil && *want == *m.cache.mermaid {
+			cache.diagrams = maps.Clone(m.cache.diagrams)
+		}
 		bg.Go(func() {
 			defer recoverCrash()
 			root := markdownRoot(path, workspace)
@@ -1205,6 +1250,40 @@ func (a *app) markdownCodeCard(c *ui.Context, m *markdownPreview, path string, b
 				ui.Text(c, b.language).FontSize(size*0.8).TextColor(p.faint).SingleLine().Padding(2, 6)
 				return
 			}
+			ui.Row(c).Gap(2).Children(func() {
+				if d := b.diagram; d != nil && d.err == "" && a.smallButton(c, iconImage, locales.ShowDiagram()) {
+					delete(m.sources, b.line)
+				}
+				if a.smallButton(c, iconCopy, locales.CopyCode()) {
+					a.services.WriteClipboard(markdownRunsText(b.runs))
+					a.tell(note{message: locales.CopiedCode()})
+				}
+			})
+		})
+	})
+}
+
+// markdownDiagram is the diagram a block of Mermaid draws, at its size
+// or as wide as the column, with its source and its copy on hover.
+func (a *app) markdownDiagram(c *ui.Context, m *markdownPreview, b markdownBlock, size, width float32) {
+	p, d := a.pal, b.diagram
+	pad := size
+	w := min(d.w, max(1, width-2*pad-2))
+	h := w * d.h / d.w
+	card := ui.Column(c.Key("diagram")).WidthPercent(100).Padding(pad).Background(p.editor).Border(1, p.border).Radius(8).AlignItems(ui.Center)
+	over := card.Hovered()
+	card.Children(func() {
+		ui.Box(c).Width(w).Height(h).Label(b.language).Draw(d.draw)
+		if !over {
+			return
+		}
+		ui.Row(c).Absolute().Top(size * 0.4).Right(size * 0.4).Gap(2).Background(p.editor).Radius(4).Children(func() {
+			if a.smallButton(c, iconFileCode, locales.ShowSource()) {
+				if m.sources == nil {
+					m.sources = map[int]bool{}
+				}
+				m.sources[b.line] = true
+			}
 			if a.smallButton(c, iconCopy, locales.CopyCode()) {
 				a.services.WriteClipboard(markdownRunsText(b.runs))
 				a.tell(note{message: locales.CopiedCode()})
@@ -1373,7 +1452,14 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							}
 						})
 					case markdownCodeBlock:
+						if d := b.diagram; d != nil && d.err == "" && !m.sources[b.line] {
+							a.markdownDiagram(c, m, b, size, max(1, width-(b.offset+b.markerWidth)*size-float32(b.quote)*size))
+							break
+						}
 						a.markdownCodeCard(c, m, path, b, size)
+						if d := b.diagram; d != nil && d.err != "" {
+							ui.Text(c, locales.MermaidCannotDraw(d.err)).FontSize(size*0.85).TextColor(p.dangerFg).Margin(size*0.4, 0, 0, 0)
+						}
 					case markdownTable, markdownTableHeader:
 						a.markdownTableRow(c, m, path, b, size, width, font)
 					case markdownAlertTitle:

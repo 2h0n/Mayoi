@@ -88,12 +88,17 @@ type viewer struct {
 	// markdown is a Markdown preview's parsed text and place, nil for
 	// an image or an SVG.
 	markdown *markdownPreview
+	// diagram is a Mermaid preview's diagram, drawn in style, while
+	// drawing draws it again.
+	diagram *mermaidDiagram
+	style   mermaidStyle
+	drawing bool
 }
 
 // newImageViewer makes the viewer of an image file, which load reads.
 func newImageViewer(path string) *viewer { return &viewer{path: path} }
 
-// newPreviewViewer makes the preview of an SVG or Markdown document.
+// newPreviewViewer makes the preview of an SVG, Mermaid or Markdown document.
 func newPreviewViewer(d *document) *viewer { return &viewer{doc: d} }
 
 func (v *viewer) name() string { return filepath.Base(v.path) }
@@ -244,6 +249,51 @@ func (a *app) followSVG(v *viewer) {
 		return
 	}
 	v.wait = time.AfterFunc(svgDelay, func() { a.post(parse) })
+}
+
+// followMermaid draws the diagram of a Mermaid document's preview again
+// once its text or the theme changed, a moment after the last edit and
+// away from the UI thread, keeping the last diagram that drew.
+func (a *app) followMermaid(v *viewer) {
+	d := v.doc
+	st := a.mermaidStyle()
+	if v.loaded && d.buf.Version() == v.version && st == v.style || v.wait != nil || v.drawing {
+		return
+	}
+	draw := func() {
+		v.wait = nil
+		if !slices.Contains(a.docs, d) {
+			return
+		}
+		v.drawing = true
+		v.loading++
+		n, ver, source := v.loading, d.buf.Version(), d.buf.String()
+		bg.Go(func() {
+			defer recoverCrash()
+			dg := renderMermaid(source, st)
+			a.post(func() {
+				v.drawing = false
+				if v.loading != n {
+					return
+				}
+				v.version, v.style, v.loaded = ver, st, true
+				if dg.err != "" {
+					v.err = dg.err
+					return
+				}
+				v.err = ""
+				if v.src != nil && (v.w != dg.w || v.h != dg.h) {
+					v.zoom, v.panX, v.panY = 0, 0, 0
+				}
+				v.diagram, v.src, v.w, v.h = dg, dg.svg, dg.w, dg.h
+			})
+		})
+	}
+	if !v.loaded {
+		draw() // at once, as it opens
+		return
+	}
+	v.wait = time.AfterFunc(svgDelay, func() { a.post(draw) })
 }
 
 // stop stops what the viewer waits for, as it goes.
@@ -404,7 +454,10 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 	if v.doc != nil {
 		label = locales.PreviewLabel(name)
 	}
-	if v.doc != nil {
+	switch {
+	case v.doc != nil && isMermaid(v.doc):
+		a.followMermaid(v)
+	case v.doc != nil:
 		a.followSVG(v)
 	}
 	b := v.pane.Bounds(c)
@@ -435,6 +488,12 @@ func (a *app) viewerView(c *ui.Context, v *viewer, name string) {
 			pt.Shadow(at, 0, 0, 6, 24, 0, p.shadow)
 		}
 		pt.Clip(shown, 0, func() {
+			if v.diagram != nil {
+				// A diagram is drawn on the color its labels are for.
+				pt.Fill(at, v.style.bg, 0)
+				v.diagram.draw(pt, at)
+				return
+			}
 			// The checks start at the picture's corner, as it moves.
 			tile := checkers(p.dark)
 			for y := at.Y + float32(int((shown.Y-at.Y)/checkTile))*checkTile; y < shown.Y+shown.H; y += checkTile {

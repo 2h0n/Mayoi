@@ -212,6 +212,9 @@
       }
     }
   },
+  "errMermaidTimeout": "the diagram took too long to draw",
+  "mermaidCannotDraw": "Cannot draw the diagram: {err}",
+  "showDiagram": "Show Diagram",
   "themeAboutClaude": "Ivory and near-black, with Claude's orange",
   "themeAboutGrokBot": "Grok Bot's Sand: monochrome, with its blue",
   "themeAboutMatrix": "Phosphor green, with digital rain",

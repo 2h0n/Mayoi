@@ -45,6 +45,36 @@ func (msgs Messages) CmdViewSelectTheme() string {
 	return Catalog.Format(msgs.locale, "cmdViewSelectTheme", nil)
 }
 
+// ErrMermaidTimeout says "the diagram took too long to draw"
+// in the language the app shows.
+func ErrMermaidTimeout() string { return In(i18n.Locale()).ErrMermaidTimeout() }
+
+// ErrMermaidTimeout says "the diagram took too long to draw"
+// in the language of msgs.
+func (msgs Messages) ErrMermaidTimeout() string {
+	return Catalog.Format(msgs.locale, "errMermaidTimeout", nil)
+}
+
+// MermaidCannotDraw says "Cannot draw the diagram: {err}"
+// in the language the app shows.
+func MermaidCannotDraw(err string) string { return In(i18n.Locale()).MermaidCannotDraw(err) }
+
+// MermaidCannotDraw says "Cannot draw the diagram: {err}"
+// in the language of msgs.
+func (msgs Messages) MermaidCannotDraw(err string) string {
+	return Catalog.Format(msgs.locale, "mermaidCannotDraw", map[string]any{"err": err})
+}
+
+// ShowDiagram says "Show Diagram"
+// in the language the app shows.
+func ShowDiagram() string { return In(i18n.Locale()).ShowDiagram() }
+
+// ShowDiagram says "Show Diagram"
+// in the language of msgs.
+func (msgs Messages) ShowDiagram() string {
+	return Catalog.Format(msgs.locale, "showDiagram", nil)
+}
+
 // ThemeAboutClaude says "Ivory and near-black, with Claude's orange"
 // in the language the app shows.
 func ThemeAboutClaude() string { return In(i18n.Locale()).ThemeAboutClaude() }
