@@ -5,6 +5,12 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- **Source Control** shows a folder's repositories and submodules in one list that scrolls as a whole.
+- Repository and change-group headers in **Source Control** stay pinned at the top while their files scroll.
+- Each repository header in **Source Control** has its own branch, remote and **⋯** actions.
+- A repository's arrow expands or collapses it; clicking its name shows its history.
+- Drag the divider between changes and history in **Source Control** to resize them for the folder.
+- Submodule rows in **Source Control** say whether the commit reference or the content changed.
 - **Open Preview to the Side** opens the preview in the column beside the file instead of adding one.
 - The Markdown preview shows footnotes like `[^1]` as raised numbers, with the notes listed at the end.
 - Clicking a footnote's number scrolls to its note, and the note's `↩` scrolls back.
