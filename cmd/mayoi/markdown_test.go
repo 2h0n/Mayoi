@@ -170,6 +170,37 @@ func TestMarkdownBlocks(t *testing.T) {
 	}
 }
 
+func TestMarkdownLinkifyAfterPunctuation(t *testing.T) {
+	for _, c := range []struct{ source, want string }{
+		{"- 反思：https://x.com/a/status/1", "反思：[https://x.com/a/status/1]"},
+		{"a:https://x.com/b", "a:[https://x.com/b]"},
+		{"见https://x.com/c 。", "见[https://x.com/c] 。"},
+		{"1https://x.com/d", "1[https://x.com/d]"},
+		{"a：https://x.com/a_b_c，后", "a：[https://x.com/a_b_c]，后"},
+		{"a（https://x.com/e）and (https://x.com/(f))", "a（[https://x.com/e]）and ([https://x.com/(f)])"},
+		{"a：https://x.com/g?x=1&amp; done.", "a：[https://x.com/g?x=1]& done."},
+		{"a：https://x.com/h. b：https://x.com/i", "a：[https://x.com/h]. b：[https://x.com/i]"},
+		{"foohttps://x.com/j", "foohttps://x.com/j"},
+		{"a：www.example.com", "a：www.example.com"},
+		{"`a：https://x.com/k`", "a：https://x.com/k"},
+		{"[a：https://x.com/l](https://y.com)", "[a：https://x.com/l](https://y.com)"},
+	} {
+		var got strings.Builder
+		for _, r := range parseMarkdown([]byte(c.source), "", "", nil)[0].runs {
+			if r.link != "" && r.link == r.text {
+				got.WriteString("[" + r.text + "]")
+			} else if r.link != "" {
+				got.WriteString("[" + r.text + "](" + r.link + ")")
+			} else {
+				got.WriteString(r.text)
+			}
+		}
+		if got.String() != c.want {
+			t.Errorf("%q: got %q, want %q", c.source, got.String(), c.want)
+		}
+	}
+}
+
 func TestMarkdownPreview(t *testing.T) {
 	hs := newHarness(t, true)
 	a := hs.a

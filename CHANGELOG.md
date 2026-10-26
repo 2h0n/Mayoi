@@ -11,6 +11,7 @@ needs a `## <version>` section here, or its build fails.
 - Math between `$$` and `$$`, or in a `math` code block, shows as a centered formula of its own.
 - A formula Mayoi cannot draw shows its source in red, and a block of math also says why.
 - `previewMath` set to `false` shows math as its source.
+- The Markdown preview links bare URLs right after punctuation such as `：`, as GitHub does.
 
 ## 0.12.0
 
