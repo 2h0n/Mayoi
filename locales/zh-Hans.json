@@ -398,6 +398,7 @@
   "errWorktreeNotFolder": "工作树不是文件夹：{path}",
   "failBinary": "{name} 是二进制文件",
   "failBinaryNow": "{name} 现在是二进制文件",
+  "failLongLine": "{name} 有一行太长，无法显示",
   "failCopy": "无法复制：{err}",
   "failDelete": "无法删除 {name}：{err}",
   "failDownload": "无法下载 {name}",

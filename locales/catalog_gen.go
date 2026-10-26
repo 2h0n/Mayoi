@@ -4167,6 +4167,16 @@ func (msgs Messages) FailBinaryNow(name string) string {
 	return Catalog.Format(msgs.locale, "failBinaryNow", map[string]any{"name": name})
 }
 
+// FailLongLine says "{name} has a line too long to show"
+// in the language the app shows.
+func FailLongLine(name string) string { return In(i18n.Locale()).FailLongLine(name) }
+
+// FailLongLine says "{name} has a line too long to show"
+// in the language of msgs.
+func (msgs Messages) FailLongLine(name string) string {
+	return Catalog.Format(msgs.locale, "failLongLine", map[string]any{"name": name})
+}
+
 // FailCopy says "Could not copy: {err}"
 // in the language the app shows.
 func FailCopy(err string) string { return In(i18n.Locale()).FailCopy(err) }

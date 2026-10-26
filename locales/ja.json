@@ -398,6 +398,7 @@
   "errWorktreeNotFolder": "ワークツリーがフォルダーではありません: {path}",
   "failBinary": "{name} はバイナリ ファイルです",
   "failBinaryNow": "{name} はバイナリ ファイルになりました",
+  "failLongLine": "{name} には表示できないほど長い行があります",
   "failCopy": "コピーできませんでした: {err}",
   "failDelete": "{name} を削除できませんでした: {err}",
   "failDownload": "{name} をダウンロードできませんでした",

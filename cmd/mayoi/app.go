@@ -663,7 +663,7 @@ func (a *app) reloadDoc(d *document) {
 		return
 	}
 	data, err := os.ReadFile(d.path)
-	if err != nil || isBinary(data) {
+	if err != nil || isBinary(data) || hasLongLine(data) {
 		return
 	}
 	d.takeText(data)

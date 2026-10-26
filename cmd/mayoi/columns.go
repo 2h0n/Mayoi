@@ -242,6 +242,10 @@ func (a *app) openFileIn(col *column, at int, path string, focus bool) {
 			a.fail("%s", locales.FailBinary(filepath.Base(path)))
 			return
 		}
+		if errors.Is(err, errLongLine) {
+			a.fail("%s", locales.FailLongLine(filepath.Base(path)))
+			return
+		}
 		if err != nil {
 			a.fail("%s", locales.FailOpen(filepath.Base(path), err.Error()))
 			return
