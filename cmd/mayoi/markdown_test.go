@@ -929,6 +929,75 @@ func TestMarkdownPreviewToSide(t *testing.T) {
 	hs.until("preview", func() bool { return side.preview.loaded })
 }
 
+func TestMarkdownPreviewToSideColumn(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		// arrange leaves README.md with the keyboard among the columns,
+		// and returns the column its preview should go to.
+		arrange func(hs *harness) *column
+		cols    int
+	}{
+		{"right", func(hs *harness) *column {
+			a := hs.a
+			a.openFile(hs.path("main.go"), true)
+			right := a.splitColumn(a.column(), true)
+			a.activate(a.cols[0], 0, true)
+			a.openFile(hs.path("README.md"), true)
+			return right
+		}, 2},
+		{"left", func(hs *harness) *column {
+			a := hs.a
+			a.openFile(hs.path("main.go"), true)
+			left := a.column()
+			a.splitRight()
+			a.openFile(hs.path("README.md"), true)
+			return left
+		}, 2},
+		{"shown already", func(hs *harness) *column {
+			a := hs.a
+			a.openFile(hs.path("README.md"), true)
+			a.splitRight()
+			a.openFile(hs.path("main.go"), true)
+			a.activate(a.cols[0], 0, true)
+			return a.cols[1]
+		}, 2},
+		{"past a locked column", func(hs *harness) *column {
+			a := hs.a
+			a.openFile(hs.path("main.go"), true)
+			left := a.column()
+			right := a.splitColumn(left, true)
+			a.toggleColumnLock(right)
+			a.splitRight()
+			a.openFile(hs.path("README.md"), true)
+			return left
+		}, 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			hs := newHarness(t, true)
+			a := hs.a
+			want := tc.arrange(hs)
+			hs.settle()
+			src := a.activeEditor()
+			tabs := len(want.tabs)
+			if want.showing(src.document) < 0 {
+				tabs++
+			}
+			a.run("view.previewToSide")
+			hs.settle()
+			if len(a.cols) != tc.cols || a.activeEditor() != src || src.preview != nil {
+				t.Fatalf("columns %d, the text has the keyboard %v", len(a.cols), a.activeEditor() == src)
+			}
+			side := want.tab().ed
+			if side == nil || side.document != src.document || side.preview == nil {
+				t.Fatal("no preview in the column beside")
+			}
+			if len(want.tabs) != tabs {
+				t.Fatalf("%d tabs beside, want %d", len(want.tabs), tabs)
+			}
+		})
+	}
+}
+
 func TestMarkdownEmpty(t *testing.T) {
 	hs := newHarness(t, true)
 	a := hs.a

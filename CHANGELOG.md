@@ -3,6 +3,10 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- **Open Preview to the Side** opens the preview in the column beside the file instead of adding one.
+
 ## 0.12.1
 
 - A file with a line too long to show, such as a minified `.map`, no longer opens and freezes Mayoi.
