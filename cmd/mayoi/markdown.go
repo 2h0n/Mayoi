@@ -65,8 +65,12 @@ type markdownPreview struct {
 	// mermaid is the style the last parse asked for draws diagrams in,
 	// nil for none, and sources the blocks of Mermaid shown as their
 	// source, by their lines.
-	mermaid    *mermaidStyle
-	sources    map[int]bool
+	mermaid *mermaidStyle
+	sources map[int]bool
+	// math is whether the last parse drew math, and places where the
+	// formulas within the texts it drew stand, by their texts' runs.
+	math       bool
+	places     map[*markdownInline]mathPlacement
 	running    bool
 	generation atomic.Uint64
 }
@@ -77,6 +81,8 @@ type markdownInline struct {
 	bitmap                          ui.ImageSource
 	w, h                            float32
 	kind                            highlight.Kind
+	// math is the formula the run draws, its text its source.
+	math *mathFormula
 }
 
 type markdownKind uint8
@@ -92,6 +98,9 @@ const (
 	// markdownAlertTitle is the first row of a GitHub alert, its icon and
 	// its kind, as "Note".
 	markdownAlertTitle
+	// markdownMathBlock is a formula in display style, in a block of math
+	// or alone in its paragraph between $$ and $$.
+	markdownMathBlock
 )
 
 // markdownAlert is the kind of a GitHub alert, a quote that opens with
@@ -128,6 +137,10 @@ type markdownCache struct {
 	// their source drawn in it.
 	mermaid  *mermaidStyle
 	diagrams map[string]*mermaidDiagram
+	// math is whether its math is drawn, and formulas the formulas of its
+	// TeX drawn, by their TeX and whether in display style.
+	math     bool
+	formulas map[mathKey]*mathFormula
 	// arrived is called once a picture of the web a parse asked for is
 	// fetched, for the preview to parse again; without it, those pictures
 	// are not fetched.
@@ -163,6 +176,8 @@ type markdownBlock struct {
 	center bool
 	// diagram is the diagram a block of Mermaid draws, or why it could not.
 	diagram *mermaidDiagram
+	// formula is the formula a block of math draws, or why it could not.
+	formula *mathFormula
 }
 
 func isMarkdown(d *document) bool {
@@ -243,14 +258,19 @@ func markdownFrontMatter(lines []string) bool {
 
 // markdownParser parses GitHub's Markdown: goldmark's parser with the
 // parts of its GFM extension that parse, without its HTML renderer, which
-// the preview has no use for and would make Mayoi larger.
-func markdownParser() parser.Parser {
+// the preview has no use for and would make Mayoi larger, and with its
+// math when math is set.
+func markdownParser(math bool) parser.Parser {
+	inlines := append(parser.DefaultInlineParsers(),
+		util.Prioritized(extension.NewStrikethroughParser(), 500),
+		util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
+		util.Prioritized(extension.NewLinkifyParser(), 999))
+	if math {
+		inlines = append(inlines, util.Prioritized(mathParser{}, 150))
+	}
 	return parser.NewParser(
 		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
-		parser.WithInlineParsers(append(parser.DefaultInlineParsers(),
-			util.Prioritized(extension.NewStrikethroughParser(), 500),
-			util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
-			util.Prioritized(extension.NewLinkifyParser(), 999))...),
+		parser.WithInlineParsers(inlines...),
 		parser.WithParagraphTransformers(append(parser.DefaultParagraphTransformers(),
 			util.Prioritized(extension.NewTableParagraphTransformer(), 200))...),
 		parser.WithASTTransformers(util.Prioritized(extension.NewTableASTTransformer(), 0)),
@@ -274,6 +294,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 	used := map[markdownImageKey]bool{}
 	usedCode := map[[2]string]bool{}
 	usedDiagrams := map[string]bool{}
+	usedFormulas := map[mathKey]bool{}
 	defer func() {
 		if current != nil && !current() {
 			return
@@ -293,7 +314,26 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				delete(c.diagrams, k)
 			}
 		}
+		for k := range c.formulas {
+			if !usedFormulas[k] {
+				delete(c.formulas, k)
+			}
+		}
 	}()
+	// formula draws a formula, as the last parse did if it had it.
+	formula := func(tex string, display bool) *mathFormula {
+		key := mathKey{tex, display}
+		usedFormulas[key] = true
+		f, ok := c.formulas[key]
+		if !ok {
+			f = renderMath(tex, display)
+			if c.formulas == nil {
+				c.formulas = map[mathKey]*mathFormula{}
+			}
+			c.formulas[key] = f
+		}
+		return f
+	}
 	// diagram draws a block of Mermaid, as the last parse did if it had it.
 	diagram := func(text string) *mermaidDiagram {
 		usedDiagrams[text] = true
@@ -335,7 +375,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 		}
 	}
 
-	tree := markdownParser().Parse(text.NewReader(source))
+	tree := markdownParser(c.math).Parse(text.NewReader(source))
 	// starts are where the lines of source start, for the line of a block.
 	starts := []int{0}
 	for i, ch := range source {
@@ -469,6 +509,15 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 					out = append(out, r)
 				}
 				continue
+			case *mathNode:
+				fence := "$"
+				if x.display {
+					fence = "$$"
+				}
+				s.text = fence + x.tex + fence
+				if current == nil || current() {
+					s.math = formula(x.tex, x.display)
+				}
 			case *east.TaskCheckBox:
 				s.text = "☐ "
 				if x.IsChecked {
@@ -575,6 +624,12 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				b.marker = strings.TrimSpace(b.runs[0].text)
 				b.runs = b.runs[1:]
 			}
+			// A formula between $$ and $$ alone in its paragraph is in a
+			// block of its own.
+			if x, ok := n.FirstChild().(*mathNode); ok && x.display && n.ChildCount() == 1 {
+				b.kind, b.formula = markdownMathBlock, b.runs[0].math
+				b.runs = []markdownInline{{text: x.tex, code: true}}
+			}
 
 		case *ast.ThematicBreak:
 			b.kind = markdownRule
@@ -584,6 +639,12 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 			b.runs = code(text, b.language)
 			if c.mermaid != nil && strings.EqualFold(b.language, "mermaid") && (current == nil || current()) {
 				b.diagram = diagram(text)
+			}
+			if c.math && strings.EqualFold(b.language, "math") {
+				b.kind, b.runs = markdownMathBlock, []markdownInline{{text: strings.TrimSpace(text), code: true}}
+				if current == nil || current() {
+					b.formula = formula(strings.TrimSpace(text), true)
+				}
 			}
 		case *ast.CodeBlock:
 			b.kind = markdownCodeBlock
@@ -776,6 +837,10 @@ func markdownColumns(rows []markdownBlock, size float32, measure func(r markdown
 					w += min(r.w, size*12)
 					continue
 				}
+				if r.math != nil && r.math.err == "" {
+					w += r.math.w * size
+					continue
+				}
 				w += measure(r, row.kind == markdownTableHeader)
 			}
 			if i >= len(cols) {
@@ -798,7 +863,7 @@ func markdownMerge(runs []markdownInline) []markdownInline {
 	for _, r := range runs {
 		if n := len(out); n > 0 {
 			l := &out[n-1]
-			if r.bitmap == nil && l.bitmap == nil && r.image == "" && l.image == "" && r.link == l.link && r.kind == l.kind &&
+			if r.bitmap == nil && l.bitmap == nil && r.math == nil && l.math == nil && r.image == "" && l.image == "" && r.link == l.link && r.kind == l.kind &&
 				r.bold == l.bold && r.italic == l.italic && r.strike == l.strike && r.code == l.code && r.raw == l.raw {
 				l.text += r.text
 				continue
@@ -816,7 +881,7 @@ func markdownWords(blocks []markdownBlock) (words, minutes int) {
 	latin, wide := 0, 0
 	count := func(runs []markdownInline) {
 		for _, r := range runs {
-			if r.code || r.raw {
+			if r.code || r.raw || r.math != nil {
 				continue
 			}
 			in := false
@@ -837,7 +902,7 @@ func markdownWords(blocks []markdownBlock) (words, minutes int) {
 		}
 	}
 	for _, b := range blocks {
-		if b.kind == markdownCodeBlock {
+		if b.kind == markdownCodeBlock || b.kind == markdownMathBlock {
 			continue
 		}
 		count(b.runs)
@@ -913,6 +978,7 @@ func (a *app) followMarkdown(v *viewer) {
 	}
 	// The diagrams are drawn anew in another theme, or not drawn.
 	same := want == nil && m.mermaid == nil || want != nil && m.mermaid != nil && *want == *m.mermaid
+	same = same && m.math == a.settings.PreviewMath
 	// Idle keeps the loaded version; debouncing keeps its timer; running keeps one
 	// worker; running+dirty advances the generation and schedules after that worker.
 	if (m.pending || v.loaded && v.version == ver && !m.refetch) && m.observed == ver && m.path == d.path && same {
@@ -923,7 +989,7 @@ func (a *app) followMarkdown(v *viewer) {
 	}
 	first := m.generation.Load() == 0
 	generation := m.generation.Add(1)
-	m.observed, m.path, m.mermaid = ver, d.path, want
+	m.observed, m.path, m.mermaid, m.math = ver, d.path, want, a.settings.PreviewMath
 	m.pending = true
 	if v.wait != nil {
 		v.wait.Stop()
@@ -941,7 +1007,9 @@ func (a *app) followMarkdown(v *viewer) {
 		m.running, m.refetch = true, false
 		source, path, workspace := []byte(d.buf.String()), d.path, a.folder()
 		// Give the worker its own cache snapshot; publish it on the UI thread.
-		cache := &markdownCache{images: maps.Clone(m.cache.images), code: maps.Clone(m.cache.code), arrived: m.cache.arrived, mermaid: want}
+		math := m.math
+		cache := &markdownCache{images: maps.Clone(m.cache.images), code: maps.Clone(m.cache.code), arrived: m.cache.arrived, mermaid: want,
+			math: math, formulas: maps.Clone(m.cache.formulas)}
 		if want != nil && m.cache.mermaid != nil && *want == *m.cache.mermaid {
 			cache.diagrams = maps.Clone(m.cache.diagrams)
 		}
@@ -969,6 +1037,7 @@ func (a *app) followMarkdown(v *viewer) {
 				}
 				m.blocks, m.slugs = blocks, slugs
 				clear(m.tables)
+				clear(m.places)
 				m.words, m.minutes = words, minutes
 				m.lines = bytes.Count(source, []byte{'\n'}) + 1
 				// The rows moved: the preview takes the text's place again.
@@ -1021,6 +1090,16 @@ func (a *app) markdownSpan(r markdownInline, color ui.Color, size float32, block
 	}
 	if r.strike {
 		span.DecorationColor = span.Color
+	}
+	if f := r.math; f != nil {
+		if f.err != "" {
+			// A formula not drawn is its source, as code is.
+			span.Font, span.Weight, span.Features = settings.FontFamily, settings.FontWeight, strings.Join(settings.FontFeatures, ",")
+			span.Color, span.Size = p.dangerFg, size*0.9
+			return span
+		}
+		object := mathSpan(f, size)
+		span.Text, span.ObjectWidth, span.ObjectHeight = object.Text, object.ObjectWidth, object.ObjectHeight
 	}
 	return span
 }
@@ -1138,8 +1217,13 @@ func (a *app) markdownText(c *ui.Context, m *markdownPreview, path string, runs 
 		color = p.muted
 	}
 	text := ui.RichText(c).FontSize(size).LineHeight(a.settings.LineHeight).TextColor(color).DecorationColor(color).WidthPercent(100)
+	font := ui.Font{Family: c.Theme().Font, Size: size}
 	if blockCode || p.mono {
 		text.Font(a.settings.FontFamily).FontWeight(a.settings.FontWeight).FontFeatures(a.settings.FontFeatures...)
+		font = ui.Font{Family: a.settings.FontFamily, Size: size, Weight: a.settings.FontWeight, Features: strings.Join(a.settings.FontFeatures, ",")}
+	}
+	if slices.ContainsFunc(runs, func(r markdownInline) bool { return r.math != nil && r.math.err == "" }) {
+		a.markdownMath(m, text, runs, font, color, blockCode)
 	}
 	text.Children(func() {
 		for _, r := range runs {
@@ -1151,6 +1235,74 @@ func (a *app) markdownText(c *ui.Context, m *markdownPreview, path string, runs 
 				}
 			}
 			ui.RichText(c, span)
+		}
+	})
+}
+
+// mathPlacement is where the formulas within a text stand, laid out in
+// font, width wide.
+type mathPlacement struct {
+	font   ui.Font
+	width  float32
+	places []ui.Rect
+}
+
+// markdownMath draws the formulas of runs, which text shows, in the boxes
+// their spans keep for them in it, in color.
+func (a *app) markdownMath(m *markdownPreview, text ui.Element, runs []markdownInline, font ui.Font, color ui.Color, blockCode bool) {
+	var spans []ui.Span
+	var formulas []*mathFormula
+	for _, r := range runs {
+		spans = append(spans, a.markdownSpan(r, color, font.Size, blockCode))
+		if r.math != nil && r.math.err == "" {
+			formulas = append(formulas, r.math)
+		}
+	}
+	lh := font.Size * a.settings.LineHeight
+	text.Draw(func(pt *ui.Painter, r ui.Rect) {
+		var places []ui.Rect
+		if m != nil {
+			if pl, ok := m.places[&runs[0]]; ok && pl.font == font && pl.width == r.W {
+				places = pl.places
+			}
+		}
+		if places == nil {
+			places = mathPlaces(spans, font, r.W, lh)
+			if m != nil {
+				if m.places == nil {
+					m.places = map[*markdownInline]mathPlacement{}
+				}
+				m.places[&runs[0]] = mathPlacement{font, r.W, places}
+			}
+		}
+		for i, at := range places {
+			if i < len(formulas) {
+				f := formulas[i]
+				f.draw(pt, ui.Rect{X: r.X + at.X, Y: r.Y + at.Y, W: at.W, H: at.H + f.depth*font.Size}, color)
+			}
+		}
+	})
+}
+
+// markdownMathBlock is a formula in display style, centered, as large as
+// it is or as wide as the column, its source copied on hover.
+func (a *app) markdownMathBlock(c *ui.Context, b markdownBlock, size, width float32) {
+	p, f := a.pal, b.formula
+	// Display math is a little larger than its text, as on GitHub.
+	size *= 1.1
+	w := min(f.w*size, max(1, width))
+	h := w * (f.ascent + f.depth) / f.w
+	block := ui.Column(c.Key("math")).WidthPercent(100).AlignItems(ui.Center).Padding(size*0.25, 0)
+	over := block.Hovered()
+	block.Children(func() {
+		ui.Box(c).Width(w).Height(h).Label(markdownRunsText(b.runs)).Draw(func(pt *ui.Painter, r ui.Rect) { f.draw(pt, r, p.text) })
+		if over {
+			ui.Row(c).Absolute().Top(0).Right(0).Background(p.editor).Radius(4).Children(func() {
+				if a.smallButton(c, iconCopy, locales.CopyCode()) {
+					a.services.WriteClipboard(markdownRunsText(b.runs))
+					a.tell(note{message: locales.CopiedCode()})
+				}
+			})
 		}
 	})
 }
@@ -1459,6 +1611,15 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 						a.markdownCodeCard(c, m, path, b, size)
 						if d := b.diagram; d != nil && d.err != "" {
 							ui.Text(c, locales.MermaidCannotDraw(d.err)).FontSize(size*0.85).TextColor(p.dangerFg).Margin(size*0.4, 0, 0, 0)
+						}
+					case markdownMathBlock:
+						if f := b.formula; f != nil && f.err == "" && f.w > 0 {
+							a.markdownMathBlock(c, b, size, max(1, width-(b.offset+b.markerWidth)*size-float32(b.quote)*size))
+							break
+						}
+						a.markdownCodeCard(c, m, path, b, size)
+						if f := b.formula; f != nil {
+							ui.Text(c, locales.MathCannotDraw(f.err)).FontSize(size*0.85).TextColor(p.dangerFg).Margin(size*0.4, 0, 0, 0)
 						}
 					case markdownTable, markdownTableHeader:
 						a.markdownTableRow(c, m, path, b, size, width, font)

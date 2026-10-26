@@ -45,6 +45,26 @@ func (msgs Messages) CmdViewSelectTheme() string {
 	return Catalog.Format(msgs.locale, "cmdViewSelectTheme", nil)
 }
 
+// ErrMathText says "it uses characters the math font lacks"
+// in the language the app shows.
+func ErrMathText() string { return In(i18n.Locale()).ErrMathText() }
+
+// ErrMathText says "it uses characters the math font lacks"
+// in the language of msgs.
+func (msgs Messages) ErrMathText() string {
+	return Catalog.Format(msgs.locale, "errMathText", nil)
+}
+
+// ErrMathTimeout says "the formula took too long to draw"
+// in the language the app shows.
+func ErrMathTimeout() string { return In(i18n.Locale()).ErrMathTimeout() }
+
+// ErrMathTimeout says "the formula took too long to draw"
+// in the language of msgs.
+func (msgs Messages) ErrMathTimeout() string {
+	return Catalog.Format(msgs.locale, "errMathTimeout", nil)
+}
+
 // ErrMermaidTimeout says "the diagram took too long to draw"
 // in the language the app shows.
 func ErrMermaidTimeout() string { return In(i18n.Locale()).ErrMermaidTimeout() }
@@ -53,6 +73,16 @@ func ErrMermaidTimeout() string { return In(i18n.Locale()).ErrMermaidTimeout() }
 // in the language of msgs.
 func (msgs Messages) ErrMermaidTimeout() string {
 	return Catalog.Format(msgs.locale, "errMermaidTimeout", nil)
+}
+
+// MathCannotDraw says "Cannot draw the math: {err}"
+// in the language the app shows.
+func MathCannotDraw(err string) string { return In(i18n.Locale()).MathCannotDraw(err) }
+
+// MathCannotDraw says "Cannot draw the math: {err}"
+// in the language of msgs.
+func (msgs Messages) MathCannotDraw(err string) string {
+	return Catalog.Format(msgs.locale, "mathCannotDraw", map[string]any{"err": err})
 }
 
 // MermaidCannotDraw says "Cannot draw the diagram: {err}"

@@ -7,6 +7,10 @@ needs a `## <version>` section here, or its build fails.
 
 - A file with a line too long to show, such as a minified `.map`, no longer opens and freezes Mayoi.
 - Such a file left open is not reopened at launch, so Mayoi starts again.
+- The Markdown preview draws LaTeX math between `$` and `$` as formulas within the text.
+- Math between `$$` and `$$`, or in a `math` code block, shows as a centered formula of its own.
+- A formula Mayoi cannot draw shows its source in red, and a block of math also says why.
+- `previewMath` set to `false` shows math as its source.
 
 ## 0.12.0
 

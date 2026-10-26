@@ -212,7 +212,10 @@
       }
     }
   },
+  "errMathText": "it uses characters the math font lacks",
+  "errMathTimeout": "the formula took too long to draw",
   "errMermaidTimeout": "the diagram took too long to draw",
+  "mathCannotDraw": "Cannot draw the math: {err}",
   "mermaidCannotDraw": "Cannot draw the diagram: {err}",
   "showDiagram": "Show Diagram",
   "themeAboutClaude": "Ivory and near-black, with Claude's orange",
