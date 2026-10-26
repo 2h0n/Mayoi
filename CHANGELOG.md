@@ -6,6 +6,8 @@ needs a `## <version>` section here, or its build fails.
 ## Unreleased
 
 - **Open Preview to the Side** opens the preview in the column beside the file instead of adding one.
+- The Markdown preview shows footnotes like `[^1]` as raised numbers, with the notes listed at the end.
+- Clicking a footnote's number scrolls to its note, and the note's `↩` scrolls back.
 
 ## 0.12.1
 

@@ -170,6 +170,11 @@ type markdownBlock struct {
 	// slug is a heading's anchor, as GitHub makes it, which a link to
 	// #slug scrolls to.
 	slug string
+	// anchors are the other places a link to #anchor scrolls to: the
+	// footnote the block starts and the references to footnotes in it.
+	anchors []string
+	// footnote is whether the block is of a footnote, smaller and muted.
+	footnote bool
 	// line is the line of the text the block starts on, from 0, which the
 	// preview scrolls with as the text scrolls.
 	line int
@@ -258,24 +263,26 @@ func markdownFrontMatter(lines []string) bool {
 }
 
 // markdownParser parses GitHub's Markdown: goldmark's parser with the
-// parts of its GFM extension that parse, without its HTML renderer, which
-// the preview has no use for and would make Mayoi larger, and with its
-// math when math is set.
+// parts of its GFM and footnote extensions that parse, without their HTML
+// renderers, which the preview has no use for and would make Mayoi
+// larger, and with its math when math is set.
 func markdownParser(math bool) parser.Parser {
 	inlines := append(parser.DefaultInlineParsers(),
 		util.Prioritized(extension.NewStrikethroughParser(), 500),
 		util.Prioritized(extension.NewTaskCheckBoxParser(), 0),
-		util.Prioritized(extension.NewLinkifyParser(), 999))
+		util.Prioritized(extension.NewLinkifyParser(), 999),
+		util.Prioritized(extension.NewFootnoteParser(), 101))
 	if math {
 		inlines = append(inlines, util.Prioritized(mathParser{}, 150))
 	}
 	return parser.NewParser(
-		parser.WithBlockParsers(parser.DefaultBlockParsers()...),
+		parser.WithBlockParsers(append(parser.DefaultBlockParsers(),
+			util.Prioritized(extension.NewFootnoteBlockParser(), 999))...),
 		parser.WithInlineParsers(inlines...),
 		parser.WithParagraphTransformers(append(parser.DefaultParagraphTransformers(),
 			util.Prioritized(extension.NewTableParagraphTransformer(), 200))...),
 		parser.WithASTTransformers(util.Prioritized(extension.NewTableASTTransformer(), 0),
-			util.Prioritized(urlLinkifier{}, 100)),
+			util.Prioritized(urlLinkifier{}, 100), util.Prioritized(extension.NewFootnoteASTTransformer(), 999)),
 	)
 }
 
@@ -554,6 +561,8 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 		}
 		return s
 	}
+	// anchors are those of the block being walked, which emit gives it.
+	var anchors []string
 	var inline func(ast.Node, markdownInline) []markdownInline
 	inline = func(n ast.Node, style markdownInline) []markdownInline {
 		var out []markdownInline
@@ -629,6 +638,17 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				if current == nil || current() {
 					s.math = formula(x.tex, x.display)
 				}
+			case *east.FootnoteLink:
+				// A reference to a footnote is its number raised, as
+				// GitHub's <sup>, linking to it and linked back to.
+				n := strconv.Itoa(x.Index)
+				s.text, s.link = markdownSuperscript(n), "#user-content-fn-"+n
+				anchors = append(anchors, markdownFootnoteRef(x.Index, x.RefIndex))
+			case *east.FootnoteBacklink:
+				s.text, s.link = " ↩", "#"+markdownFootnoteRef(x.Index, x.RefIndex)
+				if x.RefIndex > 0 {
+					s.text += markdownSuperscript(strconv.Itoa(x.RefIndex + 1))
+				}
 			case *east.TaskCheckBox:
 				s.text = "☐ "
 				if x.IsChecked {
@@ -663,6 +683,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 	// paragraphs retain native text wrapping, those next to each other on
 	// one, as a row of badges.
 	emit := func(b markdownBlock) {
+		b.anchors, anchors = anchors, nil
 		if b.kind == markdownParagraph || b.kind == markdownHeading {
 			b.runs = markdownMerge(b.runs)
 			if !markdownHasText(b.runs) && !slices.ContainsFunc(b.runs, func(r markdownInline) bool { return r.bitmap != nil }) {
@@ -713,9 +734,11 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 		}
 		blocks = append(blocks, b)
 	}
+	// footnote is whether the blocks being walked are of a footnote.
+	footnote := false
 	var walk func(ast.Node, int, int, string, bool, float32, float32)
 	walk = func(n ast.Node, indent, quote int, marker string, tight bool, offset, markerWidth float32) {
-		b := markdownBlock{indent: indent, quote: quote, marker: marker, tight: tight, offset: offset, markerWidth: markerWidth, alert: alert, alertAt: alertAt, center: markdownCentered(boxes)}
+		b := markdownBlock{indent: indent, quote: quote, marker: marker, tight: tight, offset: offset, markerWidth: markerWidth, alert: alert, alertAt: alertAt, center: markdownCentered(boxes), footnote: footnote}
 		if _, doc := n.(*ast.Document); !doc {
 			b.line = lineOf(n)
 		}
@@ -807,6 +830,19 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				walk(ch, indent+1, quote, m, x.IsTight, offset, width)
 			}
 			return
+		case *east.FootnoteList:
+			footnote = true
+			defer func() { footnote = false }()
+			// The footnotes are a numbered list at the end, below a rule,
+			// as on GitHub.
+			blocks = append(blocks, markdownBlock{kind: markdownRule, indent: indent, quote: quote, line: b.line})
+			width := max(1.5, float32(len(strconv.Itoa(x.Count))+1)*0.65)
+			for ch := n.FirstChild(); ch != nil; ch = ch.NextSibling() {
+				fn := ch.(*east.Footnote)
+				anchors = append(anchors, "user-content-fn-"+strconv.Itoa(fn.Index))
+				walk(ch, indent+1, quote, strconv.Itoa(fn.Index)+".", true, offset, width)
+			}
+			return
 		case *east.Table:
 			first, body := len(blocks), 0
 			for row := n.FirstChild(); row != nil; row = row.NextSibling() {
@@ -824,6 +860,7 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 				for cell := row.FirstChild(); cell != nil; cell = cell.NextSibling() {
 					rb.cells = append(rb.cells, markdownMerge(inline(cell, markdownInline{bold: head})))
 				}
+				rb.anchors, anchors = anchors, nil
 				blocks = append(blocks, rb)
 			}
 			for i := first; i < len(blocks); i++ {
@@ -853,6 +890,21 @@ func parseMarkdown(source []byte, path, root string, current func() bool, caches
 		blocks[i].line = line
 	}
 	return blocks
+}
+
+// markdownSuperscript is the digits of n raised, as ¹².
+func markdownSuperscript(n string) string {
+	return strings.Map(func(r rune) rune { return []rune("⁰¹²³⁴⁵⁶⁷⁸⁹")[r-'0'] }, n)
+}
+
+// markdownFootnoteRef is the anchor of a reference to footnote index,
+// the ref-th to it from 0, as GitHub names it.
+func markdownFootnoteRef(index, ref int) string {
+	a := "user-content-fnref-" + strconv.Itoa(index)
+	if ref > 0 {
+		a += "-" + strconv.Itoa(ref+1)
+	}
+	return a
 }
 
 // markdownStart is the offset in the source where a node starts, the
@@ -1133,6 +1185,9 @@ func (a *app) followMarkdown(v *viewer) {
 				if b.slug != "" {
 					slugs[b.slug] = i
 				}
+				for _, anchor := range b.anchors {
+					slugs[anchor] = i
+				}
 			}
 			words, minutes := markdownWords(blocks)
 			a.post(func() {
@@ -1251,6 +1306,10 @@ func (a *app) markdownTableColumns(m *markdownPreview, first int, font ui.Font) 
 // scales them.
 func (a *app) markdownSize(b markdownBlock) float32 {
 	size := a.settings.FontSize
+	if b.footnote {
+		// Footnotes are a size smaller, as GitHub's.
+		size *= 0.875
+	}
 	if b.kind == markdownHeading {
 		size *= []float32{2, 1.5, 1.25, 1, 0.875, 0.85}[b.level-1]
 	}
@@ -1690,7 +1749,11 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 					ui.Box(c).Width(3).AlignSelf(ui.Stretch).Background(bar).Margin(0, size*0.25, 0, 0)
 				}
 				if b.marker != "" {
-					a.markdownMarker(c, b, size)
+					ms := size
+					if b.footnote {
+						ms = a.markdownSize(b)
+					}
+					a.markdownMarker(c, b, ms)
 				}
 
 				align := ui.Start
@@ -1744,7 +1807,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 					default:
 						// Quotes and the smallest headings are muted, as on
 						// GitHub; the text of an alert is not.
-						muted := b.quote > b.alertAt || b.kind == markdownHeading && b.level == 6
+						muted := b.quote > b.alertAt || b.kind == markdownHeading && b.level == 6 || b.footnote
 						if r := b.runs[0]; b.kind == markdownParagraph && len(b.runs) == 1 && r.image != "" && r.bitmap == nil {
 							a.markdownNoImage(c, m, path, r, size, align)
 							return

@@ -201,6 +201,75 @@ func TestMarkdownLinkifyAfterPunctuation(t *testing.T) {
 	}
 }
 
+func TestMarkdownFootnotes(t *testing.T) {
+	source := "## 数据[^11]\n\nA[^1] b[^1] c[^note].\n\n## 参考链接\n\n" +
+		"[^1]: 第 4 次尝试 https://x.com/a/status/1\n[^note]: 锁定：https://x.com/a/status/2\n[^11]: Eleven.\n[^unused]: Never referenced.\n\n" +
+		"After.\n"
+	blocks := parseMarkdown([]byte(source), "", "", nil)
+	text := func(b markdownBlock) string {
+		var s strings.Builder
+		for _, r := range b.runs {
+			if r.link != "" {
+				s.WriteString("[" + r.text + "](" + r.link + ")")
+			} else {
+				s.WriteString(r.text)
+			}
+		}
+		return s.String()
+	}
+	var got []string
+	for _, b := range blocks {
+		got = append(got, fmt.Sprintf("%d %s %v %v %s", b.kind, b.marker, b.footnote, b.anchors, text(b)))
+	}
+	want := []string{
+		"1  false [user-content-fnref-1] 数据[¹](#user-content-fn-1)",
+		"0  false [user-content-fnref-2 user-content-fnref-2-2 user-content-fnref-3] A[²](#user-content-fn-2) b[²](#user-content-fn-2) c[³](#user-content-fn-3).",
+		"1  false [] 参考链接",
+		"0  false [] After.",
+		"2  false [] ",
+		"0 1. true [user-content-fn-1] Eleven.[ ↩](#user-content-fnref-1)",
+		"0 2. true [user-content-fn-2] 第 4 次尝试 [https://x.com/a/status/1](https://x.com/a/status/1)[ ↩](#user-content-fnref-2)[ ↩²](#user-content-fnref-2-2)",
+		"0 3. true [user-content-fn-3] 锁定：[https://x.com/a/status/2](https://x.com/a/status/2)[ ↩](#user-content-fnref-3)",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("blocks\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestMarkdownFootnoteLinks(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	var body strings.Builder
+	body.WriteString("The start[^1].\n\n")
+	for i := range 80 {
+		body.WriteString("Paragraph " + strconv.Itoa(i) + ".\n\n")
+	}
+	body.WriteString("[^1]: The note.\n")
+	os.WriteFile(hs.path("notes.md"), []byte(body.String()), 0o644)
+	a.openFile(hs.path("notes.md"), true)
+	a.run("view.togglePreview")
+	d := a.activeEditor()
+	hs.until("preview", func() bool { return d.preview.loaded })
+	hs.settle()
+	if hs.tt.HasText("The note.") {
+		t.Fatal("the note shows already")
+	}
+	if err := hs.tt.Click("Open link #user-content-fn-1"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if !hs.tt.HasText("The note.") || hs.tt.HasText("Paragraph 0.") {
+		t.Fatal("the reference did not scroll to its note")
+	}
+	if err := hs.tt.Click("Open link #user-content-fnref-1"); err != nil {
+		t.Fatal(err)
+	}
+	hs.settle()
+	if !hs.tt.HasText("Paragraph 0.") {
+		t.Fatal("the back link did not scroll to the reference")
+	}
+}
+
 func TestMarkdownPreview(t *testing.T) {
 	hs := newHarness(t, true)
 	a := hs.a
