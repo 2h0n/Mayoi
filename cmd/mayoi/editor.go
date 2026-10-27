@@ -203,6 +203,9 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			// A jump asked for goes where it goes: no pin puts it back.
 			area.SetTextSelection(r[0], r[1])
 			d.pending, d.resync, d.parked, d.pinFrame = nil, false, -1, 0
+			if d.landing {
+				d.landing, d.landLine, d.landAt = false, snap.LineAt(min(r[0], snap.Len())), c.Now()
+			}
 		}
 		if d.resync {
 			// The area scrolls to its caret when it is given one, and when
@@ -420,6 +423,12 @@ func (a *app) editorView(c *ui.Context, d *editor) {
 			rowsAt(r)
 			if y := lineY(r, caretLine); !selecting && y+lineH > r.Y && y < r.Y+r.H {
 				pt.Fill(ui.Rect{X: r.X, Y: y, W: r.W, H: lineHeight(caretLine)}, p.line, 0)
+			}
+			// The line a jump landed on, lit, fading as the eye finds it.
+			if since := pt.Now().Sub(d.landAt); !d.landAt.IsZero() && since >= 0 && since < landFor && d.landLine < lines {
+				t := float32(since) / float32(landFor)
+				pt.Fill(ui.Rect{X: r.X, Y: lineY(r, d.landLine), W: r.W, H: lineHeight(d.landLine)}, p.accent.Alpha(0.26*(1-t*t)), 0)
+				pt.AnimationFrame()
 			}
 			shape.paint(pt, func(i int, x0, x1 float32, fn func(y, x0, x1 float32)) { place(r, i, x0, x1, fn) }, lineH, selCol)
 			for _, fl := range flash {

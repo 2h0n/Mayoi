@@ -1052,6 +1052,26 @@ func riseIn(e ui.Element, delay time.Duration) ui.Element {
 	return e.Opacity(k).Translate(0, 8*(1-k))
 }
 
+// showFor is how long a pane or a box that floats takes to come in as it
+// shows: long enough to see where it came from, short enough never to
+// wait for.
+const showFor = 140 * time.Millisecond
+
+// fadeIn brings a pane in as it shows, as the sidebar or the panel does
+// once toggled on: it fades in. Its motion starts the first time it is
+// built, so it plays again each time the pane comes back.
+func fadeIn(e ui.Element) ui.Element {
+	return e.Opacity(e.Keyframes("show", []ui.Keyframe{{Value: 0}, {At: showFor, Value: 1, Ease: ui.EaseOut}}))
+}
+
+// dropIn brings a box that floats from what opened it in, as a popover
+// or a tip: it fades in, from dy above where it settles (below, for a
+// negative dy), as popIn does for a box in a parent that was there.
+func dropIn(e ui.Element, dy float32) ui.Element {
+	k := e.Keyframes("show", []ui.Keyframe{{Value: 0}, {At: showFor, Value: 1, Ease: ui.EaseOut}})
+	return e.Opacity(k).Translate(0, -dy*(1-k))
+}
+
 // chevron is the arrow of what folds: it points to the side while
 // closed, and turns down as it opens.
 func chevron(c *ui.Context, open bool) ui.Element {

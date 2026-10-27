@@ -245,6 +245,8 @@ func (a *app) fileTree(c *ui.Context) {
 		a.treeSynced = activePath
 		a.revealInTree(activePath)
 	}
+	now := c.Now()
+	a.treeOpening.note(&a.files.Open, now)
 	if a.selectInTree != "" {
 		for i := range a.files.Rows() {
 			if a.files.Item(i) == a.selectInTree {
@@ -288,6 +290,11 @@ func (a *app) fileTree(c *ui.Context) {
 		}
 		if depth := treeDepth(a.root, path); depth > 0 {
 			row.Draw(func(pt *ui.Painter, r ui.Rect) { a.treeGuides(pt, r, path, depth, activeDir) })
+			// The rows of a folder just opened fade in.
+			if k := a.treeOpening.shown(filepath.Dir(path), now); k < 1 {
+				row.Opacity(k)
+				c.AnimationFrame()
+			}
 		}
 		if row.Clicked() {
 			clicked = path
@@ -523,6 +530,59 @@ func (a *app) fileTree(c *ui.Context) {
 
 // treeDepth returns how deep path is in the tree of root: 0 for the
 // files and folders at its top.
+// treeOpening follows the folders of the tree as they open, so that
+// their rows come in rather than pop: the folders open in the last frame,
+// and when each of those that opened since did.
+type treeOpening struct {
+	open   map[string]bool
+	opened map[string]time.Time
+}
+
+// note takes the folders open at now: one that was not opens. The first
+// frame takes them alone, as the tree shows as it was left.
+func (o *treeOpening) note(open *ui.Selection[string], now time.Time) {
+	first := o.open == nil
+	if first {
+		o.open, o.opened = map[string]bool{}, map[string]time.Time{}
+	}
+	for dir, at := range o.opened {
+		if now.Sub(at) >= showFor {
+			delete(o.opened, dir)
+		}
+	}
+	if !first && open.Len() == len(o.open) {
+		same := true
+		for dir := range open.All() {
+			if !o.open[dir] {
+				same = false
+				break
+			}
+		}
+		if same {
+			return
+		}
+	}
+	for dir := range open.All() {
+		if !first && !o.open[dir] {
+			o.opened[dir] = now
+		}
+	}
+	clear(o.open)
+	for dir := range open.All() {
+		o.open[dir] = true
+	}
+}
+
+// shown returns how far in the rows of folder dir are at now, from 0,
+// as it opens, to 1.
+func (o *treeOpening) shown(dir string, now time.Time) float32 {
+	at, ok := o.opened[dir]
+	if !ok {
+		return 1
+	}
+	return ui.EaseOut(min(float32(now.Sub(at))/float32(showFor), 1))
+}
+
 func treeDepth(root, path string) int {
 	if len(path) <= len(root)+1 || !strings.HasPrefix(path, root) {
 		return 0

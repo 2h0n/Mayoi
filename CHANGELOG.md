@@ -3,6 +3,14 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- Going to a line, a symbol or a search result briefly lights the line the caret lands on.
+- The sidebar and the terminal panel fade in as they open.
+- A folder's files fade in as it expands in the Explorer.
+- The breadcrumbs' folder box and the account panel ease in, and project tips fade in.
+- Typing in long files and scrolling diffs do less work each frame.
+
 ## 0.12.3
 
 - MyGo 0.7.1: Shift-click extends terminal selections, and Powerline's rounded caps fill the line.

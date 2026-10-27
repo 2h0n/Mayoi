@@ -119,7 +119,7 @@ func (a *app) view(c *ui.Context) {
 				}
 				// Its splitter is along the edge facing the editors.
 				at, dir := edgeRight, float32(1)
-				box := ui.Column(c.Key("sidebar")).Width(w.SidebarWidth).Shrink(0).BorderColor(p.border)
+				box := fadeIn(ui.Column(c.Key("sidebar")).Width(w.SidebarWidth).Shrink(0).BorderColor(p.border))
 				if s.SidebarRight {
 					at, dir = edgeLeft, -1
 					box.BorderWidth(0, 0, 0, 1)
@@ -211,7 +211,7 @@ func (a *app) main(c *ui.Context) {
 	_, h := c.Size()
 	room := h - titleBarH - statusBarH
 	height := clamp(w.PanelHeight, 80, max(room-80, 80))
-	box := ui.Column(c.Key("panel")).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(p.border)
+	box := fadeIn(ui.Column(c.Key("panel")).Shrink(0).BorderWidth(1, 0, 0, 0).BorderColor(p.border))
 	if a.panelMax {
 		box.Grow(1)
 	} else {
@@ -243,7 +243,7 @@ func (a *app) sidePanel(c *ui.Context, right bool) {
 	p, w := a.pal, a.window
 	width, _ := c.Size()
 	at, dir := edgeRight, float32(1)
-	box := ui.Column(c.Key("panel")).Shrink(0).BorderColor(p.border)
+	box := fadeIn(ui.Column(c.Key("panel")).Shrink(0).BorderColor(p.border))
 	if right {
 		at, dir = edgeLeft, -1
 		box.BorderWidth(0, 0, 0, 1)

@@ -2195,6 +2195,7 @@ func (a *app) openFileAt(path string, line int, focus bool) {
 		line = min(max(line, 0), snap.LineCount()-1)
 		s, _ := snap.LineRange(line)
 		d.selectRange(s, s, true)
+		d.lightLanding()
 	}
 }
 

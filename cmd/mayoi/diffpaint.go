@@ -1513,8 +1513,11 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 	}
 	text := clipLine(s.lines[n])
 	shown, at := expandTabs(text)
+	// The lines in view are painted every frame: their slices are the
+	// app's, kept from line to line.
+	sc := &a.diffScratch
 	// Where each row starts in shown, and ends.
-	breaks := []int{0}
+	breaks := append(sc.breaks[:0], 0)
 	if wrap {
 		breaks = append(breaks, wrapAt(shown, cols)...)
 	}
@@ -1540,14 +1543,10 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 		})
 	}
 	// The runs of shown in the colors of their tokens.
-	type run struct {
-		from, to int
-		col      ui.Color
-	}
-	var runs []run
+	runs := sc.runs[:0]
 	plain := func(from, to int) {
 		if to > from {
-			runs = append(runs, run{from, to, p.text})
+			runs = append(runs, diffRun{from, to, p.text})
 		}
 	}
 	var toks []highlight.Token
@@ -1558,11 +1557,12 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 		plain(0, len(shown))
 	} else {
 		// Tokens are in runes from the line's start.
-		runeAt := make([]int, 0, len(text)+1)
+		runeAt := sc.runeAt[:0]
 		for i := range text {
 			runeAt = append(runeAt, i)
 		}
 		runeAt = append(runeAt, len(text))
+		sc.runeAt = runeAt
 		byteOf := func(r int) int { return runeAt[min(r, len(runeAt)-1)] }
 		done := 0
 		for _, t := range toks {
@@ -1571,25 +1571,41 @@ func (a *app) paintDiffLine(pt *ui.Painter, file *diffFile, newSide bool, n, pee
 				continue
 			}
 			plain(done, b0)
-			runs = append(runs, run{b0, b1, p.syntax[t.Kind]})
+			runs = append(runs, diffRun{b0, b1, p.syntax[t.Kind]})
 			done = b1
 		}
 		plain(done, len(shown))
 	}
-	rowSpans := make([][]ui.Span, len(breaks)-1)
-	for _, rn := range runs {
-		piece(rn.from, rn.to, func(k int, _, _ float32, s0, s1 int) {
-			if s1 > s0 {
-				rowSpans[k] = append(rowSpans[k], f.span(shown[s0:s1], rn.col))
+	// Each row's spans, painted as they are gathered.
+	spans := sc.spans
+	for k := 0; k+1 < len(breaks); k++ {
+		lo, hi := breaks[k], breaks[k+1]
+		spans = spans[:0]
+		for _, rn := range runs {
+			if s0, s1 := max(rn.from, lo), min(rn.to, hi); s1 > s0 {
+				spans = append(spans, f.span(shown[s0:s1], rn.col))
 			}
-		})
-	}
-	for k, spans := range rowSpans {
+		}
 		if len(spans) > 0 {
 			_, h := pt.MeasureText(0, spans[0])
 			pt.RichText(x, y+float32(k)*f.lineH+(f.lineH-h)/2, 0, spans...)
 		}
 	}
+	sc.breaks, sc.runs, sc.spans = breaks, runs, spans
+}
+
+// diffRun is a run of a line of a diff in the color of its token.
+type diffRun struct {
+	from, to int
+	col      ui.Color
+}
+
+// diffLineScratch holds the slices paintDiffLine fills for each line it
+// paints, kept for the next.
+type diffLineScratch struct {
+	breaks, runeAt []int
+	runs           []diffRun
+	spans          []ui.Span
 }
 
 // lineWords returns the runs of line n of a side of a file that changed

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"time"
 	"unicode/utf8"
 
 	"github.com/egoist/mygo/ui"
@@ -122,6 +123,12 @@ type editor struct {
 	selShape selectionShape
 	stuck    stickyCache
 	overview overview
+
+	// landing is whether the jump asked for lights up the line it lands
+	// on, which landLine is, from landAt.
+	landing  bool
+	landLine int
+	landAt   time.Time
 
 	vscroll ui.ScrollState // the text area's
 	hscroll ui.ScrollState // the container that scrolls it sideways
@@ -381,3 +388,11 @@ func columns(s string) int {
 func (d *editor) selectRange(start, end int, center bool) {
 	d.pending = &[2]int{start, end}
 }
+
+// landFor is how long the line a jump lands on stays lit.
+const landFor = 650 * time.Millisecond
+
+// lightLanding has the line the selection asked for lands on light up,
+// and fade, as the editor gets there: a jump from elsewhere, as going to
+// a line or to a match of a search, shows where it went.
+func (d *editor) lightLanding() { d.landing = true }

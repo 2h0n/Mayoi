@@ -739,7 +739,7 @@ func (f *frame) railTip(c *ui.Context, a *app, b ui.Element, name, where string,
 	p := a.pal
 	ui.TooltipBase(c, b, func(tip ui.Element) {
 		tip.AttachTo(b, ui.AnchorRight, ui.AnchorLeft).Margin(0, 0, 0, 4)
-		a.floating(c, tip, false).Padding(8, 10).Radius(8).Gap(3).MaxWidth(360)
+		fadeIn(a.floating(c, tip, false)).Padding(8, 10).Radius(8).Gap(3).MaxWidth(360)
 		tip.Children(func() {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, name).FontSize(12.5).FontWeight(600).TextColor(p.text).SingleLine().Grow(1).MinWidth(0)

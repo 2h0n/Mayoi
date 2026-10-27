@@ -608,6 +608,7 @@ func (a *app) selectMatch(path string, m searchMatch) {
 	s, e := snap.LineRange(m.line)
 	start := min(s+m.col, e)
 	d.selectRange(start, min(start+utf8.RuneCountInString(m.text), snap.Len()), true)
+	d.lightLanding()
 }
 
 // replacement is a match of a file's text and what replaces it, by byte

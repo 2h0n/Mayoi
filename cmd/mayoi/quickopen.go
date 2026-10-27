@@ -276,6 +276,7 @@ func (a *app) goToLine(line, col int) {
 	s, e := snap.LineRange(l)
 	at := min(s+max(col-1, 0), e)
 	d.selectRange(at, at, true)
+	d.lightLanding()
 	d.vscroll.Focus()
 }
 

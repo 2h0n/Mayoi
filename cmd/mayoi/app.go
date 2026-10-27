@@ -123,6 +123,9 @@ type app struct {
 	fade     paletteFade
 	font     codeFont
 	services ui.Services
+	// diffScratch is what painting the lines of a diff fills, kept from
+	// line to line.
+	diffScratch diffLineScratch
 	// vimReg is what vim mode put on the clipboard last, which tells
 	// whether a paste of the same text pastes lines.
 	vimReg vimRegister
@@ -193,6 +196,9 @@ type app struct {
 	repositories             repositoryState
 	commitTools              commitTools
 	scm                      scmState
+
+	// treeOpening follows the folders of the tree as they open.
+	treeOpening treeOpening
 
 	// ignored is what Git ignores in the workspace, which the tree shows
 	// faint.
