@@ -6,6 +6,7 @@ needs a `## <version>` section here, or its build fails.
 ## Unreleased
 
 - MyGo 0.7.1: Shift-click extends terminal selections, and Powerline's rounded caps fill the line.
+- Mermaid nodes and subgraphs with a light `style` fill keep their labels readable in dark themes.
 
 ## 0.12.2
 
