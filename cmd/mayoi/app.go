@@ -222,6 +222,9 @@ type app struct {
 	// keyboard as the frame's columns began: a click on another's tab as
 	// they draw moves col, and the widget's input binds one control.
 	findCol *column
+	// findPreview is the Markdown preview find last looked in, which
+	// shows its matches while find is open.
+	findPreview *markdownPreview
 	// review is the comments on lines of the changes, to send to an agent.
 	review review
 	// fileCol caches the last unlocked column used for files. Removal clears

@@ -589,7 +589,15 @@ func (a *app) columnView(c *ui.Context, col *column) {
 					a.loadingView(c, shown.ed)
 				case shown.ed.preview != nil:
 					a.hideEditor(shown.ed)
-					a.viewerView(c, shown.ed.preview, shown.name())
+					v := shown.ed.preview
+					if col == a.findCol && v.markdown != nil && a.find.open {
+						a.findPreview = v.markdown
+						a.searchPreview(v.markdown)
+					}
+					a.viewerView(c, v, shown.name())
+					if col == a.findCol && v.markdown != nil {
+						a.previewFindView(c, v)
+					}
 				default:
 					a.editorView(c, shown.ed)
 					a.hunkPeekView(c, shown.ed)

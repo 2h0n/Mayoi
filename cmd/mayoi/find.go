@@ -56,6 +56,13 @@ func (f *findState) pattern() string {
 // when it is on one line, and selects the query so typing replaces it.
 func (a *app) openFind(replace bool) {
 	f := &a.find
+	if v := a.activeMarkdown(); v != nil && !replace {
+		// A preview finds in its rendered text, which it cannot replace.
+		a.findPreview = v.markdown
+		f.open, f.replacing = true, false
+		f.input.SelectAll()
+		return
+	}
 	if d := a.textEditor(); d != nil {
 		snap := d.buf.Snapshot()
 		if s, e := d.sel[0], d.sel[1]; s != e {
@@ -69,6 +76,20 @@ func (a *app) openFind(replace bool) {
 	f.replacing = replace || f.replacing && f.open
 	f.stale = true
 	f.input.SelectAll()
+}
+
+// findStep goes to the next match of find, or the previous, opening find:
+// in a Markdown preview its rendered text's, else the editor's.
+func (a *app) findStep(by int) {
+	a.find.open = true
+	if v := a.activeMarkdown(); v != nil {
+		a.findPreview = v.markdown
+		a.stepPreview(v.markdown, by)
+		return
+	}
+	if d := a.textEditor(); d != nil {
+		a.step(d, by)
+	}
 }
 
 func (a *app) closeFind() {
@@ -324,13 +345,35 @@ func (a *app) findView(c *ui.Context, d *editor) {
 	if !f.open {
 		return
 	}
-	p := a.pal
 	a.searchIn(d, true)
 	if f.reveal && f.cur >= 0 {
 		m := f.matches[f.cur]
 		d.selectRange(m[0], m[1], true)
 		f.reveal = false
 	}
+	a.findBoxView(c, findBox{
+		n: len(f.matches), cur: f.cur, err: f.err,
+		step:       func(by int) { a.step(d, by) },
+		replaceOne: func() { a.replaceOne(d) },
+		replaceAll: func() { a.replaceAll(d) },
+	})
+}
+
+// findBox is what the find widget finds in: its n matches, cur the
+// current one, err why the query is invalid, step going to the match by
+// after, and replaceOne and replaceAll, nil for text that cannot be
+// replaced.
+type findBox struct {
+	n, cur                 int
+	err                    string
+	step                   func(by int)
+	replaceOne, replaceAll func()
+}
+
+// findBoxView is the find widget of b, over the top right of the column.
+func (a *app) findBoxView(c *ui.Context, b findBox) {
+	f, p := &a.find, a.pal
+	canReplace := b.replaceOne != nil
 	toggle := func(icon *ui.SVG, label string, on *bool) {
 		if a.optionToggle(c, icon, label, on) {
 			f.stale = true
@@ -341,14 +384,16 @@ func (a *app) findView(c *ui.Context, d *editor) {
 	box.Role(ui.RoleToolbar).Label(locales.FindLabel())
 	box.Children(func() {
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
-			b := ui.ButtonBase(c).Size(18, 22).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(locales.FindToggleReplace())
-			if b.Hovered() {
-				b.Background(p.hover)
-			}
-			b.Transition(hoverFade)
-			b.Children(func() { chevron(c, f.replacing).FontSize(13).TextColor(p.muted) })
-			if b.Clicked() {
-				f.replacing = !f.replacing
+			if canReplace {
+				t := ui.ButtonBase(c).Size(18, 22).Radius(4).Justify(ui.Center).AlignItems(ui.Center).Label(locales.FindToggleReplace())
+				if t.Hovered() {
+					t.Background(p.hover)
+				}
+				t.Transition(hoverFade)
+				t.Children(func() { chevron(c, f.replacing).FontSize(13).TextColor(p.muted) })
+				if t.Clicked() {
+					f.replacing = !f.replacing
+				}
 			}
 			field := ui.Row(c).Grow(1).Height(26).Padding(0, 4, 0, 8).Gap(2).AlignItems(ui.Center).Radius(5).
 				Background(p.editor).Border(1, p.border).Transition(fieldFocus)
@@ -362,12 +407,12 @@ func (a *app) findView(c *ui.Context, d *editor) {
 					f.stale = true
 				}
 				if in.Shortcut(ui.Shift, ui.KeyEnter) {
-					a.step(d, -1)
+					b.step(-1)
 				} else if in.Submitted() {
-					if len(f.matches) == 0 && f.query != "" {
+					if b.n == 0 && f.query != "" {
 						f.shook = c.Now()
 					}
-					a.step(d, 1)
+					b.step(1)
 				}
 				toggle(iconCase, locales.FindMatchCase(), &f.matchCase)
 				toggle(iconWord, locales.FindWholeWord(), &f.word)
@@ -375,33 +420,33 @@ func (a *app) findView(c *ui.Context, d *editor) {
 			})
 			count, none := locales.FindNoResults(), true
 			switch {
-			case f.err != "":
-				count = f.err
+			case b.err != "":
+				count = b.err
 			case f.query == "":
 				count, none = "", false
-			case len(f.matches) >= maxMatches:
-				count, none = locales.FindCountMore(f.cur+1, maxMatches), false
-			case len(f.matches) > 0:
-				count, none = locales.FindCount(f.cur+1, len(f.matches)), false
+			case b.n >= maxMatches:
+				count, none = locales.FindCountMore(b.cur+1, maxMatches), false
+			case b.n > 0:
+				count, none = locales.FindCount(b.cur+1, b.n), false
 			}
 			col := p.muted
-			if none || f.err != "" {
+			if none || b.err != "" {
 				col = p.dangerFg
 			}
 			// The count rolls from match to match, down going back.
 			ui.Text(c, count).FontSize(11.5).TextColor(col).Width(findCountW).SingleLine().TextAlign(ui.Center).
 				ContentTransition(ui.ContentTransition{Numeric: true, Down: f.back})
-			if a.iconButton(c, iconArrowUp, locales.FindPrevMatch(keyText("Shift+Enter")), false).Disabled(len(f.matches) == 0).Clicked() {
-				a.step(d, -1)
+			if a.iconButton(c, iconArrowUp, locales.FindPrevMatch(keyText("Shift+Enter")), false).Disabled(b.n == 0).Clicked() {
+				b.step(-1)
 			}
-			if a.iconButton(c, iconArrowDown, locales.FindNextMatch(), false).Disabled(len(f.matches) == 0).Clicked() {
-				a.step(d, 1)
+			if a.iconButton(c, iconArrowDown, locales.FindNextMatch(), false).Disabled(b.n == 0).Clicked() {
+				b.step(1)
 			}
 			if a.iconButton(c, iconX, locales.CloseEsc(), false).Clicked() {
 				a.closeFind()
 			}
 		})
-		if !f.replacing {
+		if !f.replacing || !canReplace {
 			return
 		}
 		ui.Row(c).Gap(4).AlignItems(ui.Center).Padding(0, 0, 0, 22).Children(func() {
@@ -413,14 +458,14 @@ func (a *app) findView(c *ui.Context, d *editor) {
 					field.Border(1, p.accentDim)
 				}
 				if in.Submitted() {
-					a.replaceOne(d)
+					b.replaceOne()
 				}
 			})
-			if a.iconButton(c, iconReplace, locales.FindReplaceOne(), false).Disabled(len(f.matches) == 0).Clicked() {
-				a.replaceOne(d)
+			if a.iconButton(c, iconReplace, locales.FindReplaceOne(), false).Disabled(b.n == 0).Clicked() {
+				b.replaceOne()
 			}
-			if a.iconButton(c, iconReplaceAll, locales.FindReplaceAll(), false).Disabled(len(f.matches) == 0).Clicked() {
-				a.replaceAll(d)
+			if a.iconButton(c, iconReplaceAll, locales.FindReplaceAll(), false).Disabled(b.n == 0).Clicked() {
+				b.replaceAll()
 			}
 			// Under the count and the buttons after it, so that the fields
 			// end alike: what is left of them past these two buttons.

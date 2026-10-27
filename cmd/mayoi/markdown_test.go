@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -517,7 +518,7 @@ func TestShotMarkdown(t *testing.T) {
 	blocks := parseMarkdown([]byte("中文斜体 *中文斜体* italic *italic*"), "", "", nil)
 	img := ui.Render(func(c *ui.Context) {
 		ui.Box(c).Fill().Background(hs.a.pal.editor).Padding(16).Children(func() {
-			hs.a.markdownText(c, nil, "", blocks[0].runs, 24, false, false)
+			hs.a.markdownText(c, nil, "", blocks[0].runs, 24, false, false, nil)
 		})
 	}, 640, 72, 2)
 	f, err := os.Create(filepath.Join(os.Getenv("SHOTS"), "mayoi-md-italic.png"))
@@ -783,7 +784,7 @@ func TestMarkdownFontAndZoom(t *testing.T) {
 	for _, size := range []float32{13, 18} {
 		a.settings.FontSize = size
 		tt := ui.NewTester(func(c *ui.Context) {
-			a.markdownText(c, nil, "", []markdownInline{{text: "link", bold: true, italic: true, strike: true, code: true, link: "https://example.com"}}, size, false, false)
+			a.markdownText(c, nil, "", []markdownInline{{text: "link", bold: true, italic: true, strike: true, code: true, link: "https://example.com"}}, size, false, false, nil)
 		}, 300, 80)
 		link, ok := tt.Find("Open link https://example.com")
 		if !ok || link.H < size {
@@ -1231,5 +1232,89 @@ func TestMarkdownToggleKeepsPlace(t *testing.T) {
 	top := a.geometry(d, d.buf.Snapshot().LineCount()).at(d.vscroll.Y - editorPadY)
 	if want := lineOf(heading); top < want-4 || top > want+4 {
 		t.Fatalf("the text opened at line %d, the preview was at %q, line %d", top, heading, want)
+	}
+}
+
+func TestMarkdownPreviewFind(t *testing.T) {
+	hs := newHarness(t, true)
+	a := hs.a
+	var sb strings.Builder
+	sb.WriteString("# Title\n\nSome **bold foo** and foo.\n\n```go\nfoo := 1\n```\n\n| a | b |\n|---|---|\n| foo | x |\n\n")
+	for i := range 80 {
+		fmt.Fprintf(&sb, "Filler paragraph %d.\n\n", i)
+	}
+	sb.WriteString("The last foo.\n")
+	os.WriteFile(hs.path("README.md"), []byte(sb.String()), 0o644)
+	a.openFile(hs.path("README.md"), true)
+	d := a.activeEditor()
+	a.run("view.togglePreview")
+	hs.until("preview", func() bool { return d.preview.loaded })
+	hs.settle()
+
+	a.run("edit.find")
+	hs.settle()
+	if d.preview == nil || !a.find.open {
+		t.Fatal("find left the preview")
+	}
+	a.find.query = "foo"
+	hs.settle()
+	m := d.preview.markdown
+	// Two in the paragraph, across its bold run, and one each in the
+	// code, the table and the last paragraph.
+	if len(m.found) != 5 {
+		t.Fatalf("found %d matches, want 5: %+v", len(m.found), m.found)
+	}
+	if !hs.tt.HasText(locales.FindCount(1, 5)) {
+		t.Fatal("count not shown")
+	}
+	for range 4 {
+		a.run("edit.findNext")
+		hs.settle()
+	}
+	if m.findCur != 4 || !hs.tt.HasText(locales.FindCount(5, 5)) {
+		t.Fatalf("current match %d, want 4", m.findCur)
+	}
+	if _, last := m.list.Visible(); last < m.found[4].block {
+		t.Fatal("did not scroll to the last match")
+	}
+	a.run("edit.findPrev")
+	hs.settle()
+	if m.findCur != 3 {
+		t.Fatalf("current match %d, want 3", m.findCur)
+	}
+
+	hs.tt.Key(0, ui.KeyEscape)
+	hs.settle()
+	if a.find.open || d.preview == nil {
+		t.Fatal("Escape did not close find over the preview")
+	}
+	// Replace works on the text, which it opens.
+	a.run("edit.replace")
+	hs.settle()
+	if d.preview != nil {
+		t.Fatal("replace kept the preview")
+	}
+}
+
+func TestMarkdownSpansHighlight(t *testing.T) {
+	hs := newHarness(t, true)
+	a, p := hs.a, hs.a.pal
+	runs := []markdownInline{{text: "say "}, {text: "foo", code: true}, {text: "bar"}}
+	hits := []markdownHit{{start: 5, end: 8, cur: true}}
+	var got []string
+	at := 0
+	for _, r := range runs {
+		for _, s := range a.markdownSpans(r, p.text, 14, false, hits, at) {
+			mark := ""
+			if s.Background == p.matchNow {
+				mark = "*"
+			}
+			got = append(got, mark+s.Text)
+		}
+		at += len(markdownFindRun(r))
+	}
+	want := []string{"say ", " f", "*oo", " ", "*b", "ar"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("spans %q, want %q", got, want)
 	}
 }

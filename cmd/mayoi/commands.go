@@ -27,13 +27,6 @@ func (a *app) commands() []command { return a.commandsIn(locales.In(i18n.Locale(
 // commandsIn are the commands, labelled in the language of t: the palette
 // also matches their English names.
 func (a *app) commandsIn(t locales.Messages) []command {
-	doc := func(fn func(d *editor)) func() {
-		return func() {
-			if d := a.textEditor(); d != nil {
-				fn(d)
-			}
-		}
-	}
 	cmds := []command{
 		{"file.new", t.CmdFileNew(), "CmdOrCtrl+N", a.newFile},
 		{"file.newWindow", t.CmdFileNewWindow(), "Shift+CmdOrCtrl+N", func() { a.host.newBlankWindow() }},
@@ -75,8 +68,8 @@ func (a *app) commandsIn(t locales.Messages) []command {
 		{"edit.cut", t.CmdEditCut(), "CmdOrCtrl+X", a.editActive(a.cut)},
 		{"edit.find", t.CmdEditFind(), "CmdOrCtrl+F", func() { a.openFind(false) }},
 		{"edit.replace", t.CmdEditReplace(), "Alt+CmdOrCtrl+F", func() { a.openFind(true) }},
-		{"edit.findNext", t.CmdEditFindNext(), "CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, 1) })},
-		{"edit.findPrev", t.CmdEditFindPrev(), "Shift+CmdOrCtrl+G", doc(func(d *editor) { a.find.open = true; a.step(d, -1) })},
+		{"edit.findNext", t.CmdEditFindNext(), "CmdOrCtrl+G", func() { a.findStep(1) }},
+		{"edit.findPrev", t.CmdEditFindPrev(), "Shift+CmdOrCtrl+G", func() { a.findStep(-1) }},
 		{"edit.findInFiles", t.CmdEditFindInFiles(), "Shift+CmdOrCtrl+F", func() { a.showSearch(false) }},
 		{"edit.replaceInFiles", t.CmdEditReplaceInFiles(), "Shift+CmdOrCtrl+H", func() { a.showSearch(true) }},
 		{"sel.comment", t.CmdSelComment(), "CmdOrCtrl+/", a.editActive(toggleComment)},

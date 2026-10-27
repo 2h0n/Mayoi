@@ -74,6 +74,16 @@ type markdownPreview struct {
 	places     map[*markdownInline]mathPlacement
 	running    bool
 	generation atomic.Uint64
+	// found are the matches of find in the text shown, of the query and
+	// options findPattern and the blocks findBlocks, findCur the current
+	// one, -1 for none, and findErr why the query is invalid. reveal
+	// scrolls to the current one.
+	found       []markdownMatch
+	findPattern string
+	findBlocks  string
+	findCur     int
+	findErr     string
+	reveal      bool
 }
 
 type markdownInline struct {
@@ -1380,7 +1390,7 @@ func markdownAlertHead(k markdownAlert) (*ui.SVG, string) {
 	return iconInfo, locales.AlertNote()
 }
 
-func (a *app) markdownText(c *ui.Context, m *markdownPreview, path string, runs []markdownInline, size float32, muted, blockCode bool) {
+func (a *app) markdownText(c *ui.Context, m *markdownPreview, path string, runs []markdownInline, size float32, muted, blockCode bool, hits []markdownHit) {
 	p := a.pal
 	color := p.text
 	if muted {
@@ -1396,15 +1406,17 @@ func (a *app) markdownText(c *ui.Context, m *markdownPreview, path string, runs 
 		a.markdownMath(m, text, runs, font, color, blockCode)
 	}
 	text.Children(func() {
+		at := 0
 		for _, r := range runs {
-			span := a.markdownSpan(r, color, size, blockCode)
+			spans := a.markdownSpans(r, color, size, blockCode, hits, at)
+			at += len(markdownFindRun(r))
 			if r.link != "" {
 				if e := a.markdownLink(c, m, path, r.link, false); e.Valid() {
-					e.Children(func() { ui.RichText(c, span) })
+					e.Children(func() { ui.RichText(c, spans...) })
 					continue
 				}
 			}
-			ui.RichText(c, span)
+			ui.RichText(c, spans...)
 		}
 	})
 }
@@ -1558,12 +1570,12 @@ func (a *app) markdownNoImage(c *ui.Context, m *markdownPreview, path string, r 
 
 // markdownCodeCard is a block of code on its own card, its language in the
 // corner, where a copy button shows as the pointer comes over it.
-func (a *app) markdownCodeCard(c *ui.Context, m *markdownPreview, path string, b markdownBlock, size float32) {
+func (a *app) markdownCodeCard(c *ui.Context, m *markdownPreview, path string, b markdownBlock, size float32, hits []markdownHit) {
 	p := a.pal
 	card := ui.Column(c.Key("code")).WidthPercent(100).Padding(size*0.85, size).Background(p.chrome).Border(1, p.border).Radius(8)
 	over := card.Hovered()
 	card.Children(func() {
-		a.markdownText(c, m, path, b.runs, size*0.93, false, true)
+		a.markdownText(c, m, path, b.runs, size*0.93, false, true, hits)
 		if b.kind != markdownCodeBlock || !over && b.language == "" {
 			return
 		}
@@ -1616,7 +1628,8 @@ func (a *app) markdownDiagram(c *ui.Context, m *markdownPreview, b markdownBlock
 
 // markdownTableRow is a row of a table, its columns as wide as their
 // text asks, its body's rows striped.
-func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b markdownBlock, size, width float32, font ui.Font) {
+func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, i int, size, width float32, font ui.Font) {
+	b := m.blocks[i]
 	p := a.pal
 	cols := a.markdownTableColumns(m, b.table, font)
 	total := float32(0)
@@ -1627,19 +1640,19 @@ func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b
 	width = min(width, total)
 	const r = 6
 	ui.Row(c).Width(width).MaxWidthPercent(100).AlignItems(ui.Stretch).Children(func() {
-		for i, cell := range b.cells {
+		for k, cell := range b.cells {
 			share := 1 / float32(len(b.cells))
-			if i < len(cols) && total > 0 {
-				share = cols[i] / total
+			if k < len(cols) && total > 0 {
+				share = cols[k] / total
 			}
 			cellBox := ui.Column(c).WidthPercent(100*share).Padding(size*0.4, size*0.75).Border(1, p.border).BorderWidth(0, 1, 1, 0)
-			if i == 0 {
+			if k == 0 {
 				cellBox.BorderWidth(0, 1, 1, 1)
 			}
 			switch {
 			case b.kind == markdownTableHeader:
 				cellBox.Background(p.chrome)
-				if i == 0 {
+				if k == 0 {
 					cellBox.BorderWidth(1)
 				} else {
 					cellBox.BorderWidth(1, 1, 1, 0)
@@ -1655,10 +1668,10 @@ func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b
 			if b.last {
 				br, bl = r, r
 			}
-			if i > 0 {
+			if k > 0 {
 				tl, bl = 0, 0
 			}
-			if i < len(b.cells)-1 {
+			if k < len(b.cells)-1 {
 				tr, br = 0, 0
 			}
 			if tl+tr+br+bl > 0 {
@@ -1666,8 +1679,8 @@ func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b
 			}
 			cellBox.Children(func() {
 				align := ui.Start
-				if i < len(b.aligns) {
-					switch b.aligns[i] {
+				if k < len(b.aligns) {
+					switch b.aligns[k] {
 					case east.AlignCenter:
 						align = ui.Center
 					case east.AlignRight:
@@ -1675,16 +1688,19 @@ func (a *app) markdownTableRow(c *ui.Context, m *markdownPreview, path string, b
 					}
 				}
 				ui.Column(c).TextAlign(align).WidthPercent(100).Children(func() {
+					base := 0
 					for len(cell) > 0 {
 						n := 0
 						for n < len(cell) && cell[n].bitmap == nil {
 							n++
 						}
 						if n > 0 {
-							a.markdownText(c, m, path, cell[:n], size, false, false)
+							a.markdownText(c, m, path, cell[:n], size, false, false, a.previewHits(m, i, k, base))
+							base += len(markdownFindText(cell[:n]))
 						}
 						if n < len(cell) {
 							a.markdownImage(c, m, path, cell[n], width*share-size*1.5)
+							base += len(markdownFindRun(cell[n]))
 							n++
 						}
 						cell = cell[n:]
@@ -1782,7 +1798,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							a.markdownDiagram(c, m, b, size, max(1, width-(b.offset+b.markerWidth)*size-float32(b.quote)*size))
 							break
 						}
-						a.markdownCodeCard(c, m, path, b, size)
+						a.markdownCodeCard(c, m, path, b, size, a.previewHits(m, row.Index, -1, 0))
 						if d := b.diagram; d != nil && d.err != "" {
 							ui.Text(c, locales.MermaidCannotDraw(d.err)).FontSize(size*0.85).TextColor(p.dangerFg).Margin(size*0.4, 0, 0, 0)
 						}
@@ -1791,12 +1807,12 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							a.markdownMathBlock(c, b, size, max(1, width-(b.offset+b.markerWidth)*size-float32(b.quote)*size))
 							break
 						}
-						a.markdownCodeCard(c, m, path, b, size)
+						a.markdownCodeCard(c, m, path, b, size, a.previewHits(m, row.Index, -1, 0))
 						if f := b.formula; f != nil {
 							ui.Text(c, locales.MathCannotDraw(f.err)).FontSize(size*0.85).TextColor(p.dangerFg).Margin(size*0.4, 0, 0, 0)
 						}
 					case markdownTable, markdownTableHeader:
-						a.markdownTableRow(c, m, path, b, size, width, font)
+						a.markdownTableRow(c, m, path, row.Index, size, width, font)
 					case markdownAlertTitle:
 						icon, title := markdownAlertHead(b.alert)
 						col := a.markdownColor(b.alert)
@@ -1812,7 +1828,7 @@ func (a *app) markdownView(c *ui.Context, v *viewer, name string) {
 							a.markdownNoImage(c, m, path, r, size, align)
 							return
 						}
-						a.markdownText(c, m, path, b.runs, a.markdownSize(b), muted, false)
+						a.markdownText(c, m, path, b.runs, a.markdownSize(b), muted, false, a.previewHits(m, row.Index, -1, 0))
 						if b.kind == markdownHeading && b.level <= 2 {
 							// A hairline under the largest headings, as GitHub draws it.
 							ui.Box(c).Height(1).WidthPercent(100).Background(p.border).Margin(size*0.4, 0, 0, 0)

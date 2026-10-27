@@ -6,6 +6,8 @@ needs a `## <version>` section here, or its build fails.
 ## Unreleased
 
 - **Close Other Projects** asks before closing the window's other projects.
+- `⌘F` in a Markdown preview finds text in the rendered page, without switching to the source.
+- Matches in a Markdown preview are highlighted, and `⌘G` and `⇧⌘G` scroll to each one.
 - Typing and scrolling are smoother in files of Chinese, Japanese or other non-ASCII text.
 - Going to a line, a symbol or a search result briefly lights the line the caret lands on.
 - The sidebar and the terminal panel fade in as they open.
