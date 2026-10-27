@@ -48,7 +48,7 @@ func Dirs(home string, path []string) []string {
 	var dirs []string
 	path = cleanPath(path)
 	for _, dir := range []string{filepath.Join(home, ".local", "bin"), filepath.Join(home, "bin"), "/usr/local/bin"} {
-		if slices.Contains(path, dir) {
+		if slices.Contains(path, filepath.Clean(dir)) {
 			dirs = append(dirs, dir)
 		}
 	}
