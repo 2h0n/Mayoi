@@ -31,6 +31,8 @@ needs a `## <version>` section here, or its build fails.
 - MDX previews omit top-level `import`/`export` blocks, preserving code examples and paragraph text.
 - Files dragged from **Explorer**, **Source Control** or **Search**, and folders from **Explorer**, drop into other apps.
 - A remote file or folder dragged to another app arrives as its `host:/path` text.
+- **File > Install 'mayoi' Command** uses a folder on your shell's `PATH`, or says how to add one.
+- Uninstalling removes `mayoi` from every folder it was installed in.
 
 ## 0.12.3
 
