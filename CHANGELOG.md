@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.12.2
 
 - **Source Control** shows a folder's repositories and submodules in one list that scrolls as a whole.
 - Repository and change-group headers in **Source Control** stay pinned at the top while their files scroll.
