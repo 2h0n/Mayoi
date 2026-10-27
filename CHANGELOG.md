@@ -25,6 +25,10 @@ needs a `## <version>` section here, or its build fails.
 - Scrolling a file of over 6,000 lines colors the lines ahead before they come into view.
 - Typing recolors the edited lines with less work, and windows with many tabs draw with less.
 - File tabs gain a **Copy Relative Path** option in their context menu.
+- **View → Preview Markdown on Open** opens Markdown and `.mdx` in preview mode.
+- `⇧⌘V` switches back to the source; new files, search results and line jumps always open as source.
+- Restored and reopened Markdown tabs keep their view and scroll position, including offline remote tabs.
+- MDX previews omit top-level `import`/`export` blocks, preserving code examples and paragraph text.
 
 ## 0.12.3
 
