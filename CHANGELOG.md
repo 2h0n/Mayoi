@@ -24,6 +24,7 @@ needs a `## <version>` section here, or its build fails.
 - A file's matches fade in as it unfolds in the search results.
 - Scrolling a file of over 6,000 lines colors the lines ahead before they come into view.
 - Typing recolors the edited lines with less work, and windows with many tabs draw with less.
+- File tabs gain a **Copy Relative Path** option in their context menu.
 
 ## 0.12.3
 
