@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.13.0
 
 - **Close Other Projects** asks before closing the window's other projects.
 - `⌘F` in a Markdown preview finds text in the rendered page, without switching to the source.
