@@ -5,6 +5,7 @@ needs a `## <version>` section here, or its build fails.
 
 ## Unreleased
 
+- Typing and scrolling are smoother in files of Chinese, Japanese or other non-ASCII text.
 - Going to a line, a symbol or a search result briefly lights the line the caret lands on.
 - The sidebar and the terminal panel fade in as they open.
 - A folder's files fade in as it expands in the Explorer.
