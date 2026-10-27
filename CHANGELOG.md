@@ -3,7 +3,7 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
-## Unreleased
+## 0.12.3
 
 - MyGo 0.7.1: Shift-click extends terminal selections, and Powerline's rounded caps fill the line.
 - Mermaid nodes and subgraphs with a light `style` fill keep their labels readable in dark themes.
