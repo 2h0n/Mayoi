@@ -3,6 +3,10 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- MyGo 0.7.1: Shift-click extends terminal selections, and Powerline's rounded caps fill the line.
+
 ## 0.12.2
 
 - **Source Control** shows a folder's repositories and submodules in one list that scrolls as a whole.
