@@ -1228,6 +1228,28 @@ func (msgs Messages) CloseOtherProjects() string {
 	return Catalog.Format(msgs.locale, "closeOtherProjects", nil)
 }
 
+// CloseOtherProjectsDetail says "Their terminals and running tasks stop. Unsaved changes still ask to be saved."
+// in the language the app shows.
+func CloseOtherProjectsDetail() string { return In(i18n.Locale()).CloseOtherProjectsDetail() }
+
+// CloseOtherProjectsDetail says "Their terminals and running tasks stop. Unsaved changes still ask to be saved."
+// in the language of msgs.
+func (msgs Messages) CloseOtherProjectsDetail() string {
+	return Catalog.Format(msgs.locale, "closeOtherProjectsDetail", nil)
+}
+
+// CloseOtherProjectsQuestion says "{count, plural, one {Close # other project?} other {Close # other projects?}}"
+// in the language the app shows.
+func CloseOtherProjectsQuestion(count int) string {
+	return In(i18n.Locale()).CloseOtherProjectsQuestion(count)
+}
+
+// CloseOtherProjectsQuestion says "{count, plural, one {Close # other project?} other {Close # other projects?}}"
+// in the language of msgs.
+func (msgs Messages) CloseOtherProjectsQuestion(count int) string {
+	return Catalog.Format(msgs.locale, "closeOtherProjectsQuestion", map[string]any{"count": count})
+}
+
 // CmdAccountCompareKeybindings says "Compare Keyboard Shortcuts from Sync"
 // in the language the app shows.
 func CmdAccountCompareKeybindings() string { return In(i18n.Locale()).CmdAccountCompareKeybindings() }

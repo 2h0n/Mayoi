@@ -722,8 +722,8 @@ func (f *frame) railTab(c *ui.Context, a *app, h *desktop, i int, label string) 
 		if mn.Item(locales.CmdFileCloseProject()).Chosen() {
 			h.closeProject()
 		}
-		if mn.Item(locales.CloseOtherProjects()).Chosen() {
-			a.post(func() { f.closeOthers(h) })
+		if mn.Item(locales.CloseOtherProjects()).Disabled(len(f.tabs) < 2).Chosen() {
+			a.post(func() { f.confirmCloseOthers(a, h) })
 		}
 	})
 	if b.Clicked() {
@@ -960,6 +960,15 @@ func (f *frame) railAdd(c *ui.Context, a *app, folders bool) {
 	})
 	if b.Clicked() {
 		a.chooseFolder()
+	}
+}
+
+// confirmCloseOthers asks in a, the app shown, before closing the
+// projects of the window but h.
+func (f *frame) confirmCloseOthers(a *app, h *desktop) {
+	a.confirm = &confirm{
+		title: locales.CloseOtherProjectsQuestion(len(f.tabs) - 1), message: locales.CloseOtherProjectsDetail(),
+		ok: locales.TabClose(), danger: true, run: func() { f.closeOthers(h) },
 	}
 }
 

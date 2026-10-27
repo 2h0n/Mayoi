@@ -101,6 +101,8 @@
   "closeEsc": "关闭 (Esc)",
   "closeName": "关闭 {name}",
   "closeOtherProjects": "关闭其他项目",
+  "closeOtherProjectsDetail": "它们的终端和正在运行的任务会停止。未保存的更改仍会询问是否保存。",
+  "closeOtherProjectsQuestion": "关闭其他 {count} 个项目？",
   "cmdAccountCompareKeybindings": "比较同步来的键盘快捷键",
   "cmdAccountManage": "管理账户…",
   "cmdAccountShow": "显示设置同步",

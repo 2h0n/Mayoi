@@ -347,6 +347,8 @@
   "closeEsc": "Close (Esc)",
   "closeName": "Close {name}",
   "closeOtherProjects": "Close Other Projects",
+  "closeOtherProjectsDetail": "Their terminals and running tasks stop. Unsaved changes still ask to be saved.",
+  "closeOtherProjectsQuestion": "{count, plural, one {Close # other project?} other {Close # other projects?}}",
   "cmdAccountCompareKeybindings": "Compare Keyboard Shortcuts from Sync",
   "cmdAccountManage": "Manage Account…",
   "cmdAccountShow": "Show Settings Sync",

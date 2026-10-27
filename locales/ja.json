@@ -101,6 +101,8 @@
   "closeEsc": "閉じる (Esc)",
   "closeName": "{name} を閉じる",
   "closeOtherProjects": "他のプロジェクトを閉じる",
+  "closeOtherProjectsDetail": "ターミナルと実行中のタスクは停止します。未保存の変更は引き続き保存するか確認されます。",
+  "closeOtherProjectsQuestion": "他の {count} 個のプロジェクトを閉じますか？",
   "cmdAccountCompareKeybindings": "同期したキーボードショートカットを比較",
   "cmdAccountManage": "アカウントを管理…",
   "cmdAccountShow": "設定の同期を表示",
