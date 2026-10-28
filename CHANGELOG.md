@@ -3,6 +3,10 @@
 The update window shows the section of the version it offers. Every release
 needs a `## <version>` section here, or its build fails.
 
+## Unreleased
+
+- When an update check fails, the update window shows the whole error, with no tooltip over it.
+
 ## 0.13.0
 
 - **Close Other Projects** asks before closing the window's other projects.
